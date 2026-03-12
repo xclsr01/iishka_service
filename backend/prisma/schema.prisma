@@ -1,0 +1,161 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProviderKey {
+  OPENAI
+  ANTHROPIC
+  GEMINI
+}
+
+enum ProviderStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ChatStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum MessageStatus {
+  COMPLETED
+  FAILED
+  STREAMING
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  EXPIRED
+  PAST_DUE
+  TRIALING
+  INACTIVE
+}
+
+enum FileStatus {
+  READY
+  REJECTED
+  QUARANTINED
+}
+
+model User {
+  id               String         @id @default(cuid())
+  telegramUserId   String         @unique
+  telegramUsername String?
+  firstName        String?
+  lastName         String?
+  languageCode     String?
+  avatarUrl        String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  chats            Chat[]
+  messages         Message[]
+  subscriptions    Subscription[]
+  files            FileAsset[]
+}
+
+model Provider {
+  id               String         @id @default(cuid())
+  key              ProviderKey    @unique
+  name             String
+  slug             String         @unique
+  summary          String
+  description      String
+  defaultModel     String
+  status           ProviderStatus @default(ACTIVE)
+  isFileUploadBeta Boolean        @default(true)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  chats            Chat[]
+}
+
+model Chat {
+  id           String      @id @default(cuid())
+  userId       String
+  providerId   String
+  title        String
+  status       ChatStatus  @default(ACTIVE)
+  lastMessageAt DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider     Provider    @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  messages     Message[]
+
+  @@index([userId, updatedAt])
+  @@index([providerId])
+}
+
+model Message {
+  id              String        @id @default(cuid())
+  chatId          String
+  userId          String
+  role            MessageRole
+  status          MessageStatus @default(COMPLETED)
+  content         String
+  providerMeta    Json?
+  failureReason   String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  chat            Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachments     MessageAttachment[]
+
+  @@index([chatId, createdAt])
+}
+
+model FileAsset {
+  id               String             @id @default(cuid())
+  userId           String
+  originalName     String
+  storageKey       String             @unique
+  mimeType         String
+  sizeBytes        Int
+  checksumSha256   String
+  status           FileStatus         @default(READY)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachments      MessageAttachment[]
+
+  @@index([userId, createdAt])
+}
+
+model MessageAttachment {
+  messageId String
+  fileId    String
+  createdAt DateTime @default(now())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  file      FileAsset @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, fileId])
+}
+
+model Subscription {
+  id                String             @id @default(cuid())
+  userId            String
+  planCode          String
+  status            SubscriptionStatus @default(INACTIVE)
+  currentPeriodStart DateTime?
+  currentPeriodEnd  DateTime?
+  providerReference String?
+  isAutoRenew       Boolean            @default(false)
+  metadata          Json?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+}

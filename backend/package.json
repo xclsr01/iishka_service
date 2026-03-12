@@ -1,0 +1,31 @@
+{
+  "name": "@iishka/backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "npm run db:generate && tsx --import ./src/test/setup-env.ts --test \"src/**/*.test.ts\"",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "format": "prettier --check \"src/**/*.ts\" \"prisma/**/*.ts\"",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.0",
+    "@prisma/client": "^6.5.0",
+    "dotenv": "^16.4.7",
+    "hono": "^4.7.2",
+    "mime": "^4.0.7",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.13",
+    "prettier": "^3.5.3",
+    "prisma": "^6.5.0",
+    "tsx": "^4.19.3"
+  }
+}

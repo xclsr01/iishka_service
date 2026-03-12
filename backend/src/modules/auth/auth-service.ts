@@ -1,0 +1,116 @@
+import { ProviderStatus } from '@prisma/client';
+import { signSession, verifyTelegramInitData } from '../../lib/auth';
+import { prisma } from '../../lib/prisma';
+import { env } from '../../env';
+import {
+  ensureDefaultSubscription,
+  getCurrentSubscription,
+  isSubscriptionActive,
+} from '../subscriptions/subscription-service';
+
+export async function bootstrapTelegramUser(initDataRaw: string) {
+  const telegramUser = verifyTelegramInitData(
+    initDataRaw,
+    env.TELEGRAM_BOT_TOKEN,
+    env.TELEGRAM_INIT_DATA_TTL_SECONDS,
+  );
+
+  const user = await prisma.user.upsert({
+    where: {
+      telegramUserId: String(telegramUser.id),
+    },
+    update: {
+      telegramUsername: telegramUser.username ?? null,
+      firstName: telegramUser.first_name ?? null,
+      lastName: telegramUser.last_name ?? null,
+      languageCode: telegramUser.language_code ?? null,
+      avatarUrl: telegramUser.photo_url ?? null,
+    },
+    create: {
+      telegramUserId: String(telegramUser.id),
+      telegramUsername: telegramUser.username ?? null,
+      firstName: telegramUser.first_name ?? null,
+      lastName: telegramUser.last_name ?? null,
+      languageCode: telegramUser.language_code ?? null,
+      avatarUrl: telegramUser.photo_url ?? null,
+    },
+  });
+
+  await ensureDefaultSubscription(user.id);
+  const subscription = await getCurrentSubscription(user.id);
+  const providers = await prisma.provider.findMany({
+    where: { status: ProviderStatus.ACTIVE },
+    orderBy: { name: 'asc' },
+  });
+
+  const token = signSession(
+    {
+      sub: user.id,
+      telegramUserId: user.telegramUserId,
+      username: user.telegramUsername,
+    },
+    env.JWT_SECRET,
+    env.SESSION_TTL_MINUTES,
+  );
+
+  return {
+    token,
+    user,
+    providers,
+    subscription: {
+      ...subscription,
+      hasAccess: isSubscriptionActive(subscription),
+    },
+  };
+}
+
+export async function bootstrapDevUser(sharedSecret: string) {
+  if (!env.ENABLE_DEV_AUTH || sharedSecret !== env.DEV_AUTH_SHARED_SECRET) {
+    throw new Error('Invalid dev auth');
+  }
+
+  const user = await prisma.user.upsert({
+    where: {
+      telegramUserId: 'dev-user',
+    },
+    update: {
+      telegramUsername: 'local_dev',
+      firstName: 'Local',
+      lastName: 'Developer',
+    },
+    create: {
+      telegramUserId: 'dev-user',
+      telegramUsername: 'local_dev',
+      firstName: 'Local',
+      lastName: 'Developer',
+      languageCode: 'en',
+    },
+  });
+
+  await ensureDefaultSubscription(user.id);
+  const subscription = await getCurrentSubscription(user.id);
+  const providers = await prisma.provider.findMany({
+    where: { status: ProviderStatus.ACTIVE },
+    orderBy: { name: 'asc' },
+  });
+
+  const token = signSession(
+    {
+      sub: user.id,
+      telegramUserId: user.telegramUserId,
+      username: user.telegramUsername,
+    },
+    env.JWT_SECRET,
+    env.SESSION_TTL_MINUTES,
+  );
+
+  return {
+    token,
+    user,
+    providers,
+    subscription: {
+      ...subscription,
+      hasAccess: isSubscriptionActive(subscription),
+    },
+  };
+}
