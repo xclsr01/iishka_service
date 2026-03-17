@@ -9,10 +9,16 @@ export function assertPresent<T>(value: T | null | undefined, message: string): 
 }
 
 export function jsonSafeError(error: AppError) {
+  const isProviderFailure =
+    error.code === 'PROVIDER_REQUEST_FAILED' || error.code === 'PROVIDER_EMPTY_RESPONSE';
+
   return {
     error: {
       code: error.code,
-      message: error.statusCode >= 500 ? 'Internal server error' : error.message,
+      message:
+        error.statusCode >= 500 && !isProviderFailure
+          ? 'Internal server error'
+          : error.message,
     },
   };
 }

@@ -94,8 +94,19 @@ class ApiClient {
     });
 
     if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null;
-      throw new Error(payload?.error?.message ?? 'Request failed');
+      const rawText = await response.text().catch(() => '');
+      let payload: ApiErrorPayload | null = null;
+
+      try {
+        payload = rawText ? (JSON.parse(rawText) as ApiErrorPayload) : null;
+      } catch {
+        payload = null;
+      }
+
+      throw new Error(
+        payload?.error?.message ??
+          (rawText || `Request failed with status ${response.status}`),
+      );
     }
 
     return (await response.json()) as T;

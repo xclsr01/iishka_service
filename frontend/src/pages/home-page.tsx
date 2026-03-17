@@ -10,11 +10,13 @@ export function HomePage({
   providers,
   subscription,
   onActivateDevSubscription,
+  isActivatingSubscription,
 }: {
   user: User;
   providers: Provider[];
   subscription: Subscription;
   onActivateDevSubscription: () => Promise<void>;
+  isActivatingSubscription: boolean;
 }) {
   return (
     <>
@@ -56,8 +58,13 @@ export function HomePage({
             </p>
           </div>
           {!subscription.hasAccess && (
-            <Button type="button" variant="secondary" onClick={onActivateDevSubscription}>
-              Activate demo
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isActivatingSubscription}
+              onClick={onActivateDevSubscription}
+            >
+              {isActivatingSubscription ? 'Activating...' : 'Activate demo'}
             </Button>
           )}
         </div>

@@ -23,12 +23,58 @@ async function callTelegram(method: string, payload: Record<string, unknown>) {
   });
 
   if (!response.ok) {
-    throw new AppError('Telegram API request failed', 502, 'TELEGRAM_API_FAILED');
+    const body = await response.text().catch(() => '');
+    throw new AppError(
+      `Telegram API request failed with status ${response.status}${body ? `: ${body}` : ''}`,
+      502,
+      'TELEGRAM_API_FAILED',
+    );
   }
+}
+
+function hasUsablePublicMiniAppUrl(candidate: string) {
+  try {
+    const url = new URL(candidate);
+    const isPublicHttps = url.protocol === 'https:' && !['localhost', '127.0.0.1'].includes(url.hostname);
+    const isTelegramDeepLink = ['t.me', 'telegram.me'].includes(url.hostname);
+    return isPublicHttps && !isTelegramDeepLink;
+  } catch {
+    return false;
+  }
+}
+
+export function resolveMiniAppUrl() {
+  if (hasUsablePublicMiniAppUrl(env.TELEGRAM_MINI_APP_URL)) {
+    return env.TELEGRAM_MINI_APP_URL;
+  }
+
+  if (env.APP_ENV === 'development') {
+    return env.FRONTEND_URL;
+  }
+
+  return env.TELEGRAM_MINI_APP_URL;
+}
+
+function canSendTelegramWebAppButton() {
+  return hasUsablePublicMiniAppUrl(resolveMiniAppUrl());
 }
 
 async function sendWelcomeMessage(chatId: number, firstName?: string) {
   const intro = firstName ? `Hi ${firstName}.` : 'Hi.';
+  const miniAppUrl = resolveMiniAppUrl();
+
+  if (!canSendTelegramWebAppButton()) {
+    await callTelegram('sendMessage', {
+      chat_id: chatId,
+      text:
+        `${intro} The Mini App is not available through Telegram yet because ` +
+        `the configured URL is not a public HTTPS URL. ` +
+        `For local development, open ${env.FRONTEND_URL} in your browser. ` +
+        `To make the Telegram button work, set TELEGRAM_MINI_APP_URL to a public HTTPS frontend URL.`,
+    });
+    return;
+  }
+
   await callTelegram('sendMessage', {
     chat_id: chatId,
     text: `${intro} Open the Mini App to browse providers, manage subscription state, and continue your chats.`,
@@ -38,7 +84,7 @@ async function sendWelcomeMessage(chatId: number, firstName?: string) {
           {
             text: 'Open Mini App',
             web_app: {
-              url: env.TELEGRAM_MINI_APP_URL,
+              url: miniAppUrl,
             },
           },
         ],

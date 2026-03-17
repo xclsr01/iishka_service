@@ -1,5 +1,19 @@
-import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 import { z } from 'zod';
+
+const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const backendDir = path.resolve(currentDir, '..');
+const repoRootDir = path.resolve(backendDir, '..');
+
+// Load root env first for shared defaults, then backend/.env to allow backend-specific overrides.
+dotenv.config({ path: path.join(repoRootDir, '.env') });
+dotenv.config({ path: path.join(backendDir, '.env'), override: true });
+
+if (!process.env.DEV_AUTH_SHARED_SECRET && process.env.VITE_DEV_AUTH_SHARED_SECRET) {
+  process.env.DEV_AUTH_SHARED_SECRET = process.env.VITE_DEV_AUTH_SHARED_SECRET;
+}
 
 const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -13,6 +27,7 @@ const envSchema = z.object({
   TELEGRAM_BOT_USERNAME: z.string().min(1),
   TELEGRAM_WEBHOOK_SECRET: z.string().min(1),
   TELEGRAM_MINI_APP_URL: z.string().url(),
+  TELEGRAM_DELIVERY_MODE: z.enum(['webhook', 'polling', 'disabled']).default('polling'),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().min(1),
   ANTHROPIC_API_KEY: z.string().min(1),
@@ -29,7 +44,7 @@ const envSchema = z.object({
     .string()
     .default('false')
     .transform((value) => value === 'true'),
-  DEV_AUTH_SHARED_SECRET: z.string().min(1),
+  DEV_AUTH_SHARED_SECRET: z.string().default(''),
   ENABLE_DEV_SUBSCRIPTION_OVERRIDE: z
     .string()
     .default('false')

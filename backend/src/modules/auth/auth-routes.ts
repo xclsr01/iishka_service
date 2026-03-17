@@ -25,7 +25,11 @@ authRoutes.post('/dev/bootstrap', async (c) => {
   try {
     const result = await bootstrapDevUser(payload.sharedSecret);
     return c.json(result);
-  } catch {
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+
     throw new AppError('Invalid dev bootstrap credentials', 401, 'UNAUTHORIZED');
   }
 });

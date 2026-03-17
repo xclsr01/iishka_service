@@ -9,6 +9,7 @@ process.env.TELEGRAM_BOT_TOKEN ??= '123456:telegram-test-token';
 process.env.TELEGRAM_BOT_USERNAME ??= 'iishka_test_bot';
 process.env.TELEGRAM_WEBHOOK_SECRET ??= 'telegram-webhook-secret';
 process.env.TELEGRAM_MINI_APP_URL ??= 'https://mini-app.example.com';
+process.env.TELEGRAM_DELIVERY_MODE ??= 'disabled';
 process.env.OPENAI_API_KEY ??= 'test-openai-key';
 process.env.OPENAI_MODEL ??= 'gpt-4.1-mini';
 process.env.ANTHROPIC_API_KEY ??= 'test-anthropic-key';

@@ -1,9 +1,12 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { env } from './env';
-import { errorHandler, notFoundHandler } from './middleware/error-handler';
+import { notFoundHandler } from './middleware/error-handler';
 import { rateLimitMiddleware } from './middleware/rate-limit';
 import { requestIdMiddleware } from './middleware/request-id';
+import { toAppError } from './lib/errors';
+import { jsonSafeError } from './lib/http';
+import { logger } from './lib/logger';
 import { authRoutes } from './modules/auth/auth-routes';
 import { catalogRoutes } from './modules/catalog/catalog-routes';
 import { chatRoutes } from './modules/chats/chat-routes';
@@ -16,7 +19,6 @@ import type { AppVariables } from './types';
 export function createApp() {
   const app = new Hono<{ Variables: AppVariables }>();
 
-  app.use('*', errorHandler);
   app.use(
     '*',
     cors({
@@ -43,6 +45,16 @@ export function createApp() {
   app.route('/api/files', fileRoutes);
   app.route('/api/subscription', subscriptionRoutes);
   app.route('/api/telegram', telegramRoutes);
+
+  app.onError((error, c) => {
+    const appError = toAppError(error);
+    logger.error('request_failed', {
+      path: c.req.path,
+      code: appError.code,
+      message: error instanceof Error ? error.message : 'unknown',
+    });
+    return c.json(jsonSafeError(appError), appError.statusCode);
+  });
 
   app.notFound(notFoundHandler);
 

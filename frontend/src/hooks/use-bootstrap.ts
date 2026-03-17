@@ -24,15 +24,20 @@ export function useBootstrap() {
 
       try {
         const initDataRaw = window.Telegram?.WebApp?.initData;
+        const shouldUseDevAuth =
+          clientEnv.enableDevAuth ||
+          (window.location.hostname === 'localhost' && clientEnv.devAuthSharedSecret.length > 0);
         const response =
           initDataRaw && initDataRaw.length > 0
             ? await apiClient.bootstrapTelegram(initDataRaw)
-            : clientEnv.enableDevAuth
+            : shouldUseDevAuth
               ? await apiClient.bootstrapDev()
               : null;
 
         if (!response) {
-          throw new Error('Telegram init data is unavailable and dev auth is disabled');
+          throw new Error(
+            'Telegram init data is unavailable and local dev auth fallback is not configured',
+          );
         }
 
         apiClient.setToken(response.token);
