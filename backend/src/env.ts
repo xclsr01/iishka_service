@@ -20,6 +20,7 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().url(),
   API_BASE_URL: z.string().url(),
   DATABASE_URL: z.string().min(1),
+  DIRECT_URL: z.string().min(1).default(process.env.DATABASE_URL ?? ''),
   JWT_SECRET: z.string().min(32),
   SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(60 * 24 * 7),
   TELEGRAM_INIT_DATA_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
@@ -36,8 +37,11 @@ const envSchema = z.object({
   GOOGLE_AI_MODEL: z.string().min(1),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
   ALLOWED_UPLOAD_MIME_TYPES: z.string().min(1),
-  UPLOAD_STORAGE_DRIVER: z.enum(['local']).default('local'),
+  UPLOAD_STORAGE_DRIVER: z.enum(['local', 'supabase']).default('local'),
   UPLOAD_LOCAL_DIR: z.string().min(1),
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  SUPABASE_STORAGE_BUCKET: z.string().optional(),
   RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(120),
   ENABLE_DEV_AUTH: z
@@ -56,3 +60,17 @@ export const env = envSchema.parse(process.env);
 export const allowedUploadMimeTypes = env.ALLOWED_UPLOAD_MIME_TYPES.split(',')
   .map((value) => value.trim())
   .filter(Boolean);
+
+if (env.UPLOAD_STORAGE_DRIVER === 'supabase') {
+  const missing = [
+    ['SUPABASE_URL', env.SUPABASE_URL],
+    ['SUPABASE_SERVICE_ROLE_KEY', env.SUPABASE_SERVICE_ROLE_KEY],
+    ['SUPABASE_STORAGE_BUCKET', env.SUPABASE_STORAGE_BUCKET],
+  ].filter(([, value]) => !value);
+
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing Supabase storage configuration: ${missing.map(([key]) => key).join(', ')}`,
+    );
+  }
+}

@@ -24,3 +24,15 @@ interface Window {
     WebApp?: TelegramWebApp;
   };
 }
+
+interface ImportMetaEnv {
+  readonly VITE_API_BASE_URL?: string;
+  readonly VITE_ENABLE_DEV_AUTH?: string;
+  readonly VITE_DEV_AUTH_SHARED_SECRET?: string;
+  readonly VITE_SUPABASE_URL?: string;
+  readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}

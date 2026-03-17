@@ -146,6 +146,7 @@ Key points:
 Important variables:
 
 - `DATABASE_URL`: PostgreSQL connection string
+- `DIRECT_URL`: direct PostgreSQL connection string for Prisma migrations
 - `FRONTEND_URL`: allowed CORS origin for the Mini App frontend
 - `API_BASE_URL`: backend URL
 - `VITE_API_BASE_URL`: frontend-visible backend URL
@@ -154,6 +155,8 @@ Important variables:
 - `TELEGRAM_MINI_APP_URL`: public frontend URL used in the bot button
 - `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_AI_API_KEY`: upstream provider credentials
 - `MAX_UPLOAD_BYTES`, `ALLOWED_UPLOAD_MIME_TYPES`: upload safety policy
+- `UPLOAD_STORAGE_DRIVER`: `local` or `supabase`
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`: required when using Supabase Storage
 - `ENABLE_DEV_AUTH`, `VITE_ENABLE_DEV_AUTH`: local non-Telegram bootstrap toggle
 - `ENABLE_DEV_SUBSCRIPTION_OVERRIDE`: allows demo subscription activation for local testing
 
@@ -167,6 +170,35 @@ npm run db:seed
 ```
 
 If you are starting from scratch, create the database before running migrations.
+
+### Supabase setup
+Supabase works well for this project as:
+
+- hosted Postgres for the main app database
+- Storage for uploaded files
+
+Recommended connection string split:
+
+- `DATABASE_URL`: use the Supabase pooled connection string for runtime traffic
+- `DIRECT_URL`: use the direct/session connection string for Prisma CLI commands such as `migrate`
+
+Recommended storage setup:
+
+1. Create a Supabase project
+2. Create a Storage bucket, for example `chat-uploads`
+3. Set:
+   ```env
+   UPLOAD_STORAGE_DRIVER=supabase
+   SUPABASE_URL=https://<project-ref>.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+   SUPABASE_STORAGE_BUCKET=chat-uploads
+   ```
+
+Important:
+
+- Keep `SUPABASE_SERVICE_ROLE_KEY` on the backend only
+- Do not expose the service role key to the frontend
+- The backend uploads server-side, so the browser never needs Supabase secrets
 
 ## Run instructions
 Run both apps:
@@ -252,8 +284,60 @@ The backend verifies the Telegram signature, upserts the user, ensures a subscri
 - Replace local file storage with object storage before production
 - If targeting Cloudflare-adjacent infrastructure, use a Prisma strategy compatible with your runtime
 
+### Cloudflare deployment path
+Recommended setup for this repository:
+
+- Frontend -> Cloudflare Pages
+- Backend -> Cloudflare Workers
+- Database -> Supabase Postgres
+- Uploads -> Supabase Storage
+- Telegram delivery -> `webhook` in production, `polling` only for local development
+
+Backend Cloudflare files are in:
+
+- [backend/wrangler.jsonc](/Users/artemveselov/Projects/iishka_service/backend/wrangler.jsonc)
+- [backend/src/worker.ts](/Users/artemveselov/Projects/iishka_service/backend/src/worker.ts)
+- [backend/.dev.vars.example](/Users/artemveselov/Projects/iishka_service/backend/.dev.vars.example)
+
+Production deployment checklist:
+
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Generate Prisma client:
+   ```bash
+   npm run db:generate
+   ```
+3. Login to Cloudflare:
+   ```bash
+   cd backend
+   npx wrangler login
+   ```
+4. Create `backend/.dev.vars` from `backend/.dev.vars.example`
+5. Set `TELEGRAM_DELIVERY_MODE=webhook`
+6. Set `FRONTEND_URL` and `TELEGRAM_MINI_APP_URL` to the Cloudflare Pages HTTPS URL
+7. Set `DATABASE_URL` to the Supabase pooled connection string
+8. Set `DIRECT_URL` to the Supabase direct connection string for Prisma CLI usage
+9. Set `UPLOAD_STORAGE_DRIVER=supabase`
+10. Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET`
+11. Deploy backend:
+   ```bash
+   npm run deploy:backend
+   ```
+12. Deploy frontend by building `frontend/dist` to Cloudflare Pages
+13. Register the Telegram webhook against the Worker public URL:
+   ```bash
+   curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "url": "https://<your-worker-domain>/api/telegram/webhook",
+       "secret_token": "<TELEGRAM_WEBHOOK_SECRET>"
+     }'
+   ```
+
 ### Recommended production swaps
-- `LocalStorageAdapter` -> R2/S3 adapter
+- `LocalStorageAdapter` -> Supabase Storage or R2/S3 adapter
 - in-memory rate limiter -> Redis/KV/Durable Object backed limiter
 - dev auth routes -> disabled
 - dev subscription override -> disabled

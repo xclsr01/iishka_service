@@ -6,8 +6,18 @@ import { sha256Hex } from '../../lib/crypto';
 import { AppError } from '../../lib/errors';
 import { prisma } from '../../lib/prisma';
 import { LocalStorageAdapter } from './storage/local-storage';
+import { SupabaseStorageAdapter } from './storage/supabase-storage';
+import type { StorageAdapter } from './storage/storage-adapter';
 
-const storage = new LocalStorageAdapter();
+function createStorageAdapter(): StorageAdapter {
+  if (env.UPLOAD_STORAGE_DRIVER === 'supabase') {
+    return new SupabaseStorageAdapter();
+  }
+
+  return new LocalStorageAdapter();
+}
+
+const storage = createStorageAdapter();
 
 function sanitizeFilename(filename: string) {
   return filename.replace(/[^a-zA-Z0-9._-]/g, '_');
