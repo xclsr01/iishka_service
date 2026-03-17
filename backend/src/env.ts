@@ -3,42 +3,65 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { z } from 'zod';
 
-const currentDir = path.dirname(fileURLToPath(import.meta.url));
-const backendDir = path.resolve(currentDir, '..');
-const repoRootDir = path.resolve(backendDir, '..');
+function loadLocalEnvFiles() {
+  try {
+    const metaUrl = import.meta?.url;
 
-// Load root env first for shared defaults, then backend/.env to allow backend-specific overrides.
-dotenv.config({ path: path.join(repoRootDir, '.env') });
-dotenv.config({ path: path.join(backendDir, '.env'), override: true });
+    if (typeof metaUrl !== 'string' || metaUrl.length === 0) {
+      return;
+    }
+
+    const currentDir = path.dirname(fileURLToPath(metaUrl));
+    const backendDir = path.resolve(currentDir, '..');
+    const repoRootDir = path.resolve(backendDir, '..');
+
+    // Load root env first for shared defaults, then backend/.env to allow backend-specific overrides.
+    dotenv.config({ path: path.join(repoRootDir, '.env') });
+    dotenv.config({ path: path.join(backendDir, '.env'), override: true });
+  } catch {
+    // Worker runtimes do not need local dotenv files, so env loading should never block startup.
+  }
+}
+
+loadLocalEnvFiles();
 
 if (!process.env.DEV_AUTH_SHARED_SECRET && process.env.VITE_DEV_AUTH_SHARED_SECRET) {
   process.env.DEV_AUTH_SHARED_SECRET = process.env.VITE_DEV_AUTH_SHARED_SECRET;
 }
 
+const placeholderUrl = 'https://example.invalid';
+const placeholderSecret =
+  'replace-this-placeholder-secret-before-production-use-0000000000000000';
+const placeholderToken = 'replace-me';
+const placeholderDatabaseUrl = 'postgresql://user:password@localhost:5432/iishka_service';
+
 const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  FRONTEND_URL: z.string().url(),
-  API_BASE_URL: z.string().url(),
-  DATABASE_URL: z.string().min(1),
-  DIRECT_URL: z.string().min(1).default(process.env.DATABASE_URL ?? ''),
-  JWT_SECRET: z.string().min(32),
+  FRONTEND_URL: z.string().url().default(placeholderUrl),
+  API_BASE_URL: z.string().url().default(placeholderUrl),
+  DATABASE_URL: z.string().min(1).default(placeholderDatabaseUrl),
+  DIRECT_URL: z.string().min(1).default(process.env.DATABASE_URL ?? placeholderDatabaseUrl),
+  JWT_SECRET: z.string().min(32).default(placeholderSecret),
   SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(60 * 24 * 7),
   TELEGRAM_INIT_DATA_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
-  TELEGRAM_BOT_TOKEN: z.string().min(1),
-  TELEGRAM_BOT_USERNAME: z.string().min(1),
-  TELEGRAM_WEBHOOK_SECRET: z.string().min(1),
-  TELEGRAM_MINI_APP_URL: z.string().url(),
+  TELEGRAM_BOT_TOKEN: z.string().min(1).default(placeholderToken),
+  TELEGRAM_BOT_USERNAME: z.string().min(1).default('placeholder_bot'),
+  TELEGRAM_WEBHOOK_SECRET: z.string().min(1).default(placeholderSecret),
+  TELEGRAM_MINI_APP_URL: z.string().url().default(placeholderUrl),
   TELEGRAM_DELIVERY_MODE: z.enum(['webhook', 'polling', 'disabled']).default('polling'),
-  OPENAI_API_KEY: z.string().min(1),
-  OPENAI_MODEL: z.string().min(1),
-  ANTHROPIC_API_KEY: z.string().min(1),
-  ANTHROPIC_MODEL: z.string().min(1),
-  GOOGLE_AI_API_KEY: z.string().min(1),
-  GOOGLE_AI_MODEL: z.string().min(1),
+  OPENAI_API_KEY: z.string().min(1).default(placeholderToken),
+  OPENAI_MODEL: z.string().min(1).default('gpt-4.1-mini'),
+  ANTHROPIC_API_KEY: z.string().min(1).default(placeholderToken),
+  ANTHROPIC_MODEL: z.string().min(1).default('claude-3-5-sonnet-latest'),
+  GOOGLE_AI_API_KEY: z.string().min(1).default(placeholderToken),
+  GOOGLE_AI_MODEL: z.string().min(1).default('gemini-2.0-flash'),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
-  ALLOWED_UPLOAD_MIME_TYPES: z.string().min(1),
+  ALLOWED_UPLOAD_MIME_TYPES: z
+    .string()
+    .min(1)
+    .default('application/pdf,image/png,image/jpeg,text/plain'),
   UPLOAD_STORAGE_DRIVER: z.enum(['local', 'supabase']).default('local'),
-  UPLOAD_LOCAL_DIR: z.string().min(1),
+  UPLOAD_LOCAL_DIR: z.string().min(1).default('./storage/uploads'),
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   SUPABASE_STORAGE_BUCKET: z.string().optional(),
