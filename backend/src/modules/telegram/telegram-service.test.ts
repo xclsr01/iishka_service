@@ -1,6 +1,6 @@
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { handleTelegramWebhook } from './telegram-service';
+import { handleTelegramWebhook, resolveMiniAppUrl } from './telegram-service';
 
 const originalFetch = globalThis.fetch;
 
@@ -34,7 +34,7 @@ test('handleTelegramWebhook sends the Mini App welcome message on /start', async
       (calledPayload?.reply_markup as { inline_keyboard: Array<Array<{ web_app?: { url: string } }>> })
         .inline_keyboard[0][0].web_app?.url
     ),
-    process.env.TELEGRAM_MINI_APP_URL,
+    resolveMiniAppUrl(),
   );
 });
 

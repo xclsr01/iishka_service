@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { AppShell } from '@/components/layout/app-shell';
 import { Card } from '@/components/ui/card';
@@ -12,10 +12,12 @@ function ProviderRoute({
   providers,
   subscription,
   onActivateDevSubscription,
+  isActivatingSubscription,
 }: {
   providers: Provider[];
   subscription: Subscription;
   onActivateDevSubscription: () => Promise<void>;
+  isActivatingSubscription: boolean;
 }) {
   const params = useParams();
   const provider = providers.find((candidate) => candidate.id === params.providerId);
@@ -29,6 +31,7 @@ function ProviderRoute({
       provider={provider}
       subscription={subscription}
       onActivateDevSubscription={onActivateDevSubscription}
+      isActivatingSubscription={isActivatingSubscription}
     />
   );
 }
@@ -36,10 +39,22 @@ function ProviderRoute({
 export function App() {
   const { data, isLoading, error } = useBootstrap();
   const [subscriptionOverride, setSubscriptionOverride] = useState(data?.subscription ?? null);
+  const [isActivatingSubscription, setIsActivatingSubscription] = useState(false);
+
+  useEffect(() => {
+    if (data?.subscription) {
+      setSubscriptionOverride((current) => current ?? data.subscription);
+    }
+  }, [data?.subscription]);
 
   async function activateDevSubscription() {
-    const response = await apiClient.activateDevSubscription();
-    setSubscriptionOverride(response.subscription);
+    try {
+      setIsActivatingSubscription(true);
+      const response = await apiClient.activateDevSubscription();
+      setSubscriptionOverride(response.subscription);
+    } finally {
+      setIsActivatingSubscription(false);
+    }
   }
 
   if (isLoading) {
@@ -74,6 +89,7 @@ export function App() {
               providers={data.providers}
               subscription={subscription}
               onActivateDevSubscription={activateDevSubscription}
+              isActivatingSubscription={isActivatingSubscription}
             />
           }
         />
@@ -84,6 +100,7 @@ export function App() {
               providers={data.providers}
               subscription={subscription}
               onActivateDevSubscription={activateDevSubscription}
+              isActivatingSubscription={isActivatingSubscription}
             />
           }
         />

@@ -1,3 +1,4 @@
+import { AppError } from '../../lib/errors';
 import { ProviderStatus } from '@prisma/client';
 import { signSession, verifyTelegramInitData } from '../../lib/auth';
 import { prisma } from '../../lib/prisma';
@@ -65,8 +66,20 @@ export async function bootstrapTelegramUser(initDataRaw: string) {
 }
 
 export async function bootstrapDevUser(sharedSecret: string) {
-  if (!env.ENABLE_DEV_AUTH || sharedSecret !== env.DEV_AUTH_SHARED_SECRET) {
-    throw new Error('Invalid dev auth');
+  if (!env.ENABLE_DEV_AUTH) {
+    throw new AppError('Dev auth is disabled', 403, 'FORBIDDEN');
+  }
+
+  if (!env.DEV_AUTH_SHARED_SECRET) {
+    throw new AppError(
+      'DEV_AUTH_SHARED_SECRET is not configured on the backend',
+      500,
+      'DEV_AUTH_NOT_CONFIGURED',
+    );
+  }
+
+  if (sharedSecret !== env.DEV_AUTH_SHARED_SECRET) {
+    throw new AppError('Invalid dev auth', 401, 'UNAUTHORIZED');
   }
 
   const user = await prisma.user.upsert({

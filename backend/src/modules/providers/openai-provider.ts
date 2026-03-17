@@ -17,7 +17,12 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
     });
 
     if (!response.ok) {
-      throw new AppError('OpenAI request failed', 502, 'PROVIDER_REQUEST_FAILED');
+      const body = await response.text().catch(() => '');
+      throw new AppError(
+        `OpenAI request failed${body ? `: ${body}` : ''}`,
+        502,
+        'PROVIDER_REQUEST_FAILED',
+      );
     }
 
     const data = (await response.json()) as {

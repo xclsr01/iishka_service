@@ -28,7 +28,12 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
     });
 
     if (!response.ok) {
-      throw new AppError('Anthropic request failed', 502, 'PROVIDER_REQUEST_FAILED');
+      const body = await response.text().catch(() => '');
+      throw new AppError(
+        `Anthropic request failed${body ? `: ${body}` : ''}`,
+        502,
+        'PROVIDER_REQUEST_FAILED',
+      );
     }
 
     const data = (await response.json()) as {

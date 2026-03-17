@@ -14,10 +14,12 @@ export function ChatPage({
   provider,
   subscription,
   onActivateDevSubscription,
+  isActivatingSubscription,
 }: {
   provider: Provider;
   subscription: Subscription;
   onActivateDevSubscription: () => Promise<void>;
+  isActivatingSubscription: boolean;
 }) {
   const { chat, messagesLoading, error, pendingFiles, uploadFiles, sendMessage, removePendingFile } =
     useProviderChat(provider, subscription);
@@ -67,8 +69,13 @@ export function ChatPage({
                 Uploads can still be prepared, but message sending is blocked until the plan is active.
               </p>
             </div>
-            <Button type="button" variant="secondary" onClick={onActivateDevSubscription}>
-              Activate demo
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={isActivatingSubscription}
+              onClick={onActivateDevSubscription}
+            >
+              {isActivatingSubscription ? 'Activating...' : 'Activate demo'}
             </Button>
           </div>
         </Card>
@@ -99,7 +106,7 @@ export function ChatPage({
         onUpload={uploadFiles}
         onRemoveFile={removePendingFile}
         onSend={handleSend}
-        disabled={!subscription.hasAccess}
+        disabled={!subscription.hasAccess || isActivatingSubscription}
         busy={busy}
       />
     </>
