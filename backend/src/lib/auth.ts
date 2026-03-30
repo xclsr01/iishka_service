@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { AppError } from './errors';
 
 type SessionPayload = {
@@ -99,7 +99,8 @@ export function verifyTelegramInitData(
     .map(([key, value]) => `${key}=${value}`)
     .join('\n');
 
-  const secret = createHash('sha256').update(botToken).digest();
+  // Telegram Mini App initData uses an HMAC-derived secret with the fixed "WebAppData" key.
+  const secret = createHmac('sha256', 'WebAppData').update(botToken).digest();
   const calculatedHash = createHmac('sha256', secret).update(dataCheckString).digest('hex');
 
   const hashBuffer = Buffer.from(hash);
