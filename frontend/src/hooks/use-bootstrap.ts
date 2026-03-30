@@ -9,6 +9,13 @@ type BootstrapState = {
   isLoading: boolean;
 };
 
+const STANDALONE_BROWSER_ERROR =
+  'This Mini App is live, but Telegram session data is only available when you open it from the bot.';
+
+export const bootstrapErrors = {
+  standaloneBrowser: STANDALONE_BROWSER_ERROR,
+} as const;
+
 export function useBootstrap() {
   const [state, setState] = useState<BootstrapState>({
     data: null,
@@ -35,9 +42,7 @@ export function useBootstrap() {
               : null;
 
         if (!response) {
-          throw new Error(
-            'Telegram init data is unavailable and local dev auth fallback is not configured',
-          );
+          throw new Error(STANDALONE_BROWSER_ERROR);
         }
 
         apiClient.setToken(response.token);

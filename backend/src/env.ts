@@ -1,29 +1,4 @@
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import dotenv from 'dotenv';
 import { z } from 'zod';
-
-function loadLocalEnvFiles() {
-  try {
-    const metaUrl = import.meta?.url;
-
-    if (typeof metaUrl !== 'string' || metaUrl.length === 0) {
-      return;
-    }
-
-    const currentDir = path.dirname(fileURLToPath(metaUrl));
-    const backendDir = path.resolve(currentDir, '..');
-    const repoRootDir = path.resolve(backendDir, '..');
-
-    // Load root env first for shared defaults, then backend/.env to allow backend-specific overrides.
-    dotenv.config({ path: path.join(repoRootDir, '.env') });
-    dotenv.config({ path: path.join(backendDir, '.env'), override: true });
-  } catch {
-    // Worker runtimes do not need local dotenv files, so env loading should never block startup.
-  }
-}
-
-loadLocalEnvFiles();
 
 if (!process.env.DEV_AUTH_SHARED_SECRET && process.env.VITE_DEV_AUTH_SHARED_SECRET) {
   process.env.DEV_AUTH_SHARED_SECRET = process.env.VITE_DEV_AUTH_SHARED_SECRET;

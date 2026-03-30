@@ -4,5 +4,7 @@ dist
 .env
 frontend/.env
 backend/.env
+backend/.dev.vars*
+!backend/.dev.vars.example
 backend/prisma/migrations
 backend/storage/uploads

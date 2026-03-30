@@ -299,6 +299,12 @@ Backend Cloudflare files are in:
 - [backend/src/worker.ts](/Users/artemveselov/Projects/iishka_service/backend/src/worker.ts)
 - [backend/.dev.vars.example](/Users/artemveselov/Projects/iishka_service/backend/.dev.vars.example)
 
+Config split:
+
+- `backend/wrangler.jsonc` is the production Worker config and should stay aligned with the deployed Worker's non-secret settings
+- `backend/.dev.vars` is for `wrangler dev` only and should contain local overrides such as `APP_ENV=development`, localhost URLs, and dev auth toggles
+- Root `.env` remains the shared local file for `npm run dev:backend` and `npm run dev:frontend`
+
 Production deployment checklist:
 
 1. Install dependencies:
@@ -314,19 +320,18 @@ Production deployment checklist:
    cd backend
    npx wrangler login
    ```
-4. Create `backend/.dev.vars` from `backend/.dev.vars.example`
-5. Set `TELEGRAM_DELIVERY_MODE=webhook`
-6. Set `FRONTEND_URL` and `TELEGRAM_MINI_APP_URL` to the Cloudflare Pages HTTPS URL
-7. Set `DATABASE_URL` to the Supabase pooled connection string
-8. Set `DIRECT_URL` to the Supabase direct connection string for Prisma CLI usage
-9. Set `UPLOAD_STORAGE_DRIVER=supabase`
-10. Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET`
-11. Deploy backend:
+4. Keep `backend/wrangler.jsonc` set to the production public URLs and non-secret defaults
+5. Set `DATABASE_URL` to the Supabase pooled connection string
+6. Set `DIRECT_URL` to the Supabase direct connection string for Prisma CLI usage
+7. Set `UPLOAD_STORAGE_DRIVER=supabase`
+8. Set `SUPABASE_SERVICE_ROLE_KEY` as a Worker secret
+9. Set any remaining sensitive backend credentials as Worker secrets instead of committing them to `wrangler.jsonc`
+10. Deploy backend:
    ```bash
    npm run deploy:backend
    ```
-12. Deploy frontend by building `frontend/dist` to Cloudflare Pages
-13. Register the Telegram webhook against the Worker public URL:
+11. Deploy frontend by building `frontend/dist` to Cloudflare Pages
+12. Register the Telegram webhook against the Worker public URL:
    ```bash
    curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
      -H "Content-Type: application/json" \
@@ -335,6 +340,17 @@ Production deployment checklist:
        "secret_token": "<TELEGRAM_WEBHOOK_SECRET>"
      }'
    ```
+
+Local Worker development:
+
+1. Copy `backend/.dev.vars.example` to `backend/.dev.vars`
+2. Set local-only values such as `APP_ENV=development`, localhost URLs, and `ENABLE_DEV_AUTH=true`
+3. Run:
+   ```bash
+   npm run dev:backend:worker
+   ```
+
+If Wrangler says the deployed Worker config differs from the local config, that is a deploy-time drift warning from Cloudflare, not an application crash. Validate the diff, then deploy once from Wrangler to make the repo config the source of truth and clear stale dashboard-only vars such as old `VITE_*` entries from the Worker.
 
 ### Recommended production swaps
 - `LocalStorageAdapter` -> Supabase Storage or R2/S3 adapter
