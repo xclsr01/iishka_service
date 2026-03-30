@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash, createHmac } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import { signSession, verifySession, verifyTelegramInitData } from './auth';
 
 function buildTelegramInitData(user: Record<string, unknown>, authDate: number) {
@@ -14,7 +14,9 @@ function buildTelegramInitData(user: Record<string, unknown>, authDate: number) 
     .map(([key, value]) => `${key}=${value}`)
     .join('\n');
 
-  const secret = createHash('sha256').update(process.env.TELEGRAM_BOT_TOKEN!).digest();
+  const secret = createHmac('sha256', 'WebAppData')
+    .update(process.env.TELEGRAM_BOT_TOKEN!)
+    .digest();
   const hash = createHmac('sha256', secret).update(dataCheckString).digest('hex');
   params.set('hash', hash);
   return params.toString();
