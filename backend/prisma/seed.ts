@@ -1,6 +1,36 @@
+import '../src/load-local-env';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, ProviderKey } from '@prisma/client';
 
-const prisma = new PrismaClient();
+function resolveSeedDatabaseUrl() {
+  const connectionString =
+    process.env.MIGRATION_DATABASE_URL?.trim() ||
+    process.env.DIRECT_URL?.trim() ||
+    process.env.DATABASE_URL?.trim();
+
+  if (!connectionString) {
+    throw new Error('Missing MIGRATION_DATABASE_URL, DIRECT_URL, or DATABASE_URL for seed');
+  }
+
+  return connectionString;
+}
+
+function createAdapter() {
+  const databaseUrl = new URL(resolveSeedDatabaseUrl());
+  const schema = databaseUrl.searchParams.get('schema') ?? undefined;
+  databaseUrl.searchParams.delete('schema');
+
+  return new PrismaPg(
+    {
+      connectionString: databaseUrl.toString(),
+    },
+    schema ? { schema } : undefined,
+  );
+}
+
+const prisma = new PrismaClient({
+  adapter: createAdapter(),
+});
 
 async function main() {
   await prisma.provider.upsert({
