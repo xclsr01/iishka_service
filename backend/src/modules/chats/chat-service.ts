@@ -1,4 +1,11 @@
-import { FileStatus, type FileAsset, type MessageRole, MessageStatus, ProviderStatus } from '@prisma/client';
+import {
+  FileStatus,
+  type FileAsset,
+  type MessageRole,
+  MessageStatus,
+  type Prisma,
+  ProviderStatus,
+} from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { assertPresent } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
@@ -61,14 +68,15 @@ export async function listChats(userId: string) {
 }
 
 export async function createChat(userId: string, providerId: string, title?: string) {
-  const provider = await prisma.provider.findFirst({
-    where: {
-      id: providerId,
-      status: ProviderStatus.ACTIVE,
-    },
-  });
-
-  assertPresent(provider, 'Provider not found');
+  const provider = assertPresent(
+    await prisma.provider.findFirst({
+      where: {
+        id: providerId,
+        status: ProviderStatus.ACTIVE,
+      },
+    }),
+    'Provider not found',
+  );
 
   return prisma.chat.create({
     data: {
@@ -118,17 +126,18 @@ export async function createMessage(input: {
   }
 
   await requireActiveSubscription(input.userId);
-  const chat = await prisma.chat.findFirst({
-    where: {
-      id: input.chatId,
-      userId: input.userId,
-    },
-    include: {
-      provider: true,
-    },
-  });
-
-  assertPresent(chat, 'Chat not found');
+  const chat = assertPresent(
+    await prisma.chat.findFirst({
+      where: {
+        id: input.chatId,
+        userId: input.userId,
+      },
+      include: {
+        provider: true,
+      },
+    }),
+    'Chat not found',
+  );
 
   const files = input.fileIds?.length
     ? await prisma.fileAsset.findMany({
@@ -193,7 +202,7 @@ export async function createMessage(input: {
         role: 'ASSISTANT',
         content: result.text,
         status: MessageStatus.COMPLETED,
-        providerMeta: result.raw,
+        providerMeta: result.raw as Prisma.InputJsonValue,
       },
     });
   } catch (error) {

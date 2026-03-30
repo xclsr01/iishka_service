@@ -16,7 +16,8 @@
     "SUPABASE_URL": "https://pehujciaiihjuzduysln.supabase.co",
     "TELEGRAM_BOT_USERNAME": "iishkaApp",
     "TELEGRAM_MINI_APP_URL": "https://iishka-service.pages.dev",
-    "TELEGRAM_DELIVERY_MODE": "webhook"
+    "TELEGRAM_DELIVERY_MODE": "webhook",
+    "UPLOAD_STORAGE_DRIVER": "supabase"
   },
   "compatibility_date": "2026-03-17",
   "compatibility_flags": [

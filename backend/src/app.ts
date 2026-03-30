@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { env } from './env';
 import { notFoundHandler } from './middleware/error-handler';
 import { rateLimitMiddleware } from './middleware/rate-limit';
@@ -62,7 +63,9 @@ export function createApp() {
       code: appError.code,
       message: error instanceof Error ? error.message : 'unknown',
     });
-    return c.json(jsonSafeError(appError), appError.statusCode);
+    return c.json(jsonSafeError(appError), {
+      status: appError.statusCode as ContentfulStatusCode,
+    });
   });
 
   app.notFound(notFoundHandler);
