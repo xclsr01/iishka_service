@@ -13,6 +13,7 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "format": "prettier --check \"src/**/*.ts\" \"prisma/**/*.ts\"",
     "db:generate": "prisma generate",
+    "db:deploy": "prisma migrate deploy",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts"
   },
