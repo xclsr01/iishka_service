@@ -17,6 +17,7 @@
     "lint": "npm run lint --workspace backend && npm run lint --workspace frontend",
     "format": "npm run format --workspace backend && npm run format --workspace frontend",
     "db:generate": "npm run db:generate --workspace backend",
+    "db:deploy": "npm run db:deploy --workspace backend",
     "db:migrate": "npm run db:migrate --workspace backend",
     "db:seed": "npm run db:seed --workspace backend"
   },
