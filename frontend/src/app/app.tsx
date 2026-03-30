@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { AppShell } from '@/components/layout/app-shell';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { apiClient, type Provider, type Subscription } from '@/lib/api';
-import { useBootstrap } from '@/hooks/use-bootstrap';
+import { bootstrapErrors, useBootstrap } from '@/hooks/use-bootstrap';
 import { ChatPage } from '@/pages/chat-page';
 import { HomePage } from '@/pages/home-page';
 
@@ -66,11 +67,34 @@ export function App() {
   }
 
   if (!data) {
+    const isStandaloneBrowser = error === bootstrapErrors.standaloneBrowser;
+
     return (
       <AppShell className="items-center justify-center">
-        <Card className="space-y-2 text-center">
-          <h1 className="font-display text-2xl font-bold">Bootstrap failed</h1>
-          <p className="text-sm text-muted-foreground">{error}</p>
+        <Card className="max-w-sm space-y-4 text-center">
+          <h1 className="font-display text-2xl font-bold">
+            {isStandaloneBrowser ? 'Open In Telegram' : 'Bootstrap failed'}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {isStandaloneBrowser
+              ? 'The deployment is up, but authentication for this Mini App comes from Telegram. Open the bot, send /start, and launch the app from the button there.'
+              : error}
+          </p>
+          {isStandaloneBrowser && (
+            <div className="space-y-2">
+              <Button
+                type="button"
+                className="w-full"
+                onClick={() => window.location.reload()}
+              >
+                Retry In Telegram
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Opening the raw `pages.dev` URL in a normal browser is fine for a smoke check, but
+                a signed Telegram session is required to enter the app.
+              </p>
+            </div>
+          )}
         </Card>
       </AppShell>
     );

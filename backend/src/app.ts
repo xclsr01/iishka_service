@@ -31,6 +31,15 @@ export function createApp() {
   app.use('*', requestIdMiddleware);
   app.use('*', rateLimitMiddleware);
 
+  app.get('/', (c) => {
+    return c.json({
+      ok: true,
+      service: 'iishka-backend',
+      env: env.APP_ENV,
+      healthUrl: '/health',
+    });
+  });
+
   app.get('/health', (c) => {
     return c.json({
       ok: true,
