@@ -13,7 +13,7 @@ serve(
     port: env.PORT,
   },
   (info) => {
-    logger.info('server_started', info);
+    logger.info('server_started', { ...info });
   },
 );
 

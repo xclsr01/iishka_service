@@ -4,17 +4,25 @@ import { handleTelegramWebhook, resolveMiniAppUrl } from './telegram-service';
 
 const originalFetch = globalThis.fetch;
 
+type SendMessagePayload = {
+  chat_id: number;
+  text: string;
+  reply_markup?: {
+    inline_keyboard: Array<Array<{ web_app?: { url: string } }>>;
+  };
+};
+
 afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
 test('handleTelegramWebhook sends the Mini App welcome message on /start', async () => {
   let calledUrl = '';
-  let calledPayload: Record<string, unknown> | null = null;
+  let calledPayload: SendMessagePayload | null = null;
 
   globalThis.fetch = async (input, init) => {
     calledUrl = String(input);
-    calledPayload = JSON.parse(String(init?.body));
+    calledPayload = JSON.parse(String(init?.body)) as SendMessagePayload;
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
   };
 
@@ -27,22 +35,17 @@ test('handleTelegramWebhook sends the Mini App welcome message on /start', async
   });
 
   assert.match(calledUrl, /sendMessage$/);
-  assert.equal(calledPayload?.chat_id, 77);
-  assert.match(String(calledPayload?.text), /Open the Mini App/);
-  assert.equal(
-    (
-      (calledPayload?.reply_markup as { inline_keyboard: Array<Array<{ web_app?: { url: string } }>> })
-        .inline_keyboard[0][0].web_app?.url
-    ),
-    resolveMiniAppUrl(),
-  );
+  assert.ok(calledPayload);
+  assert.equal(calledPayload.chat_id, 77);
+  assert.match(calledPayload.text, /Open the Mini App/);
+  assert.equal(calledPayload.reply_markup?.inline_keyboard[0]?.[0]?.web_app?.url, resolveMiniAppUrl());
 });
 
 test('handleTelegramWebhook replies with help text for unsupported messages', async () => {
-  let calledPayload: Record<string, unknown> | null = null;
+  let calledPayload: SendMessagePayload | null = null;
 
   globalThis.fetch = async (_input, init) => {
-    calledPayload = JSON.parse(String(init?.body));
+    calledPayload = JSON.parse(String(init?.body)) as SendMessagePayload;
     return new Response(JSON.stringify({ ok: true }), { status: 200 });
   };
 
@@ -53,5 +56,6 @@ test('handleTelegramWebhook replies with help text for unsupported messages', as
     },
   });
 
-  assert.match(String(calledPayload?.text), /Use \/start/);
+  assert.ok(calledPayload);
+  assert.match(calledPayload.text, /Use \/start/);
 });
