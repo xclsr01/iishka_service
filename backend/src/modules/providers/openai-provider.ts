@@ -4,17 +4,27 @@ import type { AiProviderAdapter, ProviderGenerateInput } from './provider-types'
 
 export class OpenAiProviderAdapter implements AiProviderAdapter {
   async generateResponse(input: ProviderGenerateInput) {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: input.model || env.OPENAI_MODEL,
-        messages: input.messages,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${env.OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: input.model || env.OPENAI_MODEL,
+          messages: input.messages,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch (error) {
+      throw new AppError(
+        `OpenAI network request failed: ${error instanceof Error ? error.message : 'unknown'}`,
+        502,
+        'PROVIDER_REQUEST_FAILED',
+      );
+    }
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');

@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { assertPresent } from '../../lib/http';
+import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
 import { getProviderAdapter } from '../providers/provider-registry';
 import { requireActiveSubscription } from '../subscriptions/subscription-service';
@@ -206,12 +207,23 @@ export async function createMessage(input: {
   content: string;
   fileIds?: string[];
 }) {
+  logger.info('create_message_started', {
+    userId: input.userId,
+    chatId: input.chatId,
+    fileCount: input.fileIds?.length ?? 0,
+  });
+
   const content = input.content.trim();
   if (!content) {
     throw new AppError('Message cannot be empty', 400, 'INVALID_MESSAGE');
   }
 
   await requireActiveSubscription(input.userId);
+  logger.info('create_message_subscription_ok', {
+    userId: input.userId,
+    chatId: input.chatId,
+  });
+
   const chat = assertPresent(
     await prisma.chat.findFirst({
       where: {
@@ -224,6 +236,11 @@ export async function createMessage(input: {
     }),
     'Chat not found',
   );
+  logger.info('create_message_chat_loaded', {
+    userId: input.userId,
+    chatId: chat.id,
+    providerKey: chat.provider.key,
+  });
 
   const files = input.fileIds?.length
     ? await prisma.fileAsset.findMany({
@@ -238,6 +255,10 @@ export async function createMessage(input: {
   if ((input.fileIds?.length ?? 0) !== files.length) {
     throw new AppError('Some files are missing or unavailable', 400, 'INVALID_FILE_REFERENCE');
   }
+  logger.info('create_message_files_loaded', {
+    chatId: chat.id,
+    fileCount: files.length,
+  });
 
   const userMessage = await prisma.message.create({
     data: {
@@ -256,6 +277,10 @@ export async function createMessage(input: {
       })),
     });
   }
+  logger.info('create_message_user_message_saved', {
+    chatId: chat.id,
+    messageId: userMessage.id,
+  });
 
   const attachmentsByMessageId = await mapAttachmentsByMessageId([userMessage.id]);
   const userMessageWithAttachments = {
@@ -274,6 +299,11 @@ export async function createMessage(input: {
   const fileNote = attachmentsContext(files);
   let assistantMessage;
   try {
+    logger.info('create_message_provider_request_started', {
+      chatId: chat.id,
+      providerKey: chat.provider.key,
+      model: chat.provider.defaultModel,
+    });
     const result = await provider.generateResponse({
       providerKey: chat.provider.key,
       model: chat.provider.defaultModel,
@@ -290,7 +320,17 @@ export async function createMessage(input: {
         providerMeta: result.raw as Prisma.InputJsonValue,
       },
     });
+    logger.info('create_message_provider_request_completed', {
+      chatId: chat.id,
+      assistantMessageId: assistantMessage.id,
+    });
   } catch (error) {
+    logger.error('create_message_provider_request_failed', {
+      chatId: chat.id,
+      providerKey: chat.provider.key,
+      message: error instanceof Error ? error.message : 'unknown',
+      stack: error instanceof Error ? error.stack ?? null : null,
+    });
     await prisma.message.create({
       data: {
         chatId: chat.id,
@@ -310,6 +350,11 @@ export async function createMessage(input: {
       title: history.length === 1 ? buildTitle(content) : chat.title,
       lastMessageAt: assistantMessage.createdAt,
     },
+  });
+  logger.info('create_message_completed', {
+    chatId: chat.id,
+    userMessageId: userMessage.id,
+    assistantMessageId: assistantMessage.id,
   });
 
   return {

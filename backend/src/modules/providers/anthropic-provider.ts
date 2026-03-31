@@ -12,20 +12,30 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
         content: message.content,
       }));
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: input.model || env.ANTHROPIC_MODEL,
-        max_tokens: 1024,
-        system,
-        messages,
-      }),
-    });
+    let response: Response;
+    try {
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: input.model || env.ANTHROPIC_MODEL,
+          max_tokens: 1024,
+          system,
+          messages,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch (error) {
+      throw new AppError(
+        `Anthropic network request failed: ${error instanceof Error ? error.message : 'unknown'}`,
+        502,
+        'PROVIDER_REQUEST_FAILED',
+      );
+    }
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');

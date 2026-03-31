@@ -8,28 +8,38 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
       .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
       .join('\n\n');
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${
-        input.model || env.GOOGLE_AI_MODEL
-      }:generateContent?key=${env.GOOGLE_AI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
+    let response: Response;
+    try {
+      response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${
+          input.model || env.GOOGLE_AI_MODEL
+        }:generateContent?key=${env.GOOGLE_AI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: prompt,
+                  },
+                ],
+              },
+            ],
+          }),
+          signal: AbortSignal.timeout(15000),
         },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: prompt,
-                },
-              ],
-            },
-          ],
-        }),
-      },
-    );
+      );
+    } catch (error) {
+      throw new AppError(
+        `Gemini network request failed: ${error instanceof Error ? error.message : 'unknown'}`,
+        502,
+        'PROVIDER_REQUEST_FAILED',
+      );
+    }
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
