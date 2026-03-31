@@ -1,9 +1,13 @@
 import {
+  type Chat,
   FileStatus,
   type FileAsset,
   type MessageRole,
+  type Message,
+  type MessageAttachment,
   MessageStatus,
   type Prisma,
+  type Provider,
   ProviderStatus,
 } from '@prisma/client';
 import { AppError } from '../../lib/errors';
@@ -53,18 +57,106 @@ function mapHistory(
   return providerMessages;
 }
 
-export async function listChats(userId: string) {
-  return prisma.chat.findMany({
-    where: { userId },
-    include: {
-      provider: true,
-      messages: {
-        orderBy: { createdAt: 'desc' },
-        take: 1,
-      },
+async function mapProvidersById(providerIds: string[]) {
+  if (providerIds.length === 0) {
+    return new Map<string, Provider>();
+  }
+
+  const providers = await prisma.provider.findMany({
+    where: {
+      id: { in: providerIds },
     },
+  });
+
+  return new Map(providers.map((provider) => [provider.id, provider]));
+}
+
+async function mapAttachmentsByMessageId(messageIds: string[]) {
+  if (messageIds.length === 0) {
+    return new Map<string, Array<{ file: FileAsset }>>();
+  }
+
+  const attachments = await prisma.messageAttachment.findMany({
+    where: {
+      messageId: { in: messageIds },
+    },
+  });
+
+  const fileIds = Array.from(new Set(attachments.map((attachment) => attachment.fileId)));
+  const files = fileIds.length
+    ? await prisma.fileAsset.findMany({
+        where: {
+          id: { in: fileIds },
+        },
+      })
+    : [];
+
+  const filesById = new Map(files.map((file) => [file.id, file]));
+  const attachmentsByMessageId = new Map<string, Array<{ file: FileAsset }>>();
+
+  for (const attachment of attachments) {
+    const file = filesById.get(attachment.fileId);
+    if (!file) {
+      continue;
+    }
+
+    const existing = attachmentsByMessageId.get(attachment.messageId) ?? [];
+    existing.push({ file });
+    attachmentsByMessageId.set(attachment.messageId, existing);
+  }
+
+  return attachmentsByMessageId;
+}
+
+async function assembleChat(chat: Chat, messages: Message[]) {
+  const provider = assertPresent(
+    await prisma.provider.findUnique({
+      where: { id: chat.providerId },
+    }),
+    'Provider not found',
+  );
+
+  const attachmentsByMessageId = await mapAttachmentsByMessageId(messages.map((message) => message.id));
+
+  return {
+    ...chat,
+    provider,
+    messages: messages.map((message) => ({
+      ...message,
+      attachments: attachmentsByMessageId.get(message.id) ?? [],
+    })),
+  };
+}
+
+export async function listChats(userId: string) {
+  const chats = await prisma.chat.findMany({
+    where: { userId },
     orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
   });
+
+  const providersById = await mapProvidersById(Array.from(new Set(chats.map((chat) => chat.providerId))));
+  const chatIds = chats.map((chat) => chat.id);
+  const latestMessages = chatIds.length
+    ? await prisma.message.findMany({
+        where: {
+          chatId: { in: chatIds },
+        },
+        orderBy: [{ chatId: 'asc' }, { createdAt: 'desc' }],
+      })
+    : [];
+
+  const latestByChatId = new Map<string, Message>();
+  for (const message of latestMessages) {
+    if (!latestByChatId.has(message.chatId)) {
+      latestByChatId.set(message.chatId, message);
+    }
+  }
+
+  return chats.map((chat) => ({
+    ...chat,
+    provider: assertPresent(providersById.get(chat.providerId), 'Provider not found'),
+    messages: latestByChatId.has(chat.id) ? [latestByChatId.get(chat.id)!] : [],
+  }));
 }
 
 export async function createChat(userId: string, providerId: string, title?: string) {
@@ -96,22 +188,16 @@ export async function getChatWithMessages(userId: string, chatId: string) {
       id: chatId,
       userId,
     },
-    include: {
-      provider: true,
-      messages: {
-        orderBy: { createdAt: 'asc' },
-        include: {
-          attachments: {
-            include: {
-              file: true,
-            },
-          },
-        },
-      },
+  });
+  const resolvedChat = assertPresent(chat, 'Chat not found');
+  const messages = await prisma.message.findMany({
+    where: {
+      chatId: resolvedChat.id,
     },
+    orderBy: { createdAt: 'asc' },
   });
 
-  return assertPresent(chat, 'Chat not found');
+  return assembleChat(resolvedChat, messages);
 }
 
 export async function createMessage(input: {
@@ -159,24 +245,23 @@ export async function createMessage(input: {
       userId: input.userId,
       role: 'USER',
       content,
-      attachments: files.length
-        ? {
-            createMany: {
-              data: files.map((file) => ({
-                fileId: file.id,
-              })),
-            },
-          }
-        : undefined,
-    },
-    include: {
-      attachments: {
-        include: {
-          file: true,
-        },
-      },
     },
   });
+
+  if (files.length > 0) {
+    await prisma.messageAttachment.createMany({
+      data: files.map((file) => ({
+        messageId: userMessage.id,
+        fileId: file.id,
+      })),
+    });
+  }
+
+  const attachmentsByMessageId = await mapAttachmentsByMessageId([userMessage.id]);
+  const userMessageWithAttachments = {
+    ...userMessage,
+    attachments: attachmentsByMessageId.get(userMessage.id) ?? [],
+  };
 
   const history = await prisma.message.findMany({
     where: {
@@ -228,7 +313,7 @@ export async function createMessage(input: {
   });
 
   return {
-    userMessage,
+    userMessage: userMessageWithAttachments,
     assistantMessage,
   };
 }
