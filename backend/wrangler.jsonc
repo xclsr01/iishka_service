@@ -8,7 +8,7 @@
     "ANTHROPIC_MODEL": "claude-3-5-sonnet-latest",
     "APP_ENV": "production",
     "ENABLE_DEV_AUTH": "false",
-    "ENABLE_DEV_SUBSCRIPTION_OVERRIDE": "false",
+    "ENABLE_DEV_SUBSCRIPTION_OVERRIDE": "true",
     "FRONTEND_URL": "https://iishka-service.pages.dev",
     "GOOGLE_AI_MODEL": "gemini-2.0-flash",
     "OPENAI_MODEL": "gpt-4.1-mini",

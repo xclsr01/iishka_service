@@ -13,6 +13,8 @@ export async function errorHandler(c: Context, next: Next) {
       path: c.req.path,
       code: appError.code,
       message: error instanceof Error ? error.message : 'unknown',
+      details: appError.details ?? null,
+      stack: error instanceof Error ? error.stack ?? null : null,
     });
     return c.json(jsonSafeError(appError), {
       status: appError.statusCode as ContentfulStatusCode,
