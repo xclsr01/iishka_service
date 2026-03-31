@@ -17,6 +17,27 @@ import { prisma } from '../../lib/prisma';
 import { getProviderAdapter } from '../providers/provider-registry';
 import { requireActiveSubscription } from '../subscriptions/subscription-service';
 
+const QUERY_TIMEOUT_MS = 8000;
+
+async function withTimeout<T>(label: string, operation: Promise<T>, timeoutMs = QUERY_TIMEOUT_MS) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new AppError(`Operation timed out: ${label}`, 504, 'OPERATION_TIMEOUT', { label }));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 function buildTitle(content: string) {
   return content.trim().slice(0, 48) || 'New chat';
 }
@@ -63,11 +84,14 @@ async function mapProvidersById(providerIds: string[]) {
     return new Map<string, Provider>();
   }
 
-  const providers = await prisma.provider.findMany({
-    where: {
-      id: { in: providerIds },
-    },
-  });
+  const providers = await withTimeout(
+    'mapProvidersById.findMany',
+    prisma.provider.findMany({
+      where: {
+        id: { in: providerIds },
+      },
+    }),
+  );
 
   return new Map(providers.map((provider) => [provider.id, provider]));
 }
@@ -77,19 +101,25 @@ async function mapAttachmentsByMessageId(messageIds: string[]) {
     return new Map<string, Array<{ file: FileAsset }>>();
   }
 
-  const attachments = await prisma.messageAttachment.findMany({
-    where: {
-      messageId: { in: messageIds },
-    },
-  });
+  const attachments = await withTimeout(
+    'mapAttachmentsByMessageId.findManyAttachments',
+    prisma.messageAttachment.findMany({
+      where: {
+        messageId: { in: messageIds },
+      },
+    }),
+  );
 
   const fileIds = Array.from(new Set(attachments.map((attachment) => attachment.fileId)));
   const files = fileIds.length
-    ? await prisma.fileAsset.findMany({
-        where: {
-          id: { in: fileIds },
-        },
-      })
+    ? await withTimeout(
+        'mapAttachmentsByMessageId.findManyFiles',
+        prisma.fileAsset.findMany({
+          where: {
+            id: { in: fileIds },
+          },
+        }),
+      )
     : [];
 
   const filesById = new Map(files.map((file) => [file.id, file]));
@@ -111,9 +141,12 @@ async function mapAttachmentsByMessageId(messageIds: string[]) {
 
 async function assembleChat(chat: Chat, messages: Message[]) {
   const provider = assertPresent(
-    await prisma.provider.findUnique({
-      where: { id: chat.providerId },
-    }),
+    await withTimeout(
+      'assembleChat.findUniqueProvider',
+      prisma.provider.findUnique({
+        where: { id: chat.providerId },
+      }),
+    ),
     'Provider not found',
   );
 
@@ -130,20 +163,26 @@ async function assembleChat(chat: Chat, messages: Message[]) {
 }
 
 export async function listChats(userId: string) {
-  const chats = await prisma.chat.findMany({
-    where: { userId },
-    orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
-  });
+  const chats = await withTimeout(
+    'listChats.findManyChats',
+    prisma.chat.findMany({
+      where: { userId },
+      orderBy: [{ lastMessageAt: 'desc' }, { updatedAt: 'desc' }],
+    }),
+  );
 
   const providersById = await mapProvidersById(Array.from(new Set(chats.map((chat) => chat.providerId))));
   const chatIds = chats.map((chat) => chat.id);
   const latestMessages = chatIds.length
-    ? await prisma.message.findMany({
-        where: {
-          chatId: { in: chatIds },
-        },
-        orderBy: [{ chatId: 'asc' }, { createdAt: 'desc' }],
-      })
+    ? await withTimeout(
+        'listChats.findManyLatestMessages',
+        prisma.message.findMany({
+          where: {
+            chatId: { in: chatIds },
+          },
+          orderBy: [{ chatId: 'asc' }, { createdAt: 'desc' }],
+        }),
+      )
     : [];
 
   const latestByChatId = new Map<string, Message>();
@@ -162,43 +201,55 @@ export async function listChats(userId: string) {
 
 export async function createChat(userId: string, providerId: string, title?: string) {
   const provider = assertPresent(
-    await prisma.provider.findFirst({
-      where: {
-        id: providerId,
-        status: ProviderStatus.ACTIVE,
-      },
-    }),
+    await withTimeout(
+      'createChat.findProvider',
+      prisma.provider.findFirst({
+        where: {
+          id: providerId,
+          status: ProviderStatus.ACTIVE,
+        },
+      }),
+    ),
     'Provider not found',
   );
 
-  return prisma.chat.create({
-    data: {
-      userId,
-      providerId: provider.id,
-      title: title?.trim() || `${provider.name} chat`,
-    },
-    include: {
-      provider: true,
-    },
-  });
+  return withTimeout(
+    'createChat.create',
+    prisma.chat.create({
+      data: {
+        userId,
+        providerId: provider.id,
+        title: title?.trim() || `${provider.name} chat`,
+      },
+      include: {
+        provider: true,
+      },
+    }),
+  );
 }
 
 export async function getChatWithMessages(userId: string, chatId: string) {
-  const chat = await prisma.chat.findFirst({
-    where: {
-      id: chatId,
-      userId,
-    },
-  });
+  const chat = await withTimeout(
+    'getChatWithMessages.findChat',
+    prisma.chat.findFirst({
+      where: {
+        id: chatId,
+        userId,
+      },
+    }),
+  );
   const resolvedChat = assertPresent(chat, 'Chat not found');
-  const messages = await prisma.message.findMany({
-    where: {
-      chatId: resolvedChat.id,
-    },
-    orderBy: { createdAt: 'asc' },
-  });
+  const messages = await withTimeout(
+    'getChatWithMessages.findMessages',
+    prisma.message.findMany({
+      where: {
+        chatId: resolvedChat.id,
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  );
 
-  return assembleChat(resolvedChat, messages);
+  return withTimeout('getChatWithMessages.assembleChat', assembleChat(resolvedChat, messages));
 }
 
 export async function createMessage(input: {
@@ -218,22 +269,28 @@ export async function createMessage(input: {
     throw new AppError('Message cannot be empty', 400, 'INVALID_MESSAGE');
   }
 
-  await requireActiveSubscription(input.userId);
+  await withTimeout(
+    'createMessage.requireActiveSubscription',
+    requireActiveSubscription(input.userId),
+  );
   logger.info('create_message_subscription_ok', {
     userId: input.userId,
     chatId: input.chatId,
   });
 
   const chat = assertPresent(
-    await prisma.chat.findFirst({
-      where: {
-        id: input.chatId,
-        userId: input.userId,
-      },
-      include: {
-        provider: true,
-      },
-    }),
+    await withTimeout(
+      'createMessage.findChat',
+      prisma.chat.findFirst({
+        where: {
+          id: input.chatId,
+          userId: input.userId,
+        },
+        include: {
+          provider: true,
+        },
+      }),
+    ),
     'Chat not found',
   );
   logger.info('create_message_chat_loaded', {
@@ -243,13 +300,16 @@ export async function createMessage(input: {
   });
 
   const files = input.fileIds?.length
-    ? await prisma.fileAsset.findMany({
-        where: {
-          id: { in: input.fileIds },
-          userId: input.userId,
-          status: FileStatus.READY,
-        },
-      })
+    ? await withTimeout(
+        'createMessage.findFiles',
+        prisma.fileAsset.findMany({
+          where: {
+            id: { in: input.fileIds },
+            userId: input.userId,
+            status: FileStatus.READY,
+          },
+        }),
+      )
     : [];
 
   if ((input.fileIds?.length ?? 0) !== files.length) {
@@ -260,22 +320,28 @@ export async function createMessage(input: {
     fileCount: files.length,
   });
 
-  const userMessage = await prisma.message.create({
-    data: {
-      chatId: chat.id,
-      userId: input.userId,
-      role: 'USER',
-      content,
-    },
-  });
+  const userMessage = await withTimeout(
+    'createMessage.createUserMessage',
+    prisma.message.create({
+      data: {
+        chatId: chat.id,
+        userId: input.userId,
+        role: 'USER',
+        content,
+      },
+    }),
+  );
 
   if (files.length > 0) {
-    await prisma.messageAttachment.createMany({
-      data: files.map((file) => ({
-        messageId: userMessage.id,
-        fileId: file.id,
-      })),
-    });
+    await withTimeout(
+      'createMessage.createAttachments',
+      prisma.messageAttachment.createMany({
+        data: files.map((file) => ({
+          messageId: userMessage.id,
+          fileId: file.id,
+        })),
+      }),
+    );
   }
   logger.info('create_message_user_message_saved', {
     chatId: chat.id,
@@ -288,12 +354,15 @@ export async function createMessage(input: {
     attachments: attachmentsByMessageId.get(userMessage.id) ?? [],
   };
 
-  const history = await prisma.message.findMany({
-    where: {
-      chatId: chat.id,
-    },
-    orderBy: { createdAt: 'asc' },
-  });
+  const history = await withTimeout(
+    'createMessage.findHistory',
+    prisma.message.findMany({
+      where: {
+        chatId: chat.id,
+      },
+      orderBy: { createdAt: 'asc' },
+    }),
+  );
 
   const provider = getProviderAdapter(chat.provider.key);
   const fileNote = attachmentsContext(files);
@@ -304,22 +373,29 @@ export async function createMessage(input: {
       providerKey: chat.provider.key,
       model: chat.provider.defaultModel,
     });
-    const result = await provider.generateResponse({
-      providerKey: chat.provider.key,
-      model: chat.provider.defaultModel,
-      messages: mapHistory(history, fileNote),
-    });
+    const result = await withTimeout(
+      'createMessage.providerGenerateResponse',
+      provider.generateResponse({
+        providerKey: chat.provider.key,
+        model: chat.provider.defaultModel,
+        messages: mapHistory(history, fileNote),
+      }),
+      20000,
+    );
 
-    assistantMessage = await prisma.message.create({
-      data: {
-        chatId: chat.id,
-        userId: input.userId,
-        role: 'ASSISTANT',
-        content: result.text,
-        status: MessageStatus.COMPLETED,
-        providerMeta: result.raw as Prisma.InputJsonValue,
-      },
-    });
+    assistantMessage = await withTimeout(
+      'createMessage.createAssistantMessage',
+      prisma.message.create({
+        data: {
+          chatId: chat.id,
+          userId: input.userId,
+          role: 'ASSISTANT',
+          content: result.text,
+          status: MessageStatus.COMPLETED,
+          providerMeta: result.raw as Prisma.InputJsonValue,
+        },
+      }),
+    );
     logger.info('create_message_provider_request_completed', {
       chatId: chat.id,
       assistantMessageId: assistantMessage.id,
@@ -331,26 +407,32 @@ export async function createMessage(input: {
       message: error instanceof Error ? error.message : 'unknown',
       stack: error instanceof Error ? error.stack ?? null : null,
     });
-    await prisma.message.create({
-      data: {
-        chatId: chat.id,
-        userId: input.userId,
-        role: 'ASSISTANT',
-        content: 'The provider request failed. Please retry.',
-        status: MessageStatus.FAILED,
-        failureReason: error instanceof Error ? error.message : 'provider-error',
-      },
-    });
+    await withTimeout(
+      'createMessage.createFailureMessage',
+      prisma.message.create({
+        data: {
+          chatId: chat.id,
+          userId: input.userId,
+          role: 'ASSISTANT',
+          content: 'The provider request failed. Please retry.',
+          status: MessageStatus.FAILED,
+          failureReason: error instanceof Error ? error.message : 'provider-error',
+        },
+      }),
+    );
     throw error;
   }
 
-  await prisma.chat.update({
-    where: { id: chat.id },
-    data: {
-      title: history.length === 1 ? buildTitle(content) : chat.title,
-      lastMessageAt: assistantMessage.createdAt,
-    },
-  });
+  await withTimeout(
+    'createMessage.updateChat',
+    prisma.chat.update({
+      where: { id: chat.id },
+      data: {
+        title: history.length === 1 ? buildTitle(content) : chat.title,
+        lastMessageAt: assistantMessage.createdAt,
+      },
+    }),
+  );
   logger.info('create_message_completed', {
     chatId: chat.id,
     userMessageId: userMessage.id,
