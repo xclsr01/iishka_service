@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { useProviderChat } from '@/hooks/use-provider-chat';
+import { useLocale } from '@/lib/i18n';
 
 export function ChatPage({
   provider,
@@ -27,6 +28,7 @@ export function ChatPage({
   isUnsubscribingSubscription: boolean;
   onSubscriptionChange: (subscription: Subscription) => void;
 }) {
+  const { t } = useLocale();
   const { chat, messagesLoading, error, pendingFiles, uploadFiles, sendMessage, removePendingFile } =
     useProviderChat(provider, subscription);
   const [busy, setBusy] = useState(false);
@@ -51,7 +53,7 @@ export function ChatPage({
           <Button asChild variant="ghost" className="px-0 py-0.5 text-base text-white">
             <Link to="/">
               <ArrowLeft className="mr-1.5 h-4 w-4" />
-              Back
+              {t('back')}
             </Link>
           </Button>
           <Badge className="border-primary/30 bg-primary/10 text-primary">{provider.name}</Badge>
@@ -78,12 +80,12 @@ export function ChatPage({
             <div className="space-y-1">
               <div className="flex items-center gap-2 font-semibold text-white">
                 <ShieldAlert className="h-4 w-4 text-accent" />
-                Subscription required
+                {t('subscriptionRequired')}
               </div>
               <p className="text-sm text-muted-foreground">
                 {subscription.tokensRemaining === 0
-                  ? 'You are out of tokens. Update your subscription to continue chatting.'
-                  : 'Uploads can still be prepared, but message sending is blocked until the plan is active.'}
+                  ? t('subscriptionRequiredOutOfTokens')
+                  : t('subscriptionRequiredInactive')}
               </p>
             </div>
             <Button
@@ -92,7 +94,7 @@ export function ChatPage({
               disabled={isActivatingSubscription || isUnsubscribingSubscription}
               onClick={onActivateDevSubscription}
             >
-              {isActivatingSubscription ? 'Activating...' : 'Get subscription'}
+              {isActivatingSubscription ? t('activating') : t('getSubscription')}
             </Button>
           </div>
         </Card>
@@ -105,7 +107,7 @@ export function ChatPage({
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-1 items-center justify-center text-center text-sm text-muted-foreground">
-            Start the first conversation with {provider.name}.
+            {t('startFirstConversation', { providerName: provider.name })}
           </div>
         ) : (
           <ChatMessageList messages={messages} scrollToBottomSignal={scrollToBottomSignal} />

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiClient, type Chat, type FileAsset, type Provider, type Subscription } from '@/lib/api';
+import { useLocale } from '@/lib/i18n';
 
 type ProviderChatState = {
   chat: Chat | null;
@@ -47,11 +48,11 @@ function buildOptimisticUserMessage(content: string, pendingFiles: FileAsset[]) 
   };
 }
 
-function buildOptimisticAssistantMessage() {
+function buildOptimisticAssistantMessage(content: string) {
   return {
     id: `optimistic-assistant-${crypto.randomUUID()}`,
     role: 'ASSISTANT' as const,
-    content: 'Thinking...',
+    content,
     createdAt: new Date().toISOString(),
     attachments: [],
   };
@@ -90,6 +91,7 @@ function writeCachedProviderChat(providerId: string, chat: Chat | null) {
 }
 
 export function useProviderChat(provider: Provider, subscription: Subscription) {
+  const { t } = useLocale();
   const cachedChat = readCachedProviderChat(provider.id);
   const [state, setState] = useState<ProviderChatState>({
     chat: cachedChat,
@@ -156,7 +158,7 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
         if (!cancelled) {
           setState((current) => ({
             ...current,
-            error: toUserFacingError(error, 'Load failed'),
+            error: toUserFacingError(error, t('loadFailed')),
             chatsLoaded: true,
             messagesLoading: false,
           }));
@@ -188,7 +190,7 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: toUserFacingError(error, 'File upload failed'),
+        error: toUserFacingError(error, t('fileUploadFailed')),
       }));
     }
   }
@@ -200,7 +202,7 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
       let activeChat = state.chat;
       const previousMessages = activeChat?.messages ?? [];
       const optimisticUserMessage = buildOptimisticUserMessage(content, state.pendingFiles);
-      const optimisticAssistantMessage = buildOptimisticAssistantMessage();
+      const optimisticAssistantMessage = buildOptimisticAssistantMessage(t('thinking'));
 
       if (!activeChat) {
         const created = await apiClient.createChat(provider.id);
@@ -267,7 +269,7 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
             ...current,
             chat: refreshed.chat,
             pendingFiles: [],
-            error: toUserFacingError(error, 'Message failed'),
+            error: toUserFacingError(error, t('messageFailed')),
           }));
           throw error;
         } catch {
@@ -277,7 +279,7 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
 
       setState((current) => ({
         ...current,
-        error: toUserFacingError(error, 'Message failed'),
+        error: toUserFacingError(error, t('messageFailed')),
       }));
       throw error;
     }
