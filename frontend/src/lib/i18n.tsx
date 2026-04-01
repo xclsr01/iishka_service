@@ -17,8 +17,8 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     retryInTelegram: 'Повторить в Telegram',
     standaloneBrowserHint:
       'Открывать прямой `pages.dev` URL в обычном браузере можно для быстрой проверки, но для входа в приложение нужна подписанная Telegram-сессия.',
-    neuralAccess: 'Neural Access',
-    heroTitle: 'Одна подписка, три AI-канала.',
+    neuralAccess: 'Нейро Доступ',
+    heroTitle: 'Одна подписка, много ИИ!',
     heroWelcome: (params) =>
       `Добро пожаловать${params?.firstName ? `, ${params.firstName}` : ''}. Выбирайте модель, сохраняйте историю и переключайтесь между ассистентами без потери контекста.`,
     subscriptionStatus: 'Статус подписки',
@@ -31,7 +31,7 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     getSubscription: 'Оформить подписку',
     unsubscribing: 'Отключение...',
     unsubscribe: 'Отписаться',
-    aiCatalog: 'Каталог AI',
+    aiCatalog: 'Каталог ИИ',
     scroll: 'Листать',
     unavailable: 'Недоступно',
     fileUploadsEnabled: 'Загрузка файлов включена',
@@ -62,7 +62,7 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     standaloneBrowserHint:
       'Opening the raw `pages.dev` URL in a normal browser is fine for a smoke check, but a signed Telegram session is required to enter the app.',
     neuralAccess: 'Neural Access',
-    heroTitle: 'One subscription, three AI channels.',
+    heroTitle: 'One subscription, many AI!',
     heroWelcome: (params) =>
       `Welcome${params?.firstName ? `, ${params.firstName}` : ''}. Pick your model, keep sessions synced, and move between assistants without losing context.`,
     subscriptionStatus: 'Subscription status',
