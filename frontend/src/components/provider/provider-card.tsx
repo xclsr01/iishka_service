@@ -13,12 +13,12 @@ const toneByKey: Record<Provider['key'], string> = {
 
 export function ProviderCard({ provider }: { provider: Provider }) {
   return (
-    <Card className="min-w-[280px] snap-start overflow-hidden p-0">
+    <Card className="min-w-[82vw] max-w-[82vw] snap-start overflow-hidden p-0 sm:min-w-[280px] sm:max-w-[280px]">
       <div className={`h-2 bg-gradient-to-r ${toneByKey[provider.key]}`} />
-      <div className="space-y-4 p-5">
+      <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="font-display text-2xl font-bold">{provider.name}</h3>
+          <div className="min-w-0">
+            <h3 className="font-display text-xl font-bold sm:text-2xl">{provider.name}</h3>
             <p className="mt-1 text-sm text-muted-foreground">{provider.summary}</p>
           </div>
           <div className="space-y-2 text-right">
@@ -29,7 +29,7 @@ export function ProviderCard({ provider }: { provider: Provider }) {
           </div>
         </div>
 
-        <div className="rounded-3xl bg-white/70 p-4 text-sm text-muted-foreground">
+        <div className="rounded-3xl bg-white/70 p-3 text-sm text-muted-foreground sm:p-4">
           <p>{provider.description}</p>
           {!provider.isAvailable && provider.availabilityMessage && (
             <p className="mt-3 text-destructive">{provider.availabilityMessage}</p>

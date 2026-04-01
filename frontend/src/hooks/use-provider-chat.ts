@@ -9,6 +9,11 @@ type ProviderChatState = {
   pendingFiles: FileAsset[];
 };
 
+type CachedProviderChat = {
+  chat: Chat | null;
+  cachedAt: number;
+};
+
 function toUserFacingError(error: unknown, fallback: string) {
   if (!(error instanceof Error)) {
     return fallback;
@@ -52,11 +57,44 @@ function buildOptimisticAssistantMessage() {
   };
 }
 
+function getProviderChatCacheKey(providerId: string) {
+  return `iishka.provider-chat.${providerId}`;
+}
+
+function readCachedProviderChat(providerId: string): Chat | null {
+  try {
+    const raw = localStorage.getItem(getProviderChatCacheKey(providerId));
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as CachedProviderChat;
+    return parsed?.chat ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedProviderChat(providerId: string, chat: Chat | null) {
+  try {
+    localStorage.setItem(
+      getProviderChatCacheKey(providerId),
+      JSON.stringify({
+        chat,
+        cachedAt: Date.now(),
+      } satisfies CachedProviderChat),
+    );
+  } catch {
+    // Ignore cache persistence failures.
+  }
+}
+
 export function useProviderChat(provider: Provider, subscription: Subscription) {
+  const cachedChat = readCachedProviderChat(provider.id);
   const [state, setState] = useState<ProviderChatState>({
-    chat: null,
-    chatsLoaded: false,
-    messagesLoading: true,
+    chat: cachedChat,
+    chatsLoaded: Boolean(cachedChat),
+    messagesLoading: !cachedChat,
     error: null,
     pendingFiles: [],
   });
@@ -66,6 +104,26 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
 
     async function load() {
       try {
+        const cachedChatId = cachedChat?.id ?? null;
+        if (cachedChatId) {
+          try {
+            const cachedResponse = await apiClient.getChat(cachedChatId);
+            if (!cancelled) {
+              setState((current) => ({
+                ...current,
+                chat: cachedResponse.chat,
+                chatsLoaded: true,
+                messagesLoading: false,
+                error: null,
+              }));
+            }
+            writeCachedProviderChat(provider.id, cachedResponse.chat);
+            return;
+          } catch {
+            writeCachedProviderChat(provider.id, null);
+          }
+        }
+
         const chatsResponse = await apiClient.getChats();
         const existing = chatsResponse.chats.find((candidate) => candidate.providerId === provider.id);
 
@@ -79,6 +137,7 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
               error: null,
             }));
           }
+          writeCachedProviderChat(provider.id, null);
           return;
         }
 
@@ -92,6 +151,7 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
             error: null,
           }));
         }
+        writeCachedProviderChat(provider.id, chatResponse.chat);
       } catch (error) {
         if (!cancelled) {
           setState((current) => ({
@@ -138,6 +198,7 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
 
     try {
       let activeChat = state.chat;
+      const previousMessages = activeChat?.messages ?? [];
       const optimisticUserMessage = buildOptimisticUserMessage(content, state.pendingFiles);
       const optimisticAssistantMessage = buildOptimisticAssistantMessage();
 
@@ -171,15 +232,27 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
         }));
       }
 
-      await apiClient.createMessage(activeChat.id, {
+      const createdMessages = await apiClient.createMessage(activeChat.id, {
         content,
         fileIds: state.pendingFiles.map((file) => file.id),
       });
 
-      const refreshed = await apiClient.getChat(activeChat.id);
+      const resolvedChat: Chat = {
+        ...(activeChat ?? {
+          id: activeChatId ?? crypto.randomUUID(),
+          title: provider.name,
+          providerId: provider.id,
+          provider,
+        }),
+        provider,
+        lastMessageAt: createdMessages.assistantMessage.createdAt,
+        messages: [...previousMessages, createdMessages.userMessage, createdMessages.assistantMessage],
+      };
+
+      writeCachedProviderChat(provider.id, resolvedChat);
       setState((current) => ({
         ...current,
-        chat: refreshed.chat,
+        chat: resolvedChat,
         pendingFiles: [],
         error: null,
       }));
@@ -187,6 +260,7 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
       if (activeChatId) {
         try {
           const refreshed = await apiClient.getChat(activeChatId);
+          writeCachedProviderChat(provider.id, refreshed.chat);
           setState((current) => ({
             ...current,
             chat: refreshed.chat,
