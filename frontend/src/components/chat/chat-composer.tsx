@@ -27,8 +27,8 @@ export function ChatComposer({
     }
 
     const current = value;
-    await onSend(current);
     setValue('');
+    await onSend(current);
   }
 
   return (
