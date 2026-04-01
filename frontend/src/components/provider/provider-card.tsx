@@ -4,6 +4,7 @@ import type { Provider } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { useLocale } from '@/lib/i18n';
 
 const toneByKey: Record<Provider['key'], string> = {
   OPENAI: 'from-[#52f3ff] via-[#228bff] to-[#6f7dff]',
@@ -12,6 +13,8 @@ const toneByKey: Record<Provider['key'], string> = {
 };
 
 export function ProviderCard({ provider }: { provider: Provider }) {
+  const { t } = useLocale();
+
   return (
     <Card className="min-w-[82vw] max-w-[82vw] snap-start overflow-hidden border-border/70 bg-[linear-gradient(180deg,rgba(15,20,38,0.92),rgba(9,13,27,0.86))] p-0 sm:min-w-[280px] sm:max-w-[280px] lg:min-w-0 lg:max-w-none lg:h-full">
       <div className={`h-1.5 bg-gradient-to-r ${toneByKey[provider.key]}`} />
@@ -26,7 +29,7 @@ export function ProviderCard({ provider }: { provider: Provider }) {
               {provider.defaultModel}
             </Badge>
             {!provider.isAvailable && (
-              <Badge className="border-destructive/30 bg-destructive/10 text-destructive">Unavailable</Badge>
+              <Badge className="border-destructive/30 bg-destructive/10 text-destructive">{t('unavailable')}</Badge>
             )}
           </div>
         </div>
@@ -41,15 +44,15 @@ export function ProviderCard({ provider }: { provider: Provider }) {
         <div className="mt-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
             <Sparkles className="h-4 w-4" />
-            File uploads enabled
+            {t('fileUploadsEnabled')}
           </div>
           {provider.isAvailable ? (
             <Button asChild>
-              <Link to={`/providers/${provider.id}`}>Enter chat</Link>
+              <Link to={`/providers/${provider.id}`}>{t('enterChat')}</Link>
             </Button>
           ) : (
             <Button type="button" disabled>
-              Unavailable
+              {t('unavailable')}
             </Button>
           )}
         </div>

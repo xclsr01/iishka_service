@@ -1,6 +1,7 @@
 import { Paperclip, X } from 'lucide-react';
 import type { FileAsset } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { useLocale } from '@/lib/i18n';
 
 export function UploadPicker({
   pendingFiles,
@@ -15,6 +16,8 @@ export function UploadPicker({
   disabled?: boolean;
   compact?: boolean;
 }) {
+  const { t } = useLocale();
+
   return (
     <div className={compact ? 'min-w-0' : 'space-y-3'}>
       <label
@@ -25,7 +28,7 @@ export function UploadPicker({
         }
       >
         <Paperclip className="h-4 w-4" />
-        {!compact && <span>Upload a file</span>}
+        {!compact && <span>{t('uploadFile')}</span>}
         <input
           className="hidden"
           type="file"

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { SendHorizontal } from 'lucide-react';
 import type { FileAsset } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { useLocale } from '@/lib/i18n';
 import { UploadPicker } from './upload-picker';
 
 export function ChatComposer({
@@ -19,6 +20,7 @@ export function ChatComposer({
   disabled?: boolean;
   busy?: boolean;
 }) {
+  const { t } = useLocale();
   const [value, setValue] = useState('');
 
   async function submit() {
@@ -55,7 +57,7 @@ export function ChatComposer({
           type="text"
           value={value}
           disabled={disabled || busy}
-          placeholder="Ask anything across your selected provider..."
+          placeholder={t('askAnythingAcrossProvider')}
           className="h-11 min-w-0 flex-1 rounded-full border border-border/80 bg-background/80 px-4 text-base text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:border-ring focus-visible:bg-background disabled:cursor-not-allowed disabled:opacity-50"
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={(event) => {

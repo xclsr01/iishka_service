@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { apiClient, type Provider, type Subscription } from '@/lib/api';
+import { useLocale } from '@/lib/i18n';
 import { bootstrapErrors, useBootstrap } from '@/hooks/use-bootstrap';
 import { ChatPage } from '@/pages/chat-page';
 import { HomePage } from '@/pages/home-page';
@@ -48,6 +49,7 @@ function ProviderRoute({
 
 export function App() {
   const { data, isLoading, error } = useBootstrap();
+  const { t, localizeProvider } = useLocale();
   const [subscriptionOverride, setSubscriptionOverride] = useState(data?.subscription ?? null);
   const [isActivatingSubscription, setIsActivatingSubscription] = useState(false);
   const [isUnsubscribingSubscription, setIsUnsubscribingSubscription] = useState(false);
@@ -93,11 +95,11 @@ export function App() {
       <AppShell className="items-center justify-center">
         <Card className="max-w-sm space-y-4 text-center">
           <h1 className="font-display text-2xl font-bold">
-            {isStandaloneBrowser ? 'Open In Telegram' : 'Bootstrap failed'}
+            {isStandaloneBrowser ? t('openInTelegram') : t('bootstrapFailed')}
           </h1>
           <p className="text-sm text-muted-foreground">
             {isStandaloneBrowser
-              ? 'The deployment is up, but authentication for this Mini App comes from Telegram. Open the bot, send /start, and launch the app from the button there.'
+              ? t('standaloneBrowserMessage')
               : error}
           </p>
           {isStandaloneBrowser && (
@@ -107,11 +109,10 @@ export function App() {
                 className="w-full"
                 onClick={() => window.location.reload()}
               >
-                Retry In Telegram
+                {t('retryInTelegram')}
               </Button>
               <p className="text-xs text-muted-foreground">
-                Opening the raw `pages.dev` URL in a normal browser is fine for a smoke check, but
-                a signed Telegram session is required to enter the app.
+                {t('standaloneBrowserHint')}
               </p>
             </div>
           )}
@@ -121,6 +122,7 @@ export function App() {
   }
 
   const subscription = subscriptionOverride ?? data.subscription;
+  const localizedProviders = data.providers.map(localizeProvider);
 
   return (
     <AppShell>
@@ -130,7 +132,7 @@ export function App() {
           element={
             <HomePage
               user={data.user}
-              providers={data.providers}
+              providers={localizedProviders}
               subscription={subscription}
               onActivateDevSubscription={activateDevSubscription}
               onUnsubscribeDevSubscription={unsubscribeDevSubscription}
@@ -143,7 +145,7 @@ export function App() {
           path="/providers/:providerId"
           element={
             <ProviderRoute
-              providers={data.providers}
+              providers={localizedProviders}
               subscription={subscription}
               onActivateDevSubscription={activateDevSubscription}
               isActivatingSubscription={isActivatingSubscription}
