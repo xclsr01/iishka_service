@@ -20,7 +20,7 @@ export function UploadPicker({
       <label
         className={
           compact
-            ? 'inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-border bg-white/85 text-muted-foreground'
+            ? 'inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-white/85 text-muted-foreground'
             : 'inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground'
         }
       >

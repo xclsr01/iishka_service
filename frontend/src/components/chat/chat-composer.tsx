@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { SendHorizontal } from 'lucide-react';
 import type { FileAsset } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { UploadPicker } from './upload-picker';
 
 export function ChatComposer({
@@ -33,7 +32,7 @@ export function ChatComposer({
   }
 
   return (
-    <div className="rounded-[24px] border border-border bg-card p-3 shadow-soft">
+    <div className="rounded-[24px] border border-border bg-card p-2.5 shadow-soft">
       {pendingFiles.length > 0 && (
         <div className="mb-2">
           <UploadPicker
@@ -52,17 +51,23 @@ export function ChatComposer({
           disabled={disabled || busy}
           compact
         />
-        <Textarea
+        <input
+          type="text"
           value={value}
           disabled={disabled || busy}
           placeholder="Ask anything across your selected provider..."
-          rows={1}
-          className="h-12 min-h-12 resize-none rounded-full px-4 py-3"
+          className="h-11 min-w-0 flex-1 rounded-full border border-border bg-background px-4 text-base text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50"
           onChange={(event) => setValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              void submit();
+            }
+          }}
         />
         <Button
           type="button"
-          className="h-12 w-12 shrink-0 px-0"
+          className="h-11 w-11 shrink-0 rounded-full px-0"
           disabled={disabled || busy || !value.trim()}
           onClick={submit}
         >
