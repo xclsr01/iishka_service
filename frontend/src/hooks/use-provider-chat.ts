@@ -256,6 +256,8 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
         pendingFiles: [],
         error: null,
       }));
+
+      return createdMessages.subscription;
     } catch (error) {
       if (activeChatId) {
         try {

@@ -15,11 +15,13 @@ export function ChatPage({
   subscription,
   onActivateDevSubscription,
   isActivatingSubscription,
+  onSubscriptionChange,
 }: {
   provider: Provider;
   subscription: Subscription;
   onActivateDevSubscription: () => Promise<void>;
   isActivatingSubscription: boolean;
+  onSubscriptionChange: (subscription: Subscription) => void;
 }) {
   const { chat, messagesLoading, error, pendingFiles, uploadFiles, sendMessage, removePendingFile } =
     useProviderChat(provider, subscription);
@@ -31,7 +33,8 @@ export function ChatPage({
     try {
       setBusy(true);
       setScrollToBottomSignal(Date.now());
-      await sendMessage(content);
+      const updatedSubscription = await sendMessage(content);
+      onSubscriptionChange(updatedSubscription);
     } finally {
       setBusy(false);
     }
@@ -72,7 +75,9 @@ export function ChatPage({
                 Subscription required
               </div>
               <p className="text-sm text-muted-foreground">
-                Uploads can still be prepared, but message sending is blocked until the plan is active.
+                {subscription.tokensRemaining === 0
+                  ? 'You are out of tokens. Update your subscription to continue chatting.'
+                  : 'Uploads can still be prepared, but message sending is blocked until the plan is active.'}
               </p>
             </div>
             <Button
@@ -81,7 +86,7 @@ export function ChatPage({
               disabled={isActivatingSubscription}
               onClick={onActivateDevSubscription}
             >
-              {isActivatingSubscription ? 'Activating...' : 'Activate demo'}
+              {isActivatingSubscription ? 'Activating...' : 'Get subscription'}
             </Button>
           </div>
         </Card>
