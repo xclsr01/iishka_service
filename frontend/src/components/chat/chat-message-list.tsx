@@ -4,14 +4,20 @@ import { cn } from '@/lib/cn';
 
 export function ChatMessageList({
   messages,
+  scrollToBottomSignal,
 }: {
   messages: ChatMessage[];
+  scrollToBottomSignal?: number;
 }) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (!scrollToBottomSignal) {
+      return;
+    }
+
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages]);
+  }, [scrollToBottomSignal]);
 
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-y-auto pb-2 pt-1">
