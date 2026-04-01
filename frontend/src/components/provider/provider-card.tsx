@@ -13,7 +13,7 @@ const toneByKey: Record<Provider['key'], string> = {
 
 export function ProviderCard({ provider }: { provider: Provider }) {
   return (
-    <Card className="min-w-[82vw] max-w-[82vw] snap-start overflow-hidden border-border/70 bg-[linear-gradient(180deg,rgba(15,20,38,0.92),rgba(9,13,27,0.86))] p-0 sm:min-w-[280px] sm:max-w-[280px]">
+    <Card className="min-w-[82vw] max-w-[82vw] snap-start overflow-hidden border-border/70 bg-[linear-gradient(180deg,rgba(15,20,38,0.92),rgba(9,13,27,0.86))] p-0 sm:min-w-[280px] sm:max-w-[280px] lg:min-w-0 lg:max-w-none lg:h-full">
       <div className={`h-1.5 bg-gradient-to-r ${toneByKey[provider.key]}`} />
       <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
