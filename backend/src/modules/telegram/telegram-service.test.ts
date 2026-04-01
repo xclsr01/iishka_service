@@ -8,7 +8,7 @@ type SendMessagePayload = {
   chat_id: number;
   text: string;
   reply_markup?: {
-    inline_keyboard: Array<Array<{ web_app?: { url: string } }>>;
+    inline_keyboard: Array<Array<{ text?: string; web_app?: { url: string } }>>;
   };
 };
 
@@ -39,6 +39,7 @@ test('handleTelegramWebhook sends the Mini App welcome message on /start', async
   assert.equal(calledPayload.chat_id, 77);
   assert.match(calledPayload.text, /Open the Mini App/);
   assert.equal(calledPayload.reply_markup?.inline_keyboard[0]?.[0]?.web_app?.url, resolveMiniAppUrl());
+  assert.equal(calledPayload.reply_markup?.inline_keyboard[0]?.[1]?.text, 'Subscription');
 });
 
 test('handleTelegramWebhook replies with help text for unsupported messages', async () => {
@@ -57,5 +58,7 @@ test('handleTelegramWebhook replies with help text for unsupported messages', as
   });
 
   assert.ok(calledPayload);
-  assert.match(calledPayload.text, /Use \/start/);
+  assert.match(calledPayload.text, /subscription management/);
+  assert.equal(calledPayload.reply_markup?.inline_keyboard[0]?.[0]?.text, 'Open Mini App');
+  assert.equal(calledPayload.reply_markup?.inline_keyboard[0]?.[1]?.text, 'Subscription');
 });

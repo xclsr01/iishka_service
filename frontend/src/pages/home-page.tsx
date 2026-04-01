@@ -53,51 +53,53 @@ export function HomePage({
               : 'border-accent/20 bg-[linear-gradient(135deg,rgba(32,20,16,0.92),rgba(17,14,28,0.86))] px-4 py-3'
           }
         >
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
-            <div className="min-w-0 space-y-1">
-              <div className="flex items-center gap-2 font-semibold text-white">
+          <div className="grid gap-3">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2">
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-2 font-semibold text-white">
                 <LockKeyhole className="h-4 w-4 text-primary" />
                 Subscription status
-              </div>
-              <p className="text-sm leading-5 text-muted-foreground">
-                {subscription.hasAccess
-                  ? `Active on ${subscription.planCode}.`
-                  : subscription.tokensRemaining === 0
-                    ? 'Out of tokens. Update your subscription to continue messaging.'
-                    : 'Inactive. Messaging is gated until the monthly plan is active.'}
-              </p>
-            </div>
-            <div className="justify-self-start sm:justify-self-end">
-              <div className="min-w-[76px] rounded-[14px] border border-primary/35 bg-primary px-3 py-2 text-left text-primary-foreground shadow-soft">
-                <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
-                  Left
                 </div>
-                <div className="mt-1 font-display text-lg font-bold leading-none">
-                  {tokenDisplay}
+                <p className="text-sm leading-5 text-muted-foreground">
+                  {subscription.hasAccess
+                    ? `Active on ${subscription.planCode}.`
+                    : subscription.tokensRemaining === 0
+                      ? 'Out of tokens. Update your subscription to continue messaging.'
+                      : 'Inactive. Messaging is gated until the monthly plan is active.'}
+                </p>
+              </div>
+              <div className="justify-self-end">
+                <div className="min-w-[76px] rounded-[14px] border border-primary/35 bg-primary px-3 py-2 text-left text-primary-foreground shadow-soft">
+                  <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
+                    Left
+                  </div>
+                  <div className="mt-1 font-display text-lg font-bold leading-none">
+                    {tokenDisplay}
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="flex flex-row flex-wrap gap-2 sm:col-span-2 sm:justify-end">
-                {!subscription.hasAccess && (
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="h-10 w-auto shrink-0 px-4"
-                    disabled={isActivatingSubscription || isUnsubscribingSubscription}
-                    onClick={onActivateDevSubscription}
-                  >
-                    {isActivatingSubscription ? 'Activating...' : 'Get subscription'}
-                  </Button>
-                )}
+            <div className="flex flex-row flex-nowrap gap-2">
+              {!subscription.hasAccess && (
                 <Button
                   type="button"
-                  variant="ghost"
-                  className="h-10 w-auto shrink-0 border-destructive/25 bg-destructive/10 px-4 text-destructive hover:bg-destructive/15"
+                  variant="secondary"
+                  className="h-10 min-w-0 flex-1 px-4"
                   disabled={isActivatingSubscription || isUnsubscribingSubscription}
-                  onClick={onUnsubscribeDevSubscription}
+                  onClick={onActivateDevSubscription}
                 >
-                  {isUnsubscribingSubscription ? 'Unsubscribing...' : 'Unsubscribe'}
+                  {isActivatingSubscription ? 'Activating...' : 'Get subscription'}
                 </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-10 min-w-0 flex-1 border-destructive/25 bg-destructive/10 px-4 text-destructive hover:bg-destructive/15"
+                disabled={isActivatingSubscription || isUnsubscribingSubscription}
+                onClick={onUnsubscribeDevSubscription}
+              >
+                {isUnsubscribingSubscription ? 'Unsubscribing...' : 'Unsubscribe'}
+              </Button>
             </div>
           </div>
         </Card>
