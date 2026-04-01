@@ -11,16 +11,51 @@ type BootstrapState = {
 
 const STANDALONE_BROWSER_ERROR =
   'This Mini App is live, but Telegram session data is only available when you open it from the bot.';
+const BOOTSTRAP_CACHE_KEY = 'iishka.bootstrap-cache.v1';
+
+type CachedBootstrap = {
+  data: BootstrapResponse;
+  cachedAt: number;
+};
 
 export const bootstrapErrors = {
   standaloneBrowser: STANDALONE_BROWSER_ERROR,
 } as const;
 
+function readCachedBootstrap(): BootstrapResponse | null {
+  try {
+    const raw = localStorage.getItem(BOOTSTRAP_CACHE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as CachedBootstrap;
+    return parsed?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedBootstrap(data: BootstrapResponse) {
+  try {
+    localStorage.setItem(
+      BOOTSTRAP_CACHE_KEY,
+      JSON.stringify({
+        data,
+        cachedAt: Date.now(),
+      } satisfies CachedBootstrap),
+    );
+  } catch {
+    // Ignore cache persistence failures.
+  }
+}
+
 export function useBootstrap() {
+  const cachedData = readCachedBootstrap();
   const [state, setState] = useState<BootstrapState>({
-    data: null,
+    data: cachedData,
     error: null,
-    isLoading: true,
+    isLoading: !cachedData,
   });
 
   useEffect(() => {
@@ -46,6 +81,7 @@ export function useBootstrap() {
         }
 
         apiClient.setToken(response.token);
+        writeCachedBootstrap(response);
 
         if (!cancelled) {
           setState({
@@ -56,11 +92,11 @@ export function useBootstrap() {
         }
       } catch (error) {
         if (!cancelled) {
-          setState({
-            data: null,
-            error: error instanceof Error ? error.message : 'Bootstrap failed',
+          setState((current) => ({
+            data: current.data,
+            error: current.data ? null : error instanceof Error ? error.message : 'Bootstrap failed',
             isLoading: false,
-          });
+          }));
         }
       }
     }
