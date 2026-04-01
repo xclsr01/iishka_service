@@ -60,16 +60,21 @@ export function HomePage({
             <p className="text-sm text-muted-foreground">
               {subscription.hasAccess
                 ? `Active on ${subscription.planCode}.`
-                : 'Inactive. Messaging is gated until the monthly plan is active.'}
+                : subscription.tokensRemaining === 0
+                  ? 'Out of tokens. Update your subscription to continue messaging.'
+                  : 'Inactive. Messaging is gated until the monthly plan is active.'}
             </p>
           </div>
-          <div className="flex items-center gap-3 self-stretch sm:self-auto">
-            <div className="min-w-[94px] rounded-[18px] border border-border/70 bg-muted/70 px-3 py-2">
-              <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+          <div className="flex flex-col items-start gap-3 sm:items-end">
+            <div className="rounded-2xl bg-white/80 px-3 py-2 text-left shadow-soft sm:text-right">
+              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
                 Tokens
               </div>
-              <div className="mt-1 font-display text-xl font-bold leading-none text-white">
-                {tokenDisplay ?? '...'}
+              <div className="font-display text-xl font-bold leading-none">
+                {subscription.tokensRemaining}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {subscription.tokensUsed}/{subscription.tokensAllowed} used
               </div>
             </div>
             {!subscription.hasAccess && (

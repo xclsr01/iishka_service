@@ -14,11 +14,13 @@ function ProviderRoute({
   subscription,
   onActivateDevSubscription,
   isActivatingSubscription,
+  onSubscriptionChange,
 }: {
   providers: Provider[];
   subscription: Subscription;
   onActivateDevSubscription: () => Promise<void>;
   isActivatingSubscription: boolean;
+  onSubscriptionChange: (subscription: Subscription) => void;
 }) {
   const params = useParams();
   const provider = providers.find((candidate) => candidate.id === params.providerId);
@@ -33,6 +35,7 @@ function ProviderRoute({
       subscription={subscription}
       onActivateDevSubscription={onActivateDevSubscription}
       isActivatingSubscription={isActivatingSubscription}
+      onSubscriptionChange={onSubscriptionChange}
     />
   );
 }
@@ -125,6 +128,7 @@ export function App() {
               subscription={subscription}
               onActivateDevSubscription={activateDevSubscription}
               isActivatingSubscription={isActivatingSubscription}
+              onSubscriptionChange={setSubscriptionOverride}
             />
           }
         />

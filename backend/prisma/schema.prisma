@@ -149,6 +149,8 @@ model Subscription {
   userId            String
   planCode          String
   status            SubscriptionStatus @default(INACTIVE)
+  tokensAllowed     Int                @default(0)
+  tokensUsed        Int                @default(0)
   currentPeriodStart DateTime?
   currentPeriodEnd  DateTime?
   providerReference String?
