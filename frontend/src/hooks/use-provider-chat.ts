@@ -32,6 +32,26 @@ function toUserFacingError(error: unknown, fallback: string) {
   return fallback;
 }
 
+function buildOptimisticUserMessage(content: string, pendingFiles: FileAsset[]) {
+  return {
+    id: `optimistic-user-${crypto.randomUUID()}`,
+    role: 'USER' as const,
+    content,
+    createdAt: new Date().toISOString(),
+    attachments: pendingFiles.map((file) => ({ file })),
+  };
+}
+
+function buildOptimisticAssistantMessage() {
+  return {
+    id: `optimistic-assistant-${crypto.randomUUID()}`,
+    role: 'ASSISTANT' as const,
+    content: 'Thinking...',
+    createdAt: new Date().toISOString(),
+    attachments: [],
+  };
+}
+
 export function useProviderChat(provider: Provider, subscription: Subscription) {
   const [state, setState] = useState<ProviderChatState>({
     chat: null,
@@ -40,6 +60,41 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
     error: null,
     pendingFiles: [],
   });
+
+  async function refreshChat(chatId: string) {
+    const chatResponse = await apiClient.getChat(chatId);
+    setState((current) => ({
+      ...current,
+      chat: chatResponse.chat,
+    }));
+    return chatResponse.chat;
+  }
+
+  useEffect(() => {
+    if (!state.chat?.id) {
+      return;
+    }
+
+    let cancelled = false;
+    const intervalId = window.setInterval(async () => {
+      try {
+        const nextChat = await apiClient.getChat(state.chat!.id);
+        if (!cancelled) {
+          setState((current) => ({
+            ...current,
+            chat: nextChat.chat,
+          }));
+        }
+      } catch {
+        // Silent background refresh failure; explicit user actions surface errors separately.
+      }
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [state.chat?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,12 +169,41 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
   }
 
   async function sendMessage(content: string) {
+    let activeChatId: string | null = state.chat?.id ?? null;
+
     try {
       let activeChat = state.chat;
+      const optimisticUserMessage = buildOptimisticUserMessage(content, state.pendingFiles);
+      const optimisticAssistantMessage = buildOptimisticAssistantMessage();
 
       if (!activeChat) {
         const created = await apiClient.createChat(provider.id);
         activeChat = created.chat;
+        activeChatId = created.chat.id;
+        setState((current) => ({
+          ...current,
+          chat: {
+            ...created.chat,
+            messages: [optimisticUserMessage, optimisticAssistantMessage],
+          },
+          error: null,
+        }));
+      } else {
+        activeChatId = activeChat.id;
+        setState((current) => ({
+          ...current,
+          chat: current.chat
+            ? {
+                ...current.chat,
+                messages: [
+                  ...(current.chat.messages ?? []),
+                  optimisticUserMessage,
+                  optimisticAssistantMessage,
+                ],
+              }
+            : current.chat,
+          error: null,
+        }));
       }
 
       await apiClient.createMessage(activeChat.id, {
@@ -127,14 +211,29 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
         fileIds: state.pendingFiles.map((file) => file.id),
       });
 
-      const refreshed = await apiClient.getChat(activeChat.id);
+      const refreshed = await refreshChat(activeChat.id);
       setState((current) => ({
         ...current,
-        chat: refreshed.chat,
+        chat: refreshed,
         pendingFiles: [],
         error: null,
       }));
     } catch (error) {
+      if (activeChatId) {
+        try {
+          const refreshed = await refreshChat(activeChatId);
+          setState((current) => ({
+            ...current,
+            chat: refreshed,
+            pendingFiles: [],
+            error: toUserFacingError(error, 'Message failed'),
+          }));
+          throw error;
+        } catch {
+          // Fall through to the generic error state below.
+        }
+      }
+
       setState((current) => ({
         ...current,
         error: toUserFacingError(error, 'Message failed'),

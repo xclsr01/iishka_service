@@ -33,7 +33,7 @@ export function ChatComposer({
   }
 
   return (
-    <div className="rounded-[30px] border border-border bg-card p-4 shadow-soft">
+    <div className="rounded-[28px] border border-border bg-card p-3.5 shadow-soft">
       <UploadPicker
         pendingFiles={pendingFiles}
         onFilesSelected={onUpload}
@@ -45,7 +45,7 @@ export function ChatComposer({
           value={value}
           disabled={disabled || busy}
           placeholder="Ask anything across your selected provider..."
-          className="min-h-28 resize-none"
+          className="min-h-20 resize-none"
           onChange={(event) => setValue(event.target.value)}
         />
         <Button type="button" disabled={disabled || busy || !value.trim()} onClick={submit}>
