@@ -15,11 +15,11 @@ export function ProviderCard({ provider }: { provider: Provider }) {
   return (
     <Card className="min-w-[82vw] max-w-[82vw] snap-start overflow-hidden border-border/70 bg-[linear-gradient(180deg,rgba(15,20,38,0.92),rgba(9,13,27,0.86))] p-0 sm:min-w-[280px] sm:max-w-[280px] lg:min-w-0 lg:max-w-none lg:h-full">
       <div className={`h-1.5 bg-gradient-to-r ${toneByKey[provider.key]}`} />
-      <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
+      <div className="flex h-full flex-col gap-3 p-4 sm:gap-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="font-display text-xl font-bold sm:text-2xl">{provider.name}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">{provider.summary}</p>
+            <h3 className="font-display text-xl font-bold sm:text-[1.75rem]">{provider.name}</h3>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">{provider.summary}</p>
           </div>
           <div className="space-y-2 text-right">
             <Badge className="rounded-[14px] border-primary/30 bg-primary/10 px-3 py-2 text-primary">
@@ -31,14 +31,14 @@ export function ProviderCard({ provider }: { provider: Provider }) {
           </div>
         </div>
 
-        <div className="rounded-[20px] border border-border/60 bg-muted/55 p-3 text-sm text-muted-foreground sm:p-4">
+        <div className="rounded-[18px] border border-border/60 bg-muted/55 p-3 text-sm leading-6 text-muted-foreground sm:p-4">
           <p>{provider.description}</p>
           {!provider.isAvailable && provider.availabilityMessage && (
             <p className="mt-3 text-destructive">{provider.availabilityMessage}</p>
           )}
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="mt-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
             <Sparkles className="h-4 w-4" />
             File uploads enabled

@@ -25,9 +25,9 @@ export function HomePage({
   const tokenDisplay = subscription.tokensRemaining;
 
   return (
-    <>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.95fr)] lg:items-stretch">
-        <Card className="overflow-hidden border-primary/20 bg-[linear-gradient(135deg,rgba(12,18,35,0.96),rgba(15,25,48,0.88))] px-4 py-4 sm:px-5 sm:py-5">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,1fr)] xl:items-stretch">
+        <Card className="overflow-hidden border-primary/20 bg-[linear-gradient(135deg,rgba(12,18,35,0.96),rgba(15,25,48,0.88))] px-4 py-4 sm:px-5 sm:py-4">
           <div className="absolute inset-x-0 top-0 h-24 bg-[linear-gradient(90deg,rgba(87,225,255,0.18),transparent,rgba(255,191,71,0.14))]" />
           <div className="relative flex items-start justify-between gap-3">
             <div className="min-w-0 space-y-2">
@@ -53,8 +53,8 @@ export function HomePage({
               : 'border-accent/20 bg-[linear-gradient(135deg,rgba(32,20,16,0.92),rgba(17,14,28,0.86))] px-4 py-3'
           }
         >
-          <div className="flex h-full flex-col gap-3">
-            <div className="space-y-1">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center xl:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <div className="min-w-0 space-y-1">
               <div className="flex items-center gap-2 font-semibold text-white">
                 <LockKeyhole className="h-4 w-4 text-primary" />
                 Subscription status
@@ -67,21 +67,22 @@ export function HomePage({
                     : 'Inactive. Messaging is gated until the monthly plan is active.'}
               </p>
             </div>
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="min-w-[132px] rounded-2xl border border-primary/35 bg-primary px-4 py-3 text-left text-primary-foreground shadow-soft">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary-foreground/70">
+            <div className="justify-self-start sm:justify-self-end">
+              <div className="min-w-[86px] rounded-[16px] border border-primary/35 bg-primary px-3 py-2 text-left text-primary-foreground shadow-soft">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-primary-foreground/70">
                   Tokens left
                 </div>
-                <div className="mt-1 font-display text-2xl font-bold leading-none">
+                <div className="mt-1 font-display text-xl font-bold leading-none">
                   {tokenDisplay}
                 </div>
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row md:justify-end">
+            </div>
+            <div className="flex flex-row flex-wrap gap-2 sm:justify-end xl:justify-self-end">
                 {!subscription.hasAccess && (
                   <Button
                     type="button"
                     variant="secondary"
-                    className="w-full sm:w-auto"
+                    className="w-auto shrink-0"
                     disabled={isActivatingSubscription || isUnsubscribingSubscription}
                     onClick={onActivateDevSubscription}
                   >
@@ -91,13 +92,12 @@ export function HomePage({
                 <Button
                   type="button"
                   variant="ghost"
-                  className="w-full border-destructive/25 bg-destructive/10 text-destructive hover:bg-destructive/15 sm:w-auto"
+                  className="w-auto shrink-0 border-destructive/25 bg-destructive/10 text-destructive hover:bg-destructive/15"
                   disabled={isActivatingSubscription || isUnsubscribingSubscription}
                   onClick={onUnsubscribeDevSubscription}
                 >
                   {isUnsubscribingSubscription ? 'Unsubscribing...' : 'Unsubscribe'}
                 </Button>
-              </div>
             </div>
           </div>
         </Card>
@@ -108,14 +108,14 @@ export function HomePage({
           <h2 className="font-display text-xl font-bold text-white">AI catalog</h2>
           <Badge className="hidden border-border/60 bg-muted/70 sm:inline-flex lg:hidden">Scroll</Badge>
         </div>
-        <div className="-mx-4 overflow-x-auto px-4 pb-2 lg:mx-0 lg:overflow-visible lg:px-0">
-          <div className="flex snap-x gap-4 lg:grid lg:grid-cols-2 lg:gap-5 xl:grid-cols-3">
+        <div className="-mx-4 overflow-x-auto px-4 pb-4 lg:mx-0 lg:overflow-visible lg:px-0">
+          <div className="flex snap-x gap-4 lg:grid lg:grid-cols-2 lg:gap-4 xl:grid-cols-3">
             {providers.map((provider) => (
               <ProviderCard key={provider.id} provider={provider} />
             ))}
           </div>
         </div>
       </section>
-    </>
+    </div>
   );
 }
