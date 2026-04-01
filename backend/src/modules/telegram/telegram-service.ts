@@ -55,12 +55,6 @@ export function resolveMiniAppUrl() {
   return env.TELEGRAM_MINI_APP_URL;
 }
 
-function resolveSubscriptionUrl() {
-  const url = new URL(resolveMiniAppUrl());
-  url.searchParams.set('section', 'subscription');
-  return url.toString();
-}
-
 function canSendTelegramWebAppButton() {
   return hasUsablePublicMiniAppUrl(resolveMiniAppUrl());
 }
@@ -68,7 +62,6 @@ function canSendTelegramWebAppButton() {
 async function sendWelcomeMessage(chatId: number, firstName?: string) {
   const intro = firstName ? `Hi ${firstName}.` : 'Hi.';
   const miniAppUrl = resolveMiniAppUrl();
-  const subscriptionUrl = resolveSubscriptionUrl();
 
   if (!canSendTelegramWebAppButton()) {
     await callTelegram('sendMessage', {
@@ -94,12 +87,6 @@ async function sendWelcomeMessage(chatId: number, firstName?: string) {
               url: miniAppUrl,
             },
           },
-          {
-            text: 'Subscription',
-            web_app: {
-              url: subscriptionUrl,
-            },
-          },
         ],
       ],
     },
@@ -107,38 +94,9 @@ async function sendWelcomeMessage(chatId: number, firstName?: string) {
 }
 
 async function sendHelpMessage(chatId: number) {
-  const miniAppUrl = resolveMiniAppUrl();
-  const subscriptionUrl = resolveSubscriptionUrl();
-
-  if (!canSendTelegramWebAppButton()) {
-    await callTelegram('sendMessage', {
-      chat_id: chatId,
-      text: 'Use /start to open the Mini App entrypoint.',
-    });
-    return;
-  }
-
   await callTelegram('sendMessage', {
     chat_id: chatId,
-    text: 'Use /start to open the Mini App or jump straight to subscription management.',
-    reply_markup: {
-      inline_keyboard: [
-        [
-          {
-            text: 'Open Mini App',
-            web_app: {
-              url: miniAppUrl,
-            },
-          },
-          {
-            text: 'Subscription',
-            web_app: {
-              url: subscriptionUrl,
-            },
-          },
-        ],
-      ],
-    },
+    text: 'Use /start to open the Mini App entrypoint.',
   });
 }
 
@@ -150,11 +108,6 @@ export async function handleTelegramWebhook(update: TelegramUpdate) {
 
   if (message.text.startsWith('/start')) {
     await sendWelcomeMessage(message.chat.id, message.from?.first_name);
-    return;
-  }
-
-  if (message.text.startsWith('/help')) {
-    await sendHelpMessage(message.chat.id);
     return;
   }
 
