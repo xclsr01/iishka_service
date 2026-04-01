@@ -194,6 +194,12 @@ class ApiClient {
       method: 'POST',
     });
   }
+
+  unsubscribeDevSubscription() {
+    return this.request<{ subscription: Subscription }>('/api/subscription/dev/unsubscribe', {
+      method: 'POST',
+    });
+  }
 }
 
 export const apiClient = new ApiClient();

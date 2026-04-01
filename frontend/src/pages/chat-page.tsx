@@ -14,13 +14,17 @@ export function ChatPage({
   provider,
   subscription,
   onActivateDevSubscription,
+  onUnsubscribeDevSubscription,
   isActivatingSubscription,
+  isUnsubscribingSubscription,
   onSubscriptionChange,
 }: {
   provider: Provider;
   subscription: Subscription;
   onActivateDevSubscription: () => Promise<void>;
+  onUnsubscribeDevSubscription: () => Promise<void>;
   isActivatingSubscription: boolean;
+  isUnsubscribingSubscription: boolean;
   onSubscriptionChange: (subscription: Subscription) => void;
 }) {
   const { chat, messagesLoading, error, pendingFiles, uploadFiles, sendMessage, removePendingFile } =
@@ -61,7 +65,7 @@ export function ChatPage({
                 <p className="mt-1.5 text-sm text-destructive">{provider.availabilityMessage}</p>
               )}
             </div>
-            <Badge className="shrink-0 border-primary/30 bg-primary/10 text-primary">
+            <Badge className="shrink-0 rounded-[14px] border-primary/30 bg-primary/10 px-3 py-2 text-primary">
               {provider.defaultModel}
             </Badge>
           </div>
@@ -85,7 +89,7 @@ export function ChatPage({
             <Button
               type="button"
               variant="secondary"
-              disabled={isActivatingSubscription}
+              disabled={isActivatingSubscription || isUnsubscribingSubscription}
               onClick={onActivateDevSubscription}
             >
               {isActivatingSubscription ? 'Activating...' : 'Get subscription'}
@@ -120,7 +124,12 @@ export function ChatPage({
           onUpload={uploadFiles}
           onRemoveFile={removePendingFile}
           onSend={handleSend}
-          disabled={!provider.isAvailable || !subscription.hasAccess || isActivatingSubscription}
+          disabled={
+            !provider.isAvailable ||
+            !subscription.hasAccess ||
+            isActivatingSubscription ||
+            isUnsubscribingSubscription
+          }
           busy={busy}
         />
       </div>

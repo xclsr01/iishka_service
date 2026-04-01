@@ -14,12 +14,16 @@ function ProviderRoute({
   subscription,
   onActivateDevSubscription,
   isActivatingSubscription,
+  onUnsubscribeDevSubscription,
+  isUnsubscribingSubscription,
   onSubscriptionChange,
 }: {
   providers: Provider[];
   subscription: Subscription;
   onActivateDevSubscription: () => Promise<void>;
   isActivatingSubscription: boolean;
+  onUnsubscribeDevSubscription: () => Promise<void>;
+  isUnsubscribingSubscription: boolean;
   onSubscriptionChange: (subscription: Subscription) => void;
 }) {
   const params = useParams();
@@ -35,6 +39,8 @@ function ProviderRoute({
       subscription={subscription}
       onActivateDevSubscription={onActivateDevSubscription}
       isActivatingSubscription={isActivatingSubscription}
+      onUnsubscribeDevSubscription={onUnsubscribeDevSubscription}
+      isUnsubscribingSubscription={isUnsubscribingSubscription}
       onSubscriptionChange={onSubscriptionChange}
     />
   );
@@ -44,6 +50,7 @@ export function App() {
   const { data, isLoading, error } = useBootstrap();
   const [subscriptionOverride, setSubscriptionOverride] = useState(data?.subscription ?? null);
   const [isActivatingSubscription, setIsActivatingSubscription] = useState(false);
+  const [isUnsubscribingSubscription, setIsUnsubscribingSubscription] = useState(false);
 
   useEffect(() => {
     if (data?.subscription) {
@@ -58,6 +65,16 @@ export function App() {
       setSubscriptionOverride(response.subscription);
     } finally {
       setIsActivatingSubscription(false);
+    }
+  }
+
+  async function unsubscribeDevSubscription() {
+    try {
+      setIsUnsubscribingSubscription(true);
+      const response = await apiClient.unsubscribeDevSubscription();
+      setSubscriptionOverride(response.subscription);
+    } finally {
+      setIsUnsubscribingSubscription(false);
     }
   }
 
@@ -116,7 +133,9 @@ export function App() {
               providers={data.providers}
               subscription={subscription}
               onActivateDevSubscription={activateDevSubscription}
+              onUnsubscribeDevSubscription={unsubscribeDevSubscription}
               isActivatingSubscription={isActivatingSubscription}
+              isUnsubscribingSubscription={isUnsubscribingSubscription}
             />
           }
         />
@@ -128,6 +147,8 @@ export function App() {
               subscription={subscription}
               onActivateDevSubscription={activateDevSubscription}
               isActivatingSubscription={isActivatingSubscription}
+              onUnsubscribeDevSubscription={unsubscribeDevSubscription}
+              isUnsubscribingSubscription={isUnsubscribingSubscription}
               onSubscriptionChange={setSubscriptionOverride}
             />
           }
