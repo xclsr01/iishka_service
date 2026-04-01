@@ -4,9 +4,17 @@ import type { AiProviderAdapter, ProviderGenerateInput } from './provider-types'
 
 export class OpenAiProviderAdapter implements AiProviderAdapter {
   async generateResponse(input: ProviderGenerateInput) {
+    if (!env.OPENAI_ENABLED) {
+      throw new AppError(
+        'ChatGPT is temporarily unavailable in this deployment region. Use Claude or Gemini, or route OpenAI through a separate proxy/server in a supported region.',
+        503,
+        'PROVIDER_REGION_UNAVAILABLE',
+      );
+    }
+
     let response: Response;
     try {
-      response = await fetch('https://api.openai.com/v1/chat/completions', {
+      response = await fetch(`${env.OPENAI_BASE_URL}/chat/completions`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
@@ -28,6 +36,15 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
+
+      if (body.includes('unsupported_country_region_territory')) {
+        throw new AppError(
+          'ChatGPT is temporarily unavailable in this deployment region. Use Claude or Gemini, or route OpenAI through a separate proxy/server in a supported region.',
+          503,
+          'PROVIDER_REGION_UNAVAILABLE',
+        );
+      }
+
       throw new AppError(
         `OpenAI request failed${body ? `: ${body}` : ''}`,
         502,

@@ -21,11 +21,19 @@ export function ProviderCard({ provider }: { provider: Provider }) {
             <h3 className="font-display text-2xl font-bold">{provider.name}</h3>
             <p className="mt-1 text-sm text-muted-foreground">{provider.summary}</p>
           </div>
-          <Badge className="bg-white/80 text-foreground">{provider.defaultModel}</Badge>
+          <div className="space-y-2 text-right">
+            <Badge className="bg-white/80 text-foreground">{provider.defaultModel}</Badge>
+            {!provider.isAvailable && (
+              <Badge className="bg-destructive/10 text-destructive">Unavailable</Badge>
+            )}
+          </div>
         </div>
 
         <div className="rounded-3xl bg-white/70 p-4 text-sm text-muted-foreground">
-          {provider.description}
+          <p>{provider.description}</p>
+          {!provider.isAvailable && provider.availabilityMessage && (
+            <p className="mt-3 text-destructive">{provider.availabilityMessage}</p>
+          )}
         </div>
 
         <div className="flex items-center justify-between">
@@ -33,9 +41,15 @@ export function ProviderCard({ provider }: { provider: Provider }) {
             <Sparkles className="h-4 w-4" />
             File uploads enabled
           </div>
-          <Button asChild>
-            <Link to={`/providers/${provider.id}`}>Enter chat</Link>
-          </Button>
+          {provider.isAvailable ? (
+            <Button asChild>
+              <Link to={`/providers/${provider.id}`}>Enter chat</Link>
+            </Button>
+          ) : (
+            <Button type="button" disabled>
+              Unavailable
+            </Button>
+          )}
         </div>
       </div>
     </Card>

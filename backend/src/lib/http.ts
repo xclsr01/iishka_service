@@ -10,7 +10,9 @@ export function assertPresent<T>(value: T | null | undefined, message: string): 
 
 export function jsonSafeError(error: AppError) {
   const isProviderFailure =
-    error.code === 'PROVIDER_REQUEST_FAILED' || error.code === 'PROVIDER_EMPTY_RESPONSE';
+    error.code === 'PROVIDER_REQUEST_FAILED' ||
+    error.code === 'PROVIDER_EMPTY_RESPONSE' ||
+    error.code === 'PROVIDER_REGION_UNAVAILABLE';
 
   return {
     error: {

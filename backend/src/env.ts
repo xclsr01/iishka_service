@@ -24,7 +24,12 @@ const envSchema = z.object({
   TELEGRAM_WEBHOOK_SECRET: z.string().min(1).default(placeholderSecret),
   TELEGRAM_MINI_APP_URL: z.string().url().default(placeholderUrl),
   TELEGRAM_DELIVERY_MODE: z.enum(['webhook', 'polling', 'disabled']).default('polling'),
+  OPENAI_ENABLED: z
+    .string()
+    .default('true')
+    .transform((value) => value === 'true'),
   OPENAI_API_KEY: z.string().min(1).default(placeholderToken),
+  OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
   OPENAI_MODEL: z.string().min(1).default('gpt-4.1-mini'),
   ANTHROPIC_API_KEY: z.string().min(1).default(placeholderToken),
   ANTHROPIC_MODEL: z.string().min(1).default('claude-3-5-sonnet-latest'),
