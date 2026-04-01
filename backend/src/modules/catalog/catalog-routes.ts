@@ -2,6 +2,7 @@ import { ProviderStatus } from '@prisma/client';
 import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { prisma } from '../../lib/prisma';
+import { presentProviders } from '../providers/provider-presentation';
 import type { AppVariables } from '../../types';
 
 export const catalogRoutes = new Hono<{ Variables: AppVariables }>();
@@ -14,5 +15,5 @@ catalogRoutes.get('/providers', async (c) => {
     orderBy: { name: 'asc' },
   });
 
-  return c.json({ providers });
+  return c.json({ providers: presentProviders(providers) });
 });

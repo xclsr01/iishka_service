@@ -52,6 +52,9 @@ export function ChatPage({
           <div>
             <h1 className="font-display text-2xl font-bold">{provider.name}</h1>
             <p className="text-sm text-muted-foreground">{provider.summary}</p>
+            {!provider.isAvailable && provider.availabilityMessage && (
+              <p className="mt-2 text-sm text-destructive">{provider.availabilityMessage}</p>
+            )}
           </div>
           <Badge className="bg-white/70 text-foreground">{provider.defaultModel}</Badge>
         </div>
@@ -106,7 +109,7 @@ export function ChatPage({
         onUpload={uploadFiles}
         onRemoveFile={removePendingFile}
         onSend={handleSend}
-        disabled={!subscription.hasAccess || isActivatingSubscription}
+        disabled={!provider.isAvailable || !subscription.hasAccess || isActivatingSubscription}
         busy={busy}
       />
     </>

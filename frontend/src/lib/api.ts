@@ -9,6 +9,8 @@ export type Provider = {
   description: string;
   defaultModel: string;
   isFileUploadBeta: boolean;
+  isAvailable: boolean;
+  availabilityMessage?: string | null;
 };
 
 export type User = {

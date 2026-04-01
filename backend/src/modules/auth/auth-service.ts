@@ -3,6 +3,7 @@ import { ProviderStatus } from '@prisma/client';
 import { signSession, verifyTelegramInitData } from '../../lib/auth';
 import { prisma } from '../../lib/prisma';
 import { env } from '../../env';
+import { presentProviders } from '../providers/provider-presentation';
 import {
   ensureDefaultSubscription,
   getCurrentSubscription,
@@ -57,7 +58,7 @@ export async function bootstrapTelegramUser(initDataRaw: string) {
   return {
     token,
     user,
-    providers,
+    providers: presentProviders(providers),
     subscription: {
       ...subscription,
       hasAccess: isSubscriptionActive(subscription),
@@ -120,7 +121,7 @@ export async function bootstrapDevUser(sharedSecret: string) {
   return {
     token,
     user,
-    providers,
+    providers: presentProviders(providers),
     subscription: {
       ...subscription,
       hasAccess: isSubscriptionActive(subscription),
