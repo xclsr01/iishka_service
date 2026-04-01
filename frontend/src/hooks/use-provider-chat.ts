@@ -9,6 +9,29 @@ type ProviderChatState = {
   pendingFiles: FileAsset[];
 };
 
+function toUserFacingError(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+
+  const providerFailureHints = [
+    'request failed',
+    'provider',
+    'quota',
+    'resource_exhausted',
+    'temporarily unavailable',
+    'unsupported_country_region_territory',
+    'operation timed out',
+  ];
+
+  const normalized = error.message.toLowerCase();
+  if (providerFailureHints.some((hint) => normalized.includes(hint))) {
+    return null;
+  }
+
+  return fallback;
+}
+
 export function useProviderChat(provider: Provider, subscription: Subscription) {
   const [state, setState] = useState<ProviderChatState>({
     chat: null,
@@ -53,7 +76,7 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
         if (!cancelled) {
           setState((current) => ({
             ...current,
-            error: error instanceof Error ? error.message : 'Failed to load chat',
+            error: toUserFacingError(error, 'Load failed'),
             chatsLoaded: true,
             messagesLoading: false,
           }));
@@ -85,7 +108,7 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : 'File upload failed',
+        error: toUserFacingError(error, 'File upload failed'),
       }));
     }
   }
@@ -114,7 +137,7 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: error instanceof Error ? error.message : 'Message failed',
+        error: toUserFacingError(error, 'Message failed'),
       }));
       throw error;
     }
