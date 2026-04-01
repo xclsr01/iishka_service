@@ -22,7 +22,9 @@ export function ProviderCard({ provider }: { provider: Provider }) {
             <p className="mt-1 text-sm text-muted-foreground">{provider.summary}</p>
           </div>
           <div className="space-y-2 text-right">
-            <Badge className="border-primary/30 bg-primary/10 text-primary">{provider.defaultModel}</Badge>
+            <Badge className="rounded-[14px] border-primary/30 bg-primary/10 px-3 py-2 text-primary">
+              {provider.defaultModel}
+            </Badge>
             {!provider.isAvailable && (
               <Badge className="border-destructive/30 bg-destructive/10 text-destructive">Unavailable</Badge>
             )}

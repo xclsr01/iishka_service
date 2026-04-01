@@ -167,3 +167,25 @@ export async function activateDevSubscription(userId: string) {
     },
   });
 }
+
+export async function unsubscribeDevSubscription(userId: string) {
+  if (!env.ENABLE_DEV_SUBSCRIPTION_OVERRIDE) {
+    throw new AppError('Dev subscription override disabled', 403, 'FORBIDDEN');
+  }
+
+  const existing = await getCurrentSubscription(userId);
+  return prisma.subscription.update({
+    where: { id: existing.id },
+    data: {
+      status: SubscriptionStatus.INACTIVE,
+      tokensAllowed: 0,
+      tokensUsed: 0,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      isAutoRenew: false,
+      metadata: {
+        source: 'dev-unsubscribe',
+      },
+    },
+  });
+}

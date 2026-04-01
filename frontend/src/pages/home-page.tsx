@@ -10,18 +10,19 @@ export function HomePage({
   providers,
   subscription,
   onActivateDevSubscription,
+  onUnsubscribeDevSubscription,
   isActivatingSubscription,
+  isUnsubscribingSubscription,
 }: {
   user: User;
   providers: Provider[];
   subscription: Subscription;
   onActivateDevSubscription: () => Promise<void>;
+  onUnsubscribeDevSubscription: () => Promise<void>;
   isActivatingSubscription: boolean;
+  isUnsubscribingSubscription: boolean;
 }) {
-  const tokenDisplay =
-    typeof (subscription as Subscription & { tokensRemaining?: number }).tokensRemaining === 'number'
-      ? (subscription as Subscription & { tokensRemaining: number }).tokensRemaining
-      : null;
+  const tokenDisplay = subscription.tokensRemaining;
 
   return (
     <>
@@ -66,28 +67,36 @@ export function HomePage({
             </p>
           </div>
           <div className="flex flex-col items-start gap-3 sm:items-end">
-            <div className="rounded-2xl bg-white/80 px-3 py-2 text-left shadow-soft sm:text-right">
-              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                Tokens
+            <div className="min-w-[132px] rounded-2xl border border-primary/35 bg-primary px-4 py-3 text-left text-primary-foreground shadow-soft sm:text-right">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary-foreground/70">
+                Tokens left
               </div>
-              <div className="font-display text-xl font-bold leading-none">
-                {subscription.tokensRemaining}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {subscription.tokensUsed}/{subscription.tokensAllowed} used
+              <div className="mt-1 font-display text-2xl font-bold leading-none">
+                {tokenDisplay}
               </div>
             </div>
-            {!subscription.hasAccess && (
+            <div className="flex w-full flex-col gap-2 sm:w-auto">
+              {!subscription.hasAccess && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full sm:w-auto"
+                  disabled={isActivatingSubscription || isUnsubscribingSubscription}
+                  onClick={onActivateDevSubscription}
+                >
+                  {isActivatingSubscription ? 'Activating...' : 'Get subscription'}
+                </Button>
+              )}
               <Button
                 type="button"
-                variant="secondary"
-                className="w-full sm:w-auto"
-                disabled={isActivatingSubscription}
-                onClick={onActivateDevSubscription}
+                variant="ghost"
+                className="w-full border-destructive/25 bg-destructive/10 text-destructive hover:bg-destructive/15 sm:w-auto"
+                disabled={isActivatingSubscription || isUnsubscribingSubscription}
+                onClick={onUnsubscribeDevSubscription}
               >
-                {isActivatingSubscription ? 'Activating...' : 'Get subscription'}
+                {isUnsubscribingSubscription ? 'Unsubscribing...' : 'Unsubscribe'}
               </Button>
-            )}
+            </div>
           </div>
         </div>
       </Card>
