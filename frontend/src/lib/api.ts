@@ -27,6 +27,9 @@ export type Subscription = {
   status: string;
   planCode: string;
   currentPeriodEnd?: string | null;
+  tokensAllowed: number;
+  tokensUsed: number;
+  tokensRemaining: number;
   hasAccess: boolean;
 };
 
@@ -162,6 +165,7 @@ class ApiClient {
     return this.request<{
       userMessage: ChatMessage;
       assistantMessage: ChatMessage;
+      subscription: Subscription;
     }>(`/api/chats/${chatId}/messages`, {
       method: 'POST',
       headers: {

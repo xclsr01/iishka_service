@@ -11,6 +11,8 @@ function buildSubscription(
     userId: 'user_1',
     planCode: 'mvp-monthly',
     status: SubscriptionStatus.INACTIVE,
+    tokensAllowed: 0,
+    tokensUsed: 0,
     currentPeriodStart: null,
     currentPeriodEnd: null,
     providerReference: null,

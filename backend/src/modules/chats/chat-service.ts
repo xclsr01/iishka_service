@@ -15,7 +15,12 @@ import { assertPresent } from '../../lib/http';
 import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
 import { getProviderAdapter } from '../providers/provider-registry';
-import { requireActiveSubscription } from '../subscriptions/subscription-service';
+import {
+  TOKEN_COSTS,
+  consumeSubscriptionTokens,
+  presentSubscription,
+  requireActiveSubscription,
+} from '../subscriptions/subscription-service';
 
 const QUERY_TIMEOUT_MS = 8000;
 
@@ -367,6 +372,7 @@ export async function createMessage(input: {
   const provider = getProviderAdapter(chat.provider.key);
   const fileNote = attachmentsContext(files);
   let assistantMessage;
+  let updatedSubscription;
   try {
     logger.info('create_message_provider_request_started', {
       chatId: chat.id,
@@ -395,6 +401,10 @@ export async function createMessage(input: {
           providerMeta: result.raw as Prisma.InputJsonValue,
         },
       }),
+    );
+    updatedSubscription = await withTimeout(
+      'createMessage.consumeSubscriptionTokens',
+      consumeSubscriptionTokens(input.userId, TOKEN_COSTS.text),
     );
     logger.info('create_message_provider_request_completed', {
       chatId: chat.id,
@@ -442,5 +452,6 @@ export async function createMessage(input: {
   return {
     userMessage: userMessageWithAttachments,
     assistantMessage,
+    subscription: presentSubscription(updatedSubscription),
   };
 }

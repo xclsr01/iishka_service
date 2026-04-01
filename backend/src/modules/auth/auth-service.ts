@@ -7,7 +7,7 @@ import { presentProviders } from '../providers/provider-presentation';
 import {
   ensureDefaultSubscription,
   getCurrentSubscription,
-  isSubscriptionActive,
+  presentSubscription,
 } from '../subscriptions/subscription-service';
 
 export async function bootstrapTelegramUser(initDataRaw: string) {
@@ -59,10 +59,7 @@ export async function bootstrapTelegramUser(initDataRaw: string) {
     token,
     user,
     providers: presentProviders(providers),
-    subscription: {
-      ...subscription,
-      hasAccess: isSubscriptionActive(subscription),
-    },
+    subscription: presentSubscription(subscription),
   };
 }
 
@@ -122,9 +119,6 @@ export async function bootstrapDevUser(sharedSecret: string) {
     token,
     user,
     providers: presentProviders(providers),
-    subscription: {
-      ...subscription,
-      hasAccess: isSubscriptionActive(subscription),
-    },
+    subscription: presentSubscription(subscription),
   };
 }
