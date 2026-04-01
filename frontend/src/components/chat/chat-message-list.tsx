@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { ChatMessage } from '@/lib/api';
 import { cn } from '@/lib/cn';
 
@@ -6,8 +7,14 @@ export function ChatMessageList({
 }: {
   messages: ChatMessage[];
 }) {
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages]);
+
   return (
-    <div className="flex flex-1 flex-col gap-3 overflow-y-auto pb-4">
+    <div className="flex flex-1 flex-col gap-3 overflow-y-auto pb-2 pt-1">
       {messages.map((message) => {
         const isAssistant = message.role === 'ASSISTANT';
 
@@ -42,6 +49,7 @@ export function ChatMessageList({
           </div>
         );
       })}
+      <div ref={bottomRef} />
     </div>
   );
 }

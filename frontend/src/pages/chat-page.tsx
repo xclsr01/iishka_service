@@ -38,7 +38,7 @@ export function ChatPage({
   return (
     <>
       <div className="flex items-center justify-between">
-        <Button asChild variant="ghost" className="px-0">
+        <Button asChild variant="ghost" className="px-0 py-1">
           <Link to="/">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
@@ -47,10 +47,10 @@ export function ChatPage({
         <Badge>{provider.name}</Badge>
       </div>
 
-      <Card className="space-y-2">
+      <Card className="space-y-1.5 px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="font-display text-2xl font-bold">{provider.name}</h1>
+            <h1 className="font-display text-xl font-bold">{provider.name}</h1>
             <p className="text-sm text-muted-foreground">{provider.summary}</p>
             {!provider.isAvailable && provider.availabilityMessage && (
               <p className="mt-2 text-sm text-destructive">{provider.availabilityMessage}</p>
@@ -84,7 +84,7 @@ export function ChatPage({
         </Card>
       )}
 
-      <Card className="flex flex-1 flex-col overflow-hidden">
+      <Card className="flex min-h-[68vh] flex-[0_0_68vh] flex-col overflow-hidden px-4 py-4">
         {messagesLoading ? (
           <div className="flex flex-1 items-center justify-center">
             <Spinner />
