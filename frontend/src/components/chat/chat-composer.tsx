@@ -32,7 +32,7 @@ export function ChatComposer({
   }
 
   return (
-    <div className="rounded-[24px] border border-border bg-card p-2.5 shadow-soft">
+    <div className="rounded-[22px] border border-border/80 bg-[linear-gradient(180deg,rgba(13,19,37,0.96),rgba(9,13,27,0.9))] p-2.5 shadow-soft">
       {pendingFiles.length > 0 && (
         <div className="mb-2">
           <UploadPicker
@@ -56,7 +56,7 @@ export function ChatComposer({
           value={value}
           disabled={disabled || busy}
           placeholder="Ask anything across your selected provider..."
-          className="h-11 min-w-0 flex-1 rounded-full border border-border bg-background px-4 text-base text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50"
+          className="h-11 min-w-0 flex-1 rounded-full border border-border/80 bg-background/80 px-4 text-base text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:border-ring focus-visible:bg-background disabled:cursor-not-allowed disabled:opacity-50"
           onChange={(event) => setValue(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
