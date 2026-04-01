@@ -6,15 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
 const toneByKey: Record<Provider['key'], string> = {
-  OPENAI: 'from-[#e59a4a] to-[#efcf7a]',
-  ANTHROPIC: 'from-[#7a9e88] to-[#dde6cc]',
-  GEMINI: 'from-[#5d87b8] to-[#d9e6ff]',
+  OPENAI: 'from-[#52f3ff] via-[#228bff] to-[#6f7dff]',
+  ANTHROPIC: 'from-[#9b7dff] via-[#7e4fff] to-[#5ae0c8]',
+  GEMINI: 'from-[#ffd15c] via-[#ff8f40] to-[#ff4fd8]',
 };
 
 export function ProviderCard({ provider }: { provider: Provider }) {
   return (
-    <Card className="min-w-[82vw] max-w-[82vw] snap-start overflow-hidden p-0 sm:min-w-[280px] sm:max-w-[280px]">
-      <div className={`h-2 bg-gradient-to-r ${toneByKey[provider.key]}`} />
+    <Card className="min-w-[82vw] max-w-[82vw] snap-start overflow-hidden border-border/70 bg-[linear-gradient(180deg,rgba(15,20,38,0.92),rgba(9,13,27,0.86))] p-0 sm:min-w-[280px] sm:max-w-[280px]">
+      <div className={`h-1.5 bg-gradient-to-r ${toneByKey[provider.key]}`} />
       <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -22,14 +22,14 @@ export function ProviderCard({ provider }: { provider: Provider }) {
             <p className="mt-1 text-sm text-muted-foreground">{provider.summary}</p>
           </div>
           <div className="space-y-2 text-right">
-            <Badge className="bg-white/80 text-foreground">{provider.defaultModel}</Badge>
+            <Badge className="border-primary/30 bg-primary/10 text-primary">{provider.defaultModel}</Badge>
             {!provider.isAvailable && (
-              <Badge className="bg-destructive/10 text-destructive">Unavailable</Badge>
+              <Badge className="border-destructive/30 bg-destructive/10 text-destructive">Unavailable</Badge>
             )}
           </div>
         </div>
 
-        <div className="rounded-3xl bg-white/70 p-3 text-sm text-muted-foreground sm:p-4">
+        <div className="rounded-[20px] border border-border/60 bg-muted/55 p-3 text-sm text-muted-foreground sm:p-4">
           <p>{provider.description}</p>
           {!provider.isAvailable && provider.availabilityMessage && (
             <p className="mt-3 text-destructive">{provider.availabilityMessage}</p>
@@ -37,7 +37,7 @@ export function ProviderCard({ provider }: { provider: Provider }) {
         </div>
 
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
             <Sparkles className="h-4 w-4" />
             File uploads enabled
           </div>

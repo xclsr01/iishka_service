@@ -31,8 +31,10 @@ export function ChatMessageList({
           >
             <div
               className={cn(
-                'max-w-[86%] rounded-[26px] px-4 py-3 text-sm leading-6 shadow-soft',
-                isAssistant ? 'bg-white/90 text-foreground' : 'bg-primary text-primary-foreground',
+                'max-w-[86%] rounded-[22px] border px-4 py-3 text-sm leading-6 shadow-soft',
+                isAssistant
+                  ? 'border-border/70 bg-muted/70 text-foreground'
+                  : 'border-primary/35 bg-primary text-primary-foreground',
               )}
             >
               <div className="whitespace-pre-wrap">{message.content}</div>
@@ -42,8 +44,10 @@ export function ChatMessageList({
                     <div
                       key={attachment.file.id}
                       className={cn(
-                        'rounded-full px-3 py-1 text-xs',
-                        isAssistant ? 'bg-muted text-muted-foreground' : 'bg-white/15',
+                        'rounded-full border px-3 py-1 text-xs',
+                        isAssistant
+                          ? 'border-border/70 bg-background/60 text-muted-foreground'
+                          : 'border-white/20 bg-white/10',
                       )}
                     >
                       {attachment.file.originalName}

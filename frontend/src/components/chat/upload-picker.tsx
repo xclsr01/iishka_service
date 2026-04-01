@@ -20,7 +20,7 @@ export function UploadPicker({
       <label
         className={
           compact
-            ? 'inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border bg-white/85 text-muted-foreground'
+            ? 'inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border/80 bg-muted/80 text-primary'
             : 'inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground'
         }
       >
@@ -42,7 +42,7 @@ export function UploadPicker({
           {pendingFiles.map((file) => (
             <div
               key={file.id}
-              className="inline-flex items-center gap-2 rounded-full bg-white/85 px-3 py-1 text-xs text-foreground"
+              className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/75 px-3 py-1 text-xs text-foreground"
             >
               <span>{file.originalName}</span>
               <Button
