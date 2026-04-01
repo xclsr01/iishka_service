@@ -33,22 +33,39 @@ export function ChatComposer({
   }
 
   return (
-    <div className="rounded-[28px] border border-border bg-card p-3.5 shadow-soft">
-      <UploadPicker
-        pendingFiles={pendingFiles}
-        onFilesSelected={onUpload}
-        onRemove={onRemoveFile}
-        disabled={disabled || busy}
-      />
-      <div className="mt-3 flex items-end gap-3">
+    <div className="rounded-[24px] border border-border bg-card p-3 shadow-soft">
+      {pendingFiles.length > 0 && (
+        <div className="mb-2">
+          <UploadPicker
+            pendingFiles={pendingFiles}
+            onFilesSelected={onUpload}
+            onRemove={onRemoveFile}
+            disabled={disabled || busy}
+          />
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <UploadPicker
+          pendingFiles={[]}
+          onFilesSelected={onUpload}
+          onRemove={onRemoveFile}
+          disabled={disabled || busy}
+          compact
+        />
         <Textarea
           value={value}
           disabled={disabled || busy}
           placeholder="Ask anything across your selected provider..."
-          className="min-h-20 resize-none"
+          rows={1}
+          className="h-12 min-h-12 resize-none rounded-full px-4 py-3"
           onChange={(event) => setValue(event.target.value)}
         />
-        <Button type="button" disabled={disabled || busy || !value.trim()} onClick={submit}>
+        <Button
+          type="button"
+          className="h-12 w-12 shrink-0 px-0"
+          disabled={disabled || busy || !value.trim()}
+          onClick={submit}
+        >
           <SendHorizontal className="h-4 w-4" />
         </Button>
       </div>

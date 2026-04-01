@@ -7,17 +7,25 @@ export function UploadPicker({
   onFilesSelected,
   onRemove,
   disabled,
+  compact,
 }: {
   pendingFiles: FileAsset[];
   onFilesSelected: (files: FileList | null) => void;
   onRemove: (fileId: string) => void;
   disabled?: boolean;
+  compact?: boolean;
 }) {
   return (
-    <div className="space-y-3">
-      <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+    <div className={compact ? 'min-w-0' : 'space-y-3'}>
+      <label
+        className={
+          compact
+            ? 'inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-full border border-border bg-white/85 text-muted-foreground'
+            : 'inline-flex cursor-pointer items-center gap-2 text-sm text-muted-foreground'
+        }
+      >
         <Paperclip className="h-4 w-4" />
-        <span>Upload a file</span>
+        {!compact && <span>Upload a file</span>}
         <input
           className="hidden"
           type="file"
@@ -30,7 +38,7 @@ export function UploadPicker({
       </label>
 
       {pendingFiles.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className={compact ? 'mt-2 flex flex-wrap gap-2' : 'flex flex-wrap gap-2'}>
           {pendingFiles.map((file) => (
             <div
               key={file.id}

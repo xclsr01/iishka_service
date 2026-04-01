@@ -61,41 +61,6 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
     pendingFiles: [],
   });
 
-  async function refreshChat(chatId: string) {
-    const chatResponse = await apiClient.getChat(chatId);
-    setState((current) => ({
-      ...current,
-      chat: chatResponse.chat,
-    }));
-    return chatResponse.chat;
-  }
-
-  useEffect(() => {
-    if (!state.chat?.id) {
-      return;
-    }
-
-    let cancelled = false;
-    const intervalId = window.setInterval(async () => {
-      try {
-        const nextChat = await apiClient.getChat(state.chat!.id);
-        if (!cancelled) {
-          setState((current) => ({
-            ...current,
-            chat: nextChat.chat,
-          }));
-        }
-      } catch {
-        // Silent background refresh failure; explicit user actions surface errors separately.
-      }
-    }, 4000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, [state.chat?.id]);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -211,20 +176,20 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
         fileIds: state.pendingFiles.map((file) => file.id),
       });
 
-      const refreshed = await refreshChat(activeChat.id);
+      const refreshed = await apiClient.getChat(activeChat.id);
       setState((current) => ({
         ...current,
-        chat: refreshed,
+        chat: refreshed.chat,
         pendingFiles: [],
         error: null,
       }));
     } catch (error) {
       if (activeChatId) {
         try {
-          const refreshed = await refreshChat(activeChatId);
+          const refreshed = await apiClient.getChat(activeChatId);
           setState((current) => ({
             ...current,
-            chat: refreshed,
+            chat: refreshed.chat,
             pendingFiles: [],
             error: toUserFacingError(error, 'Message failed'),
           }));
