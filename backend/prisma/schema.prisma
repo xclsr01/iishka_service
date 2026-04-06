@@ -66,6 +66,11 @@ enum GenerationJobKind {
   PROVIDER_ASYNC
 }
 
+enum ProviderUsageOperation {
+  CHAT_GENERATION
+  JOB_GENERATION
+}
+
 model User {
   id               String         @id @default(cuid())
   telegramUserId   String         @unique
@@ -81,6 +86,7 @@ model User {
   subscriptions    Subscription[]
   files            FileAsset[]
   generationJobs   GenerationJob[]
+  providerUsages   ProviderUsage[]
 }
 
 model Provider {
@@ -97,6 +103,7 @@ model Provider {
   updatedAt        DateTime       @updatedAt
   chats            Chat[]
   generationJobs   GenerationJob[]
+  providerUsages   ProviderUsage[]
 }
 
 model Chat {
@@ -112,6 +119,7 @@ model Chat {
   provider     Provider    @relation(fields: [providerId], references: [id], onDelete: Restrict)
   messages     Message[]
   generationJobs GenerationJob[]
+  providerUsages ProviderUsage[]
 
   @@index([userId, updatedAt])
   @@index([providerId])
@@ -131,6 +139,7 @@ model Message {
   chat            Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
   user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   attachments     MessageAttachment[]
+  providerUsages  ProviderUsage[]
 
   @@index([chatId, createdAt])
 }
@@ -205,9 +214,42 @@ model GenerationJob {
   user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   provider          Provider            @relation(fields: [providerId], references: [id], onDelete: Restrict)
   chat              Chat?               @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  providerUsages    ProviderUsage[]
 
   @@index([userId, createdAt])
   @@index([status, queuedAt])
   @@index([providerId, status])
   @@index([chatId])
+}
+
+model ProviderUsage {
+  id                String                @id @default(cuid())
+  userId            String
+  providerId        String
+  chatId            String?
+  messageId         String?
+  generationJobId   String?
+  operation         ProviderUsageOperation
+  model             String
+  requestId         String?
+  upstreamRequestId String?
+  inputTokens       Int?
+  outputTokens      Int?
+  totalTokens       Int?
+  requestUnits      Int?
+  latencyMs         Int?
+  metadata          Json?
+  createdAt         DateTime              @default(now())
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          Provider              @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  chat              Chat?                 @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  message           Message?              @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  generationJob     GenerationJob?        @relation(fields: [generationJobId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([providerId, createdAt])
+  @@index([chatId])
+  @@index([messageId])
+  @@index([generationJobId])
+  @@index([requestId])
 }

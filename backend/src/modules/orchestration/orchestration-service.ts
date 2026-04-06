@@ -86,12 +86,13 @@ export async function executeInteractiveGeneration(
       model: request.model,
       messages: request.messages,
     });
+    const latencyMs = Date.now() - startedAt;
 
     logger.info('provider_execution_completed', {
       providerKey: request.providerKey,
       model: request.model,
       executionMode: provider.metadata.executionMode,
-      latencyMs: Date.now() - startedAt,
+      latencyMs,
       upstreamRequestId: result.upstreamRequestId,
       chatId: request.chatId ?? null,
       userId: request.userId ?? null,
@@ -101,6 +102,7 @@ export async function executeInteractiveGeneration(
       ...result,
       decision,
       capabilities: provider.metadata.capabilities,
+      latencyMs,
     };
   } catch (error) {
     const classified = provider.adapter.classifyError(error);

@@ -31,4 +31,5 @@ export type InteractiveGenerationRequest = {
 export type InteractiveGenerationResult = ProviderGenerateResult & {
   decision: OrchestrationDecision;
   capabilities: ProviderCapabilitySet;
+  latencyMs: number;
 };
