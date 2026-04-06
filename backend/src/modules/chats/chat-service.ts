@@ -15,6 +15,7 @@ import { assertPresent } from '../../lib/http';
 import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
 import { executeInteractiveGeneration } from '../orchestration/orchestration-service';
+import { ProviderAdapterError } from '../providers/provider-types';
 import {
   TOKEN_COSTS,
   consumeSubscriptionTokens,
@@ -451,6 +452,12 @@ export async function createMessage(input: {
     logger.error('create_message_provider_request_failed', {
       chatId: chat.id,
       providerKey: chat.provider.key,
+      code: error instanceof ProviderAdapterError ? error.code : null,
+      category: error instanceof ProviderAdapterError ? error.category : null,
+      retryable: error instanceof ProviderAdapterError ? error.retryable : null,
+      upstreamStatus: error instanceof ProviderAdapterError ? error.upstreamStatus ?? null : null,
+      upstreamRequestId:
+        error instanceof ProviderAdapterError ? error.upstreamRequestId ?? null : null,
       message: error instanceof Error ? error.message : 'unknown',
       stack: error instanceof Error ? error.stack ?? null : null,
     });

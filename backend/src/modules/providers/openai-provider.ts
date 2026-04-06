@@ -9,6 +9,15 @@ import type {
   ProviderGenerateResult,
 } from './provider-types';
 import { ProviderAdapterError as NormalizedProviderError } from './provider-types';
+import {
+  DEFAULT_PROVIDER_TIMEOUT_MS,
+  createProviderEmptyResponseError,
+  createProviderNetworkError,
+  createProviderRegionUnavailableError,
+  createProviderTimeoutError,
+  createUpstreamHttpError,
+  isProviderTimeoutError,
+} from './provider-error-mapping';
 
 export class OpenAiProviderAdapter implements AiProviderAdapter {
   readonly metadata = {
@@ -29,34 +38,33 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
     }
 
     if (error instanceof AppError && error.code === 'PROVIDER_REGION_UNAVAILABLE') {
-      return new NormalizedProviderError({
-        providerKey: ProviderKey.OPENAI,
-        message: error.message,
-        code: error.code,
-        category: 'region_unavailable',
-        retryable: false,
-        statusCode: error.statusCode,
-        details: error.details,
+      return createProviderRegionUnavailableError({
+        key: ProviderKey.OPENAI,
+        label: 'OpenAI',
+        clientMessage: error.message,
       });
     }
 
-    if (error instanceof Error && error.name === 'TimeoutError') {
-      return new NormalizedProviderError({
-        providerKey: ProviderKey.OPENAI,
-        message: 'OpenAI request timed out',
-        code: 'PROVIDER_TIMEOUT',
-        category: 'timeout',
-        retryable: true,
-        statusCode: 504,
+    if (isProviderTimeoutError(error)) {
+      return createProviderTimeoutError({
+        key: ProviderKey.OPENAI,
+        label: 'OpenAI',
       });
     }
 
     if (error instanceof AppError) {
+      if (error.code === 'PROVIDER_EMPTY_RESPONSE') {
+        return createProviderEmptyResponseError({
+          key: ProviderKey.OPENAI,
+          label: 'OpenAI',
+        });
+      }
+
       return new NormalizedProviderError({
         providerKey: ProviderKey.OPENAI,
         message: error.message,
         code: error.code,
-        category: error.code === 'PROVIDER_EMPTY_RESPONSE' ? 'empty_response' : 'upstream',
+        category: 'upstream',
         retryable: error.statusCode >= 500,
         statusCode: error.statusCode,
         details: error.details,
@@ -64,13 +72,10 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
     }
 
     if (error instanceof TypeError) {
-      return new NormalizedProviderError({
-        providerKey: ProviderKey.OPENAI,
-        message: `OpenAI network request failed: ${error.message}`,
-        code: 'PROVIDER_NETWORK_ERROR',
-        category: 'network',
-        retryable: true,
-        statusCode: 502,
+      return createProviderNetworkError({
+        key: ProviderKey.OPENAI,
+        label: 'OpenAI',
+        error,
       });
     }
 
@@ -107,7 +112,7 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
           model: input.model || env.OPENAI_MODEL,
           messages: input.messages,
         }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
       });
     } catch (error) {
       throw this.classifyError(error);
@@ -120,38 +125,23 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
 
       if (body.includes('unsupported_country_region_territory')) {
         throw this.classifyError(
-          new NormalizedProviderError({
-            providerKey: ProviderKey.OPENAI,
-            message:
+          createProviderRegionUnavailableError({
+            key: ProviderKey.OPENAI,
+            label: 'OpenAI',
+            clientMessage:
               'ChatGPT is temporarily unavailable in this deployment region. Use Claude or Gemini, or route OpenAI through a separate proxy/server in a supported region.',
-            code: 'PROVIDER_REGION_UNAVAILABLE',
-            category: 'region_unavailable',
-            retryable: false,
-            statusCode: 503,
-            upstreamStatus: response.status,
             upstreamRequestId,
           }),
         );
       }
 
       throw this.classifyError(
-        new NormalizedProviderError({
-          providerKey: ProviderKey.OPENAI,
-          message: `OpenAI request failed${body ? `: ${body}` : ''}`,
-          code: response.status === 429 ? 'PROVIDER_RATE_LIMITED' : 'PROVIDER_REQUEST_FAILED',
-          category:
-            response.status === 429
-              ? 'rate_limit'
-              : response.status === 401 || response.status === 403
-                ? 'auth'
-                : response.status >= 500
-                  ? 'service_unavailable'
-                  : 'upstream',
-          retryable: response.status === 429 || response.status >= 500,
-          statusCode: 502,
-          upstreamStatus: response.status,
+        createUpstreamHttpError({
+          key: ProviderKey.OPENAI,
+          label: 'OpenAI',
+          status: response.status,
           upstreamRequestId,
-          details: body ? { body } : undefined,
+          rawBody: body,
         }),
       );
     }
@@ -173,7 +163,12 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
 
     const text = data.choices?.[0]?.message?.content?.trim();
     if (!text) {
-      throw this.classifyError(new AppError('OpenAI returned empty content', 502, 'PROVIDER_EMPTY_RESPONSE'));
+      throw this.classifyError(
+        createProviderEmptyResponseError({
+          key: ProviderKey.OPENAI,
+          label: 'OpenAI',
+        }),
+      );
     }
 
     return {
