@@ -1,8 +1,12 @@
 import { AppError } from '../../lib/errors';
+import { logger } from '../../lib/logger';
+import { getRegisteredProvider } from '../providers/provider-registry';
+import type { ProviderCapabilitySet } from '../providers/provider-types';
 import type {
+  InteractiveGenerationRequest,
+  InteractiveGenerationResult,
   OrchestrationDecision,
   OrchestrationRequest,
-  ProviderCapabilitySet,
   ProviderExecutionMode,
 } from './orchestration-types';
 
@@ -44,4 +48,75 @@ export function decideOrchestration(
     mode,
     shouldEnqueueJob: mode === 'async_job',
   };
+}
+
+export async function executeInteractiveGeneration(
+  request: InteractiveGenerationRequest,
+): Promise<InteractiveGenerationResult> {
+  const provider = getRegisteredProvider(request.providerKey);
+  const decision = decideOrchestration(
+    {
+      providerKey: request.providerKey,
+      preferredMode: 'interactive',
+      requiresFileContext: request.requiresFileContext,
+    },
+    provider.metadata.capabilities,
+  );
+
+  if (decision.shouldEnqueueJob) {
+    throw new AppError(
+      'This provider requires async job execution',
+      400,
+      'PROVIDER_REQUIRES_ASYNC_JOB',
+    );
+  }
+
+  const startedAt = Date.now();
+  logger.info('provider_execution_started', {
+    providerKey: request.providerKey,
+    model: request.model,
+    executionMode: provider.metadata.executionMode,
+    chatId: request.chatId ?? null,
+    userId: request.userId ?? null,
+  });
+
+  try {
+    const result = await provider.adapter.generateResponse({
+      providerKey: request.providerKey,
+      model: request.model,
+      messages: request.messages,
+    });
+
+    logger.info('provider_execution_completed', {
+      providerKey: request.providerKey,
+      model: request.model,
+      executionMode: provider.metadata.executionMode,
+      latencyMs: Date.now() - startedAt,
+      upstreamRequestId: result.upstreamRequestId,
+      chatId: request.chatId ?? null,
+      userId: request.userId ?? null,
+    });
+
+    return {
+      ...result,
+      decision,
+      capabilities: provider.metadata.capabilities,
+    };
+  } catch (error) {
+    const classified = provider.adapter.classifyError(error);
+    logger.error('provider_execution_failed', {
+      providerKey: request.providerKey,
+      model: request.model,
+      executionMode: provider.metadata.executionMode,
+      latencyMs: Date.now() - startedAt,
+      errorCode: classified.code,
+      errorCategory: classified.category,
+      retryable: classified.retryable,
+      upstreamStatus: classified.upstreamStatus ?? null,
+      upstreamRequestId: classified.upstreamRequestId ?? null,
+      chatId: request.chatId ?? null,
+      userId: request.userId ?? null,
+    });
+    throw classified;
+  }
 }

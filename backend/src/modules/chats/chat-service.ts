@@ -14,7 +14,7 @@ import { AppError } from '../../lib/errors';
 import { assertPresent } from '../../lib/http';
 import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
-import { getProviderAdapter } from '../providers/provider-registry';
+import { executeInteractiveGeneration } from '../orchestration/orchestration-service';
 import {
   TOKEN_COSTS,
   consumeSubscriptionTokens,
@@ -369,7 +369,6 @@ export async function createMessage(input: {
     }),
   );
 
-  const provider = getProviderAdapter(chat.provider.key);
   const fileNote = attachmentsContext(files);
   let assistantMessage;
   let updatedSubscription;
@@ -381,10 +380,13 @@ export async function createMessage(input: {
     });
     const result = await withTimeout(
       'createMessage.providerGenerateResponse',
-      provider.generateResponse({
+      executeInteractiveGeneration({
         providerKey: chat.provider.key,
         model: chat.provider.defaultModel,
         messages: mapHistory(history, fileNote),
+        requiresFileContext: files.length > 0,
+        chatId: chat.id,
+        userId: input.userId,
       }),
       20000,
     );
@@ -398,7 +400,13 @@ export async function createMessage(input: {
           role: 'ASSISTANT',
           content: result.text,
           status: MessageStatus.COMPLETED,
-          providerMeta: result.raw as Prisma.InputJsonValue,
+          providerMeta: {
+            ...result.raw,
+            executionMode: result.decision.mode,
+            capabilities: result.capabilities,
+            usage: result.usage,
+            upstreamRequestId: result.upstreamRequestId,
+          } as Prisma.InputJsonValue,
         },
       }),
     );
