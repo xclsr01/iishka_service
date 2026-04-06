@@ -1,6 +1,7 @@
 import { SubscriptionStatus, type Subscription } from '@prisma/client';
 import { env } from '../../env';
 import { AppError } from '../../lib/errors';
+import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
 
 const ACTIVE_STATUSES: SubscriptionStatus[] = [
@@ -152,7 +153,12 @@ export async function activateDevSubscription(userId: string) {
   const nextMonth = new Date(now.getTime() + 31 * 24 * 60 * 60 * 1000);
 
   const existing = await getCurrentSubscription(userId);
-  return prisma.subscription.update({
+  logger.info('subscription_dev_activate_started', {
+    subscriptionId: existing.id,
+    userId,
+  });
+
+  const result = await prisma.subscription.updateMany({
     where: { id: existing.id },
     data: {
       status: SubscriptionStatus.ACTIVE,
@@ -161,11 +167,26 @@ export async function activateDevSubscription(userId: string) {
       currentPeriodStart: now,
       currentPeriodEnd: nextMonth,
       isAutoRenew: false,
-      metadata: {
-        source: 'dev-override',
-      },
     },
   });
+
+  if (result.count === 0) {
+    throw new AppError('Subscription not found', 404, 'SUBSCRIPTION_NOT_FOUND');
+  }
+
+  const subscription = await prisma.subscription.findUniqueOrThrow({
+    where: { id: existing.id },
+  });
+
+  logger.info('subscription_dev_activate_completed', {
+    subscriptionId: subscription.id,
+    userId,
+    status: subscription.status,
+    tokensAllowed: subscription.tokensAllowed,
+    tokensUsed: subscription.tokensUsed,
+  });
+
+  return subscription;
 }
 
 export async function unsubscribeDevSubscription(userId: string) {
@@ -174,7 +195,12 @@ export async function unsubscribeDevSubscription(userId: string) {
   }
 
   const existing = await getCurrentSubscription(userId);
-  return prisma.subscription.update({
+  logger.info('subscription_dev_unsubscribe_started', {
+    subscriptionId: existing.id,
+    userId,
+  });
+
+  const result = await prisma.subscription.updateMany({
     where: { id: existing.id },
     data: {
       status: SubscriptionStatus.INACTIVE,
@@ -183,9 +209,24 @@ export async function unsubscribeDevSubscription(userId: string) {
       currentPeriodStart: null,
       currentPeriodEnd: null,
       isAutoRenew: false,
-      metadata: {
-        source: 'dev-unsubscribe',
-      },
     },
   });
+
+  if (result.count === 0) {
+    throw new AppError('Subscription not found', 404, 'SUBSCRIPTION_NOT_FOUND');
+  }
+
+  const subscription = await prisma.subscription.findUniqueOrThrow({
+    where: { id: existing.id },
+  });
+
+  logger.info('subscription_dev_unsubscribe_completed', {
+    subscriptionId: subscription.id,
+    userId,
+    status: subscription.status,
+    tokensAllowed: subscription.tokensAllowed,
+    tokensUsed: subscription.tokensUsed,
+  });
+
+  return subscription;
 }

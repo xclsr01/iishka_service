@@ -14,10 +14,7 @@ export function runWithLogContext<T>(context: LogContext, callback: () => T): T 
 
 export function appendLogContext(context: Partial<LogContext>) {
   const current = logContextStorage.getStore() ?? {};
-  logContextStorage.enterWith({
-    ...current,
-    ...context,
-  });
+  Object.assign(current, context);
 }
 
 export function getLogContext() {
