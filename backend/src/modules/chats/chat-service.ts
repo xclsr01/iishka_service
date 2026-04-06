@@ -21,6 +21,7 @@ import {
   presentSubscription,
   requireActiveSubscription,
 } from '../subscriptions/subscription-service';
+import { persistProviderUsage } from '../usage/usage-service';
 
 const QUERY_TIMEOUT_MS = 8000;
 
@@ -413,6 +414,34 @@ export async function createMessage(input: {
     updatedSubscription = await withTimeout(
       'createMessage.consumeSubscriptionTokens',
       consumeSubscriptionTokens(input.userId, TOKEN_COSTS.text),
+    );
+    await withTimeout(
+      'createMessage.persistProviderUsage',
+      persistProviderUsage({
+        userId: input.userId,
+        providerId: chat.provider.id,
+        chatId: chat.id,
+        messageId: assistantMessage.id,
+        operation: 'CHAT_GENERATION',
+        model: chat.provider.defaultModel,
+        upstreamRequestId: result.upstreamRequestId,
+        inputTokens: result.usage?.inputTokens ?? null,
+        outputTokens: result.usage?.outputTokens ?? null,
+        totalTokens: result.usage?.totalTokens ?? null,
+        requestUnits: result.usage?.requestUnits ?? null,
+        latencyMs: result.latencyMs,
+        metadata: {
+          executionMode: result.decision.mode,
+          capabilities: result.capabilities,
+          rawUsage: result.usage?.raw ?? null,
+        },
+      }).catch((usageError) => {
+        logger.error('provider_usage_record_failed', {
+          chatId: chat.id,
+          providerKey: chat.provider.key,
+          message: usageError instanceof Error ? usageError.message : 'unknown',
+        });
+      }),
     );
     logger.info('create_message_provider_request_completed', {
       chatId: chat.id,

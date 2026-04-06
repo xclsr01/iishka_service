@@ -2,6 +2,7 @@ import type { Context, Next } from 'hono';
 import { env } from '../env';
 import { verifySession } from '../lib/auth';
 import { AppError } from '../lib/errors';
+import { appendLogContext } from '../lib/request-context';
 import { prisma } from '../lib/prisma';
 import type { AppVariables } from '../types';
 
@@ -30,6 +31,10 @@ export async function authMiddleware(c: TypedContext, next: Next) {
     username: payload.username ?? null,
   });
   c.set('currentUser', user);
+  appendLogContext({
+    userId: user.id,
+    telegramUserId: user.telegramUserId,
+  });
 
   await next();
 }

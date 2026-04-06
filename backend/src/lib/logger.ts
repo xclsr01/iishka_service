@@ -1,8 +1,24 @@
+import { getLogContext } from './request-context';
+
+type LogLevel = 'info' | 'error';
+
+function writeLog(level: LogLevel, message: string, meta?: Record<string, unknown>) {
+  const payload = {
+    timestamp: new Date().toISOString(),
+    level,
+    message,
+    ...getLogContext(),
+    ...(meta ?? {}),
+  };
+
+  console[level](JSON.stringify(payload));
+}
+
 export const logger = {
   info(message: string, meta?: Record<string, unknown>) {
-    console.info(message, meta ?? {});
+    writeLog('info', message, meta);
   },
   error(message: string, meta?: Record<string, unknown>) {
-    console.error(message, meta ?? {});
+    writeLog('error', message, meta);
   },
 };
