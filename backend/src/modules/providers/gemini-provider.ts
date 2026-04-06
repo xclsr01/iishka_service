@@ -9,6 +9,14 @@ import type {
   ProviderGenerateResult,
 } from './provider-types';
 import { ProviderAdapterError as NormalizedProviderError } from './provider-types';
+import {
+  DEFAULT_PROVIDER_TIMEOUT_MS,
+  createProviderEmptyResponseError,
+  createProviderNetworkError,
+  createProviderTimeoutError,
+  createUpstreamHttpError,
+  isProviderTimeoutError,
+} from './provider-error-mapping';
 
 export class GeminiProviderAdapter implements AiProviderAdapter {
   readonly metadata = {
@@ -28,23 +36,26 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
       return error;
     }
 
-    if (error instanceof Error && error.name === 'TimeoutError') {
-      return new NormalizedProviderError({
-        providerKey: ProviderKey.GEMINI,
-        message: 'Gemini request timed out',
-        code: 'PROVIDER_TIMEOUT',
-        category: 'timeout',
-        retryable: true,
-        statusCode: 504,
+    if (isProviderTimeoutError(error)) {
+      return createProviderTimeoutError({
+        key: ProviderKey.GEMINI,
+        label: 'Gemini',
       });
     }
 
     if (error instanceof AppError) {
+      if (error.code === 'PROVIDER_EMPTY_RESPONSE') {
+        return createProviderEmptyResponseError({
+          key: ProviderKey.GEMINI,
+          label: 'Gemini',
+        });
+      }
+
       return new NormalizedProviderError({
         providerKey: ProviderKey.GEMINI,
         message: error.message,
         code: error.code,
-        category: error.code === 'PROVIDER_EMPTY_RESPONSE' ? 'empty_response' : 'upstream',
+        category: 'upstream',
         retryable: error.statusCode >= 500,
         statusCode: error.statusCode,
         details: error.details,
@@ -52,13 +63,10 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
     }
 
     if (error instanceof TypeError) {
-      return new NormalizedProviderError({
-        providerKey: ProviderKey.GEMINI,
-        message: `Gemini network request failed: ${error.message}`,
-        code: 'PROVIDER_NETWORK_ERROR',
-        category: 'network',
-        retryable: true,
-        statusCode: 502,
+      return createProviderNetworkError({
+        key: ProviderKey.GEMINI,
+        label: 'Gemini',
+        error,
       });
     }
 
@@ -99,7 +107,7 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
               },
             ],
           }),
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
         },
       );
     } catch (error) {
@@ -109,22 +117,11 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
     if (!response.ok) {
       const body = await response.text().catch(() => '');
       throw this.classifyError(
-        new NormalizedProviderError({
-          providerKey: ProviderKey.GEMINI,
-          message: `Gemini request failed${body ? `: ${body}` : ''}`,
-          code: response.status === 429 ? 'PROVIDER_RATE_LIMITED' : 'PROVIDER_REQUEST_FAILED',
-          category:
-            response.status === 429
-              ? 'rate_limit'
-              : response.status === 401 || response.status === 403
-                ? 'auth'
-                : response.status >= 500
-                  ? 'service_unavailable'
-                  : 'upstream',
-          retryable: response.status === 429 || response.status >= 500,
-          statusCode: 502,
-          upstreamStatus: response.status,
-          details: body ? { body } : undefined,
+        createUpstreamHttpError({
+          key: ProviderKey.GEMINI,
+          label: 'Gemini',
+          status: response.status,
+          rawBody: body,
         }),
       );
     }
@@ -141,7 +138,10 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
     if (!text) {
       throw this.classifyError(
-        new AppError('Gemini returned empty content', 502, 'PROVIDER_EMPTY_RESPONSE'),
+        createProviderEmptyResponseError({
+          key: ProviderKey.GEMINI,
+          label: 'Gemini',
+        }),
       );
     }
 

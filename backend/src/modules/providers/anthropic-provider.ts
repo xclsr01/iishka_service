@@ -9,6 +9,14 @@ import type {
   ProviderGenerateResult,
 } from './provider-types';
 import { ProviderAdapterError as NormalizedProviderError } from './provider-types';
+import {
+  DEFAULT_PROVIDER_TIMEOUT_MS,
+  createProviderEmptyResponseError,
+  createProviderNetworkError,
+  createProviderTimeoutError,
+  createUpstreamHttpError,
+  isProviderTimeoutError,
+} from './provider-error-mapping';
 
 export class AnthropicProviderAdapter implements AiProviderAdapter {
   readonly metadata = {
@@ -28,23 +36,26 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
       return error;
     }
 
-    if (error instanceof Error && error.name === 'TimeoutError') {
-      return new NormalizedProviderError({
-        providerKey: ProviderKey.ANTHROPIC,
-        message: 'Anthropic request timed out',
-        code: 'PROVIDER_TIMEOUT',
-        category: 'timeout',
-        retryable: true,
-        statusCode: 504,
+    if (isProviderTimeoutError(error)) {
+      return createProviderTimeoutError({
+        key: ProviderKey.ANTHROPIC,
+        label: 'Anthropic',
       });
     }
 
     if (error instanceof AppError) {
+      if (error.code === 'PROVIDER_EMPTY_RESPONSE') {
+        return createProviderEmptyResponseError({
+          key: ProviderKey.ANTHROPIC,
+          label: 'Anthropic',
+        });
+      }
+
       return new NormalizedProviderError({
         providerKey: ProviderKey.ANTHROPIC,
         message: error.message,
         code: error.code,
-        category: error.code === 'PROVIDER_EMPTY_RESPONSE' ? 'empty_response' : 'upstream',
+        category: 'upstream',
         retryable: error.statusCode >= 500,
         statusCode: error.statusCode,
         details: error.details,
@@ -52,13 +63,10 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
     }
 
     if (error instanceof TypeError) {
-      return new NormalizedProviderError({
-        providerKey: ProviderKey.ANTHROPIC,
-        message: `Anthropic network request failed: ${error.message}`,
-        code: 'PROVIDER_NETWORK_ERROR',
-        category: 'network',
-        retryable: true,
-        statusCode: 502,
+      return createProviderNetworkError({
+        key: ProviderKey.ANTHROPIC,
+        label: 'Anthropic',
+        error,
       });
     }
 
@@ -96,7 +104,7 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
           system,
           messages,
         }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
       });
     } catch (error) {
       throw this.classifyError(error);
@@ -105,24 +113,13 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
     if (!response.ok) {
       const body = await response.text().catch(() => '');
       throw this.classifyError(
-        new NormalizedProviderError({
-          providerKey: ProviderKey.ANTHROPIC,
-          message: `Anthropic request failed${body ? `: ${body}` : ''}`,
-          code: response.status === 429 ? 'PROVIDER_RATE_LIMITED' : 'PROVIDER_REQUEST_FAILED',
-          category:
-            response.status === 429
-              ? 'rate_limit'
-              : response.status === 401 || response.status === 403
-                ? 'auth'
-                : response.status >= 500
-                  ? 'service_unavailable'
-                  : 'upstream',
-          retryable: response.status === 429 || response.status >= 500,
-          statusCode: 502,
-          upstreamStatus: response.status,
+        createUpstreamHttpError({
+          key: ProviderKey.ANTHROPIC,
+          label: 'Anthropic',
+          status: response.status,
           upstreamRequestId:
             response.headers.get('request-id') ?? response.headers.get('x-request-id'),
-          details: body ? { body } : undefined,
+          rawBody: body,
         }),
       );
     }
@@ -139,7 +136,10 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
     const text = data.content?.find((item) => item.type === 'text')?.text?.trim();
     if (!text) {
       throw this.classifyError(
-        new AppError('Anthropic returned empty content', 502, 'PROVIDER_EMPTY_RESPONSE'),
+        createProviderEmptyResponseError({
+          key: ProviderKey.ANTHROPIC,
+          label: 'Anthropic',
+        }),
       );
     }
 
