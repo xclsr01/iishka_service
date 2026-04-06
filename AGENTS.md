@@ -38,13 +38,14 @@
 - `files`: upload validation, storage adapters, future scanning hooks
 - `subscriptions`: plan state, entitlements, usage gating, future billing seam
 - `usage`: metering, quotas, request accounting, per-provider usage tracking
-- `observability`: request logs, tracing metadata, provider latency/error metrics
+- `users`: authenticated current-user endpoints
+- `observability`: request logs, tracing metadata, provider latency/error metrics, currently implemented through shared lib + middleware primitives
 
 ## Folder responsibilities
 - `/backend/prisma`: schema, migrations, seeds
 - `/backend/src/app.ts`: app composition and route mounting only
 - `/backend/src/env.ts`: env parsing and runtime config policy
-- `/backend/src/lib`: shared backend primitives such as auth, error mapping, logging, metrics, Prisma, ids, clock, retry helpers
+- `/backend/src/lib`: shared backend primitives such as auth, error mapping, logging, request correlation, Prisma, ids, clock, and retry helpers
 - `/backend/src/middleware`: request-scoped cross-cutting concerns
 - `/backend/src/modules/auth`: Telegram Mini App bootstrap and session issuance
 - `/backend/src/modules/catalog`: provider and model catalog read API
@@ -52,11 +53,12 @@
 - `/backend/src/modules/files`: upload validation and storage adapters
 - `/backend/src/modules/jobs`: async job creation, polling, status updates, callback handling
 - `/backend/src/modules/orchestration`: provider selection, fallback, retry, timeout policy, execution path
-- `/backend/src/modules/providers`: provider abstraction and vendor adapters
+- `/backend/src/modules/providers`: provider abstraction, vendor adapter files, registry, capability metadata, and upstream error mapping
 - `/backend/src/modules/subscriptions`: subscription state, gating, future billing adapter seam
 - `/backend/src/modules/telegram`: Telegram bot webhook behavior
 - `/backend/src/modules/usage`: metering, quotas, and provider usage records
-- `/backend/src/modules/observability`: structured logs, metrics labels, request correlation
+- `/backend/src/modules/users`: authenticated current-user endpoints
+- observability is currently implemented through `backend/src/lib/logger.ts`, `backend/src/lib/request-context.ts`, and middleware rather than a dedicated `/modules/observability` package
 - `/frontend/src/app`: app shell and route composition
 - `/frontend/src/lib`: frontend env, Telegram integration, API client
 - `/frontend/src/components`: reusable UI and domain components
@@ -75,6 +77,7 @@
 ## Provider design rules
 - Every provider must implement a common contract, but adapters may expose capability flags
 - Capability examples: `supportsText`, `supportsImage`, `supportsStreaming`, `supportsAsyncJobs`, `supportsFiles`
+- Provider adapters currently live as files under `backend/src/modules/providers`; do not create a separate `adapters/` folder unless the package becomes crowded enough to justify it
 - Adapters must normalize:
   - auth
   - request payload construction
@@ -116,6 +119,7 @@
 
 ## Observability rules
 - Every inbound request should have a request id / correlation id
+- Use the request context helpers so logs automatically inherit correlation metadata
 - Every provider call should log:
   - provider
   - model
@@ -124,6 +128,7 @@
   - status
   - retry count
   - upstream request id if available
+- Prefer structured JSON logs over ad hoc strings
 - Record usage data separately from application logs
 - Make provider fallback decisions visible in logs and metrics
 - Avoid logging user prompts in plain text unless explicitly required and properly protected
@@ -168,7 +173,7 @@
 ## How to add a new provider
 1. Add provider metadata to the persistent catalog only if the product needs it.
 2. Seed the provider in `backend/prisma/seed.ts`.
-3. Create a new adapter in `backend/src/modules/providers/adapters`.
+3. Create a new adapter file in `backend/src/modules/providers`.
 4. Register it in `backend/src/modules/providers/provider-registry.ts`.
 5. Ensure the adapter conforms to the provider contract and exposes capability flags.
 6. Add provider-specific request mappers or file handling inside the provider module only.
@@ -182,7 +187,7 @@
 2. Put input validation at the route boundary with `zod`.
 3. Keep orchestration in a service module, not inline in the route handler.
 4. Mount the route from `backend/src/app.ts`.
-5. Reuse auth middleware, request id middleware, and error conventions instead of creating one-off patterns.
+5. Reuse auth middleware, request id middleware, structured logging, and shared error conventions instead of creating one-off patterns.
 6. If the route triggers a long-running action, route it through the jobs module instead of blocking the request.
 
 ## How to evolve Prisma safely
@@ -215,6 +220,7 @@
 - Add tests for retry/fallback/error mapping behavior
 - Add tests for async job lifecycle and callback processing
 - Add tests for authorization boundaries on chats, files, and jobs
+- Add tests for usage persistence and structured provider logging where the logic is non-trivial
 - Prefer deterministic tests with mocked provider responses
 
 ## Anti-patterns to avoid
