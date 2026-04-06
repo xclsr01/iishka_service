@@ -1,21 +1,55 @@
-import type { ProviderKey } from '@prisma/client';
+import type {
+  GenerationJob,
+  GenerationJobKind,
+  GenerationJobStatus,
+  Provider,
+  ProviderKey,
+} from '@prisma/client';
 
-export type GenerationJobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled';
-
-export type GenerationJobKind = 'image' | 'music' | 'video' | 'provider_async';
-
-export type GenerationJobInput = {
+export type CreateGenerationJobInput = {
   userId: string;
+  providerId: string;
+  kind: GenerationJobKind;
+  prompt: string;
+  chatId?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type EnqueueGenerationJobInput = {
+  jobId: string;
   providerKey: ProviderKey;
   kind: GenerationJobKind;
   prompt: string;
   chatId?: string;
-  messageId?: string;
   metadata?: Record<string, unknown>;
 };
 
-export type QueuedGenerationJob = {
+export type PresentedGenerationJob = {
+  id: string;
+  kind: GenerationJobKind;
   status: GenerationJobStatus;
-  input: GenerationJobInput;
+  prompt: string;
+  failureCode: string | null;
+  failureMessage: string | null;
+  externalJobId: string | null;
+  providerRequestId: string | null;
+  attemptCount: number;
   queuedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  chatId: string | null;
+  provider: {
+    id: string;
+    key: ProviderKey;
+    name: string;
+    slug: string;
+    defaultModel: string;
+  };
+  resultPayload: unknown;
+};
+
+export type GenerationJobRecord = GenerationJob & {
+  provider: Provider;
 };

@@ -51,6 +51,21 @@ enum FileStatus {
   QUARANTINED
 }
 
+enum GenerationJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum GenerationJobKind {
+  IMAGE
+  MUSIC
+  VIDEO
+  PROVIDER_ASYNC
+}
+
 model User {
   id               String         @id @default(cuid())
   telegramUserId   String         @unique
@@ -65,6 +80,7 @@ model User {
   messages         Message[]
   subscriptions    Subscription[]
   files            FileAsset[]
+  generationJobs   GenerationJob[]
 }
 
 model Provider {
@@ -80,6 +96,7 @@ model Provider {
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
   chats            Chat[]
+  generationJobs   GenerationJob[]
 }
 
 model Chat {
@@ -94,6 +111,7 @@ model Chat {
   user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   provider     Provider    @relation(fields: [providerId], references: [id], onDelete: Restrict)
   messages     Message[]
+  generationJobs GenerationJob[]
 
   @@index([userId, updatedAt])
   @@index([providerId])
@@ -161,4 +179,35 @@ model Subscription {
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
+}
+
+model GenerationJob {
+  id                String              @id @default(cuid())
+  userId            String
+  providerId        String
+  chatId            String?
+  kind              GenerationJobKind
+  status            GenerationJobStatus @default(QUEUED)
+  prompt            String
+  inputPayload      Json?
+  resultPayload     Json?
+  metadata          Json?
+  failureCode       String?
+  failureMessage    String?
+  providerRequestId String?
+  externalJobId     String?
+  attemptCount      Int                 @default(0)
+  queuedAt          DateTime            @default(now())
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          Provider            @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  chat              Chat?               @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, queuedAt])
+  @@index([providerId, status])
+  @@index([chatId])
 }

@@ -13,6 +13,7 @@ import { authRoutes } from './modules/auth/auth-routes';
 import { catalogRoutes } from './modules/catalog/catalog-routes';
 import { chatRoutes } from './modules/chats/chat-routes';
 import { fileRoutes } from './modules/files/file-routes';
+import { jobsRoutes } from './modules/jobs/jobs-routes';
 import { subscriptionRoutes } from './modules/subscriptions/subscription-routes';
 import { telegramRoutes } from './modules/telegram/telegram-routes';
 import { userRoutes } from './modules/users/user-routes';
@@ -68,6 +69,7 @@ export function createApp() {
   app.route('/api/catalog', catalogRoutes);
   app.route('/api/chats', chatRoutes);
   app.route('/api/files', fileRoutes);
+  app.route('/api/jobs', jobsRoutes);
   app.route('/api/subscription', subscriptionRoutes);
   app.route('/api/telegram', telegramRoutes);
 
