@@ -5,13 +5,13 @@ import {
   type Prisma,
   type Provider,
 } from '@prisma/client';
-import { AppError } from '../../lib/errors';
 import { assertPresent } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
 import { getRegisteredProvider } from '../providers/provider-registry';
 import { decideOrchestration } from '../orchestration/orchestration-service';
 import { generationJobQueue } from './jobs-queue';
 import type {
+  EnqueueGenerationJobOptions,
   CreateGenerationJobInput,
   EnqueueGenerationJobInput,
   GenerationJobRecord,
@@ -82,7 +82,10 @@ function buildQueueInput(job: GenerationJob, provider: Provider): EnqueueGenerat
   };
 }
 
-export async function createGenerationJob(input: CreateGenerationJobInput) {
+export async function createGenerationJob(
+  input: CreateGenerationJobInput,
+  enqueueOptions?: EnqueueGenerationJobOptions,
+) {
   const provider = await resolveJobProvider(input.providerId);
   const registeredProvider = getRegisteredProvider(provider.key);
 
@@ -115,7 +118,7 @@ export async function createGenerationJob(input: CreateGenerationJobInput) {
     },
   });
 
-  await generationJobQueue.enqueue(buildQueueInput(job, provider));
+  await generationJobQueue.enqueue(buildQueueInput(job, provider), enqueueOptions);
 
   return presentGenerationJob(job);
 }
@@ -149,24 +152,48 @@ export async function getGenerationJob(userId: string, jobId: string) {
 }
 
 export async function markGenerationJobRunning(jobId: string) {
-  return prisma.generationJob.update({
-    where: { id: jobId },
+  const result = await prisma.generationJob.updateMany({
+    where: {
+      id: jobId,
+      status: GenerationJobStatus.QUEUED,
+    },
     data: {
       status: GenerationJobStatus.RUNNING,
       startedAt: new Date(),
+      completedAt: null,
+      failureCode: null,
+      failureMessage: null,
       attemptCount: {
         increment: 1,
       },
     },
   });
+
+  if (result.count === 0) {
+    return null;
+  }
+
+  return prisma.generationJob.findUnique({
+    where: { id: jobId },
+    include: {
+      provider: true,
+    },
+  });
 }
 
-export async function completeGenerationJob(jobId: string, resultPayload: Prisma.InputJsonValue) {
+export async function completeGenerationJob(input: {
+  jobId: string;
+  resultPayload: Prisma.InputJsonValue;
+  providerRequestId?: string | null;
+  externalJobId?: string | null;
+}) {
   return prisma.generationJob.update({
-    where: { id: jobId },
+    where: { id: input.jobId },
     data: {
       status: GenerationJobStatus.COMPLETED,
-      resultPayload,
+      resultPayload: input.resultPayload,
+      providerRequestId: input.providerRequestId ?? null,
+      externalJobId: input.externalJobId ?? null,
       completedAt: new Date(),
       failureCode: null,
       failureMessage: null,
@@ -178,6 +205,8 @@ export async function failGenerationJob(input: {
   jobId: string;
   failureCode: string;
   failureMessage: string;
+  providerRequestId?: string | null;
+  externalJobId?: string | null;
 }) {
   return prisma.generationJob.update({
     where: { id: input.jobId },
@@ -185,7 +214,20 @@ export async function failGenerationJob(input: {
       status: GenerationJobStatus.FAILED,
       failureCode: input.failureCode,
       failureMessage: input.failureMessage,
+      providerRequestId: input.providerRequestId ?? null,
+      externalJobId: input.externalJobId ?? null,
       completedAt: new Date(),
     },
   });
+}
+
+export async function getGenerationJobForExecution(jobId: string) {
+  const job = await prisma.generationJob.findUnique({
+    where: { id: jobId },
+    include: {
+      provider: true,
+    },
+  });
+
+  return assertPresent(job, 'Generation job not found');
 }

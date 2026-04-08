@@ -26,6 +26,10 @@ jobsRoutes.get('/', async (c) => {
 jobsRoutes.post('/', async (c) => {
   const user = c.get('currentUser');
   const payload = createGenerationJobSchema.parse(await c.req.json());
+  const executionCtx =
+    'executionCtx' in c && c.executionCtx && typeof c.executionCtx.waitUntil === 'function'
+      ? c.executionCtx
+      : null;
   const job = await createGenerationJob({
     userId: user.id,
     providerId: payload.providerId,
@@ -33,6 +37,8 @@ jobsRoutes.post('/', async (c) => {
     prompt: payload.prompt,
     chatId: payload.chatId,
     metadata: payload.metadata,
+  }, {
+    schedule: executionCtx ? (task) => executionCtx.waitUntil(task) : undefined,
   });
 
   return c.json({ job }, 201);

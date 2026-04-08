@@ -3,6 +3,8 @@ import { logger } from '../../lib/logger';
 import { getRegisteredProvider } from '../providers/provider-registry';
 import type { ProviderCapabilitySet } from '../providers/provider-types';
 import type {
+  AsyncGenerationJobRequest,
+  AsyncGenerationJobResult,
   InteractiveGenerationRequest,
   InteractiveGenerationResult,
   OrchestrationDecision,
@@ -110,6 +112,92 @@ export async function executeInteractiveGeneration(
       providerKey: request.providerKey,
       model: request.model,
       executionMode: provider.metadata.executionMode,
+      latencyMs: Date.now() - startedAt,
+      errorCode: classified.code,
+      errorCategory: classified.category,
+      retryable: classified.retryable,
+      upstreamStatus: classified.upstreamStatus ?? null,
+      upstreamRequestId: classified.upstreamRequestId ?? null,
+      chatId: request.chatId ?? null,
+      userId: request.userId ?? null,
+    });
+    throw classified;
+  }
+}
+
+export async function executeAsyncGenerationJob(
+  request: AsyncGenerationJobRequest,
+): Promise<AsyncGenerationJobResult> {
+  const provider = getRegisteredProvider(request.providerKey);
+  const decision = decideOrchestration(
+    {
+      providerKey: request.providerKey,
+      preferredMode: 'async_job',
+    },
+    provider.metadata.capabilities,
+  );
+
+  if (!decision.shouldEnqueueJob) {
+    throw new AppError(
+      'This provider does not require async job execution',
+      400,
+      'PROVIDER_DOES_NOT_REQUIRE_ASYNC_JOB',
+    );
+  }
+
+  if (!provider.adapter.executeAsyncJob) {
+    throw new AppError(
+      'Async job execution is not implemented for this provider',
+      501,
+      'PROVIDER_ASYNC_JOB_NOT_IMPLEMENTED',
+    );
+  }
+
+  const startedAt = Date.now();
+  logger.info('provider_async_job_started', {
+    providerKey: request.providerKey,
+    model: request.model,
+    kind: request.kind,
+    chatId: request.chatId ?? null,
+    userId: request.userId ?? null,
+  });
+
+  try {
+    const result = await provider.adapter.executeAsyncJob({
+      providerKey: request.providerKey,
+      jobId: request.jobId,
+      kind: request.kind,
+      model: request.model,
+      prompt: request.prompt,
+      chatId: request.chatId,
+      userId: request.userId,
+      metadata: request.metadata,
+    });
+    const latencyMs = Date.now() - startedAt;
+
+    logger.info('provider_async_job_completed', {
+      providerKey: request.providerKey,
+      model: request.model,
+      kind: request.kind,
+      latencyMs,
+      upstreamRequestId: result.upstreamRequestId,
+      externalJobId: result.externalJobId,
+      chatId: request.chatId ?? null,
+      userId: request.userId ?? null,
+    });
+
+    return {
+      ...result,
+      decision,
+      capabilities: provider.metadata.capabilities,
+      latencyMs,
+    };
+  } catch (error) {
+    const classified = provider.adapter.classifyError(error);
+    logger.error('provider_async_job_failed', {
+      providerKey: request.providerKey,
+      model: request.model,
+      kind: request.kind,
       latencyMs: Date.now() - startedAt,
       errorCode: classified.code,
       errorCategory: classified.category,

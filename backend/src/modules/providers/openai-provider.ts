@@ -3,6 +3,8 @@ import { AppError } from '../../lib/errors';
 import { env } from '../../env';
 import type {
   AiProviderAdapter,
+  ProviderAsyncJobInput,
+  ProviderAsyncJobResult,
   ProviderAdapterError,
   ProviderCapabilitySet,
   ProviderGenerateInput,
@@ -27,7 +29,7 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
       supportsText: true,
       supportsImage: false,
       supportsStreaming: false,
-      supportsAsyncJobs: false,
+      supportsAsyncJobs: true,
       supportsFiles: true,
     } satisfies ProviderCapabilitySet,
   } as const;
@@ -187,6 +189,34 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
         : null,
       upstreamRequestId:
         response.headers.get('x-request-id') ?? response.headers.get('request-id') ?? data.id ?? null,
+    };
+  }
+
+  async executeAsyncJob(input: ProviderAsyncJobInput): Promise<ProviderAsyncJobResult> {
+    if (input.kind !== 'PROVIDER_ASYNC') {
+      throw new AppError('OpenAI async job kind is not supported', 400, 'PROVIDER_JOB_KIND_UNSUPPORTED');
+    }
+
+    const result = await this.generateResponse({
+      providerKey: input.providerKey,
+      model: input.model,
+      messages: [
+        {
+          role: 'user',
+          content: input.prompt,
+        },
+      ],
+    });
+
+    return {
+      resultPayload: {
+        kind: input.kind,
+        text: result.text,
+        raw: result.raw,
+      },
+      usage: result.usage,
+      upstreamRequestId: result.upstreamRequestId,
+      externalJobId: null,
     };
   }
 }

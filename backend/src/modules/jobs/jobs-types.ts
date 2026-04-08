@@ -24,6 +24,12 @@ export type EnqueueGenerationJobInput = {
   metadata?: Record<string, unknown>;
 };
 
+export type BackgroundTaskScheduler = (task: Promise<unknown>) => void;
+
+export type EnqueueGenerationJobOptions = {
+  schedule?: BackgroundTaskScheduler;
+};
+
 export type PresentedGenerationJob = {
   id: string;
   kind: GenerationJobKind;

@@ -1,4 +1,4 @@
-import type { ProviderKey } from '@prisma/client';
+import type { GenerationJobKind, ProviderKey } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 
 export type ProviderChatMessage = {
@@ -35,6 +35,24 @@ export type ProviderGenerateResult = {
   raw: Record<string, unknown>;
   usage: ProviderUsage | null;
   upstreamRequestId: string | null;
+};
+
+export type ProviderAsyncJobInput = {
+  providerKey: ProviderKey;
+  jobId: string;
+  kind: GenerationJobKind;
+  model: string;
+  prompt: string;
+  chatId?: string;
+  userId?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type ProviderAsyncJobResult = {
+  resultPayload: Record<string, unknown>;
+  usage: ProviderUsage | null;
+  upstreamRequestId: string | null;
+  externalJobId: string | null;
 };
 
 export type ProviderErrorCategory =
@@ -86,5 +104,6 @@ export type ProviderAdapterMetadata = {
 export interface AiProviderAdapter {
   readonly metadata: ProviderAdapterMetadata;
   generateResponse(input: ProviderGenerateInput): Promise<ProviderGenerateResult>;
+  executeAsyncJob?(input: ProviderAsyncJobInput): Promise<ProviderAsyncJobResult>;
   classifyError(error: unknown): ProviderAdapterError;
 }
