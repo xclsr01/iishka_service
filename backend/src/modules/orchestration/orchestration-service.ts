@@ -1,7 +1,14 @@
 import { AppError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
-import { getRegisteredProvider } from '../providers/provider-registry';
+import { getProviderRuntimeModel, getRegisteredProvider } from '../providers/provider-registry';
+import { ProviderAdapterError } from '../providers/provider-types';
 import type { ProviderCapabilitySet } from '../providers/provider-types';
+import {
+  buildFallbackCandidateOrder,
+  providerSupportsRequest,
+  shouldFallbackProviderError,
+  shouldRetryProviderError,
+} from './orchestration-policy';
 import type {
   AsyncGenerationJobRequest,
   AsyncGenerationJobResult,
@@ -9,6 +16,7 @@ import type {
   InteractiveGenerationResult,
   OrchestrationDecision,
   OrchestrationRequest,
+  ProviderExecutionAttempt,
   ProviderExecutionMode,
 } from './orchestration-types';
 
@@ -55,14 +63,14 @@ export function decideOrchestration(
 export async function executeInteractiveGeneration(
   request: InteractiveGenerationRequest,
 ): Promise<InteractiveGenerationResult> {
-  const provider = getRegisteredProvider(request.providerKey);
+  const requestedProvider = getRegisteredProvider(request.providerKey);
   const decision = decideOrchestration(
     {
       providerKey: request.providerKey,
       preferredMode: 'interactive',
       requiresFileContext: request.requiresFileContext,
     },
-    provider.metadata.capabilities,
+    requestedProvider.metadata.capabilities,
   );
 
   if (decision.shouldEnqueueJob) {
@@ -74,67 +82,155 @@ export async function executeInteractiveGeneration(
   }
 
   const startedAt = Date.now();
-  logger.info('provider_execution_started', {
-    providerKey: request.providerKey,
-    model: request.model,
-    executionMode: provider.metadata.executionMode,
-    chatId: request.chatId ?? null,
-    userId: request.userId ?? null,
+  const attempts: ProviderExecutionAttempt[] = [];
+  const candidateKeys = buildFallbackCandidateOrder(request.providerKey).filter((providerKey, index, all) => {
+    if (all.indexOf(providerKey) !== index) {
+      return false;
+    }
+
+    const candidate = getRegisteredProvider(providerKey);
+    return providerSupportsRequest(candidate.metadata.capabilities, {
+      requiresFileContext: request.requiresFileContext,
+    });
   });
 
-  try {
-    const result = await provider.adapter.generateResponse({
-      providerKey: request.providerKey,
-      model: request.model,
-      messages: request.messages,
-    });
-    const latencyMs = Date.now() - startedAt;
+  let lastError: ProviderAdapterError | null = null;
 
-    logger.info('provider_execution_completed', {
-      providerKey: request.providerKey,
-      model: request.model,
-      executionMode: provider.metadata.executionMode,
-      latencyMs,
-      upstreamRequestId: result.upstreamRequestId,
-      chatId: request.chatId ?? null,
-      userId: request.userId ?? null,
-    });
+  for (let providerIndex = 0; providerIndex < candidateKeys.length; providerIndex += 1) {
+    const candidateKey = candidateKeys[providerIndex];
+    const provider = getRegisteredProvider(candidateKey);
+    const model = candidateKey === request.providerKey ? request.model : getProviderRuntimeModel(candidateKey);
+    const isFallback = providerIndex > 0;
 
-    return {
-      ...result,
-      decision,
-      capabilities: provider.metadata.capabilities,
-      latencyMs,
-    };
-  } catch (error) {
-    const classified = provider.adapter.classifyError(error);
-    logger.error('provider_execution_failed', {
-      providerKey: request.providerKey,
-      model: request.model,
-      executionMode: provider.metadata.executionMode,
-      latencyMs: Date.now() - startedAt,
-      errorCode: classified.code,
-      errorCategory: classified.category,
-      retryable: classified.retryable,
-      upstreamStatus: classified.upstreamStatus ?? null,
-      upstreamRequestId: classified.upstreamRequestId ?? null,
-      chatId: request.chatId ?? null,
-      userId: request.userId ?? null,
-    });
-    throw classified;
+    for (let retryCount = 0; retryCount <= 1; retryCount += 1) {
+      logger.info('provider_execution_started', {
+        providerKey: candidateKey,
+        requestedProviderKey: request.providerKey,
+        model,
+        executionMode: provider.metadata.executionMode,
+        chatId: request.chatId ?? null,
+        userId: request.userId ?? null,
+        isFallback,
+        retryCount,
+      });
+
+      try {
+        const result = await provider.adapter.generateResponse({
+          providerKey: candidateKey,
+          model,
+          messages: request.messages,
+        });
+        const latencyMs = Date.now() - startedAt;
+
+        attempts.push({
+          providerKey: candidateKey,
+          model,
+          status: 'succeeded',
+          isFallback,
+          retryCount,
+          upstreamRequestId: result.upstreamRequestId,
+        });
+
+        logger.info('provider_execution_completed', {
+          providerKey: candidateKey,
+          requestedProviderKey: request.providerKey,
+          model,
+          executionMode: provider.metadata.executionMode,
+          latencyMs,
+          upstreamRequestId: result.upstreamRequestId,
+          chatId: request.chatId ?? null,
+          userId: request.userId ?? null,
+          isFallback,
+          retryCount,
+          fallbackUsed: attempts.some((attempt) => attempt.isFallback && attempt.status === 'succeeded'),
+        });
+
+        return {
+          ...result,
+          decision,
+          capabilities: provider.metadata.capabilities,
+          latencyMs,
+          providerKey: candidateKey,
+          model,
+          fallbackUsed: isFallback,
+          attempts,
+        };
+      } catch (error) {
+        const classified = provider.adapter.classifyError(error);
+        lastError = classified;
+        attempts.push({
+          providerKey: candidateKey,
+          model,
+          status: 'failed',
+          isFallback,
+          retryCount,
+          errorCode: classified.code,
+          errorCategory: classified.category,
+          retryable: classified.retryable,
+          upstreamStatus: classified.upstreamStatus ?? null,
+          upstreamRequestId: classified.upstreamRequestId ?? null,
+        });
+        logger.error('provider_execution_failed', {
+          providerKey: candidateKey,
+          requestedProviderKey: request.providerKey,
+          model,
+          executionMode: provider.metadata.executionMode,
+          latencyMs: Date.now() - startedAt,
+          errorCode: classified.code,
+          errorCategory: classified.category,
+          retryable: classified.retryable,
+          upstreamStatus: classified.upstreamStatus ?? null,
+          upstreamRequestId: classified.upstreamRequestId ?? null,
+          chatId: request.chatId ?? null,
+          userId: request.userId ?? null,
+          isFallback,
+          retryCount,
+        });
+
+        if (shouldRetryProviderError(classified, retryCount)) {
+          logger.info('provider_execution_retry_scheduled', {
+            providerKey: candidateKey,
+            requestedProviderKey: request.providerKey,
+            model,
+            chatId: request.chatId ?? null,
+            userId: request.userId ?? null,
+            retryCount: retryCount + 1,
+            errorCode: classified.code,
+            errorCategory: classified.category,
+          });
+          continue;
+        }
+
+        if (providerIndex < candidateKeys.length - 1 && shouldFallbackProviderError(classified)) {
+          logger.info('provider_execution_fallback_selected', {
+            fromProviderKey: candidateKey,
+            toProviderKey: candidateKeys[providerIndex + 1],
+            requestedProviderKey: request.providerKey,
+            chatId: request.chatId ?? null,
+            userId: request.userId ?? null,
+            errorCode: classified.code,
+            errorCategory: classified.category,
+          });
+        }
+
+        break;
+      }
+    }
   }
+
+  throw lastError ?? new AppError('Provider execution failed', 502, 'PROVIDER_REQUEST_FAILED');
 }
 
 export async function executeAsyncGenerationJob(
   request: AsyncGenerationJobRequest,
 ): Promise<AsyncGenerationJobResult> {
-  const provider = getRegisteredProvider(request.providerKey);
+  const requestedProvider = getRegisteredProvider(request.providerKey);
   const decision = decideOrchestration(
     {
       providerKey: request.providerKey,
       preferredMode: 'async_job',
     },
-    provider.metadata.capabilities,
+    requestedProvider.metadata.capabilities,
   );
 
   if (!decision.shouldEnqueueJob) {
@@ -145,68 +241,158 @@ export async function executeAsyncGenerationJob(
     );
   }
 
-  if (!provider.adapter.executeAsyncJob) {
-    throw new AppError(
-      'Async job execution is not implemented for this provider',
-      501,
-      'PROVIDER_ASYNC_JOB_NOT_IMPLEMENTED',
-    );
-  }
-
   const startedAt = Date.now();
-  logger.info('provider_async_job_started', {
-    providerKey: request.providerKey,
-    model: request.model,
-    kind: request.kind,
-    chatId: request.chatId ?? null,
-    userId: request.userId ?? null,
+  const attempts: ProviderExecutionAttempt[] = [];
+  const candidateKeys = buildFallbackCandidateOrder(request.providerKey).filter((providerKey, index, all) => {
+    if (all.indexOf(providerKey) !== index) {
+      return false;
+    }
+
+    const candidate = getRegisteredProvider(providerKey);
+    return (
+      !!candidate.adapter.executeAsyncJob &&
+      providerSupportsRequest(candidate.metadata.capabilities, {
+        requiresAsyncJobs: true,
+      })
+    );
   });
 
-  try {
-    const result = await provider.adapter.executeAsyncJob({
-      providerKey: request.providerKey,
-      jobId: request.jobId,
-      kind: request.kind,
-      model: request.model,
-      prompt: request.prompt,
-      chatId: request.chatId,
-      userId: request.userId,
-      metadata: request.metadata,
-    });
-    const latencyMs = Date.now() - startedAt;
+  let lastError: ProviderAdapterError | null = null;
 
-    logger.info('provider_async_job_completed', {
-      providerKey: request.providerKey,
-      model: request.model,
-      kind: request.kind,
-      latencyMs,
-      upstreamRequestId: result.upstreamRequestId,
-      externalJobId: result.externalJobId,
-      chatId: request.chatId ?? null,
-      userId: request.userId ?? null,
-    });
+  for (let providerIndex = 0; providerIndex < candidateKeys.length; providerIndex += 1) {
+    const candidateKey = candidateKeys[providerIndex];
+    const provider = getRegisteredProvider(candidateKey);
+    const model = candidateKey === request.providerKey ? request.model : getProviderRuntimeModel(candidateKey);
+    const isFallback = providerIndex > 0;
 
-    return {
-      ...result,
-      decision,
-      capabilities: provider.metadata.capabilities,
-      latencyMs,
-    };
-  } catch (error) {
-    const classified = provider.adapter.classifyError(error);
-    logger.error('provider_async_job_failed', {
-      providerKey: request.providerKey,
-      model: request.model,
-      kind: request.kind,
-      latencyMs: Date.now() - startedAt,
-      errorCode: classified.code,
-      errorCategory: classified.category,
-      retryable: classified.retryable,
-      upstreamStatus: classified.upstreamStatus ?? null,
-      upstreamRequestId: classified.upstreamRequestId ?? null,
-      chatId: request.chatId ?? null,
-      userId: request.userId ?? null,
-    });
-    throw classified;
+    if (!provider.adapter.executeAsyncJob) {
+      continue;
+    }
+
+    for (let retryCount = 0; retryCount <= 1; retryCount += 1) {
+      logger.info('provider_async_job_started', {
+        providerKey: candidateKey,
+        requestedProviderKey: request.providerKey,
+        model,
+        kind: request.kind,
+        chatId: request.chatId ?? null,
+        userId: request.userId ?? null,
+        isFallback,
+        retryCount,
+      });
+
+      try {
+        const result = await provider.adapter.executeAsyncJob({
+          providerKey: candidateKey,
+          jobId: request.jobId,
+          kind: request.kind,
+          model,
+          prompt: request.prompt,
+          chatId: request.chatId,
+          userId: request.userId,
+          metadata: request.metadata,
+        });
+        const latencyMs = Date.now() - startedAt;
+
+        attempts.push({
+          providerKey: candidateKey,
+          model,
+          status: 'succeeded',
+          isFallback,
+          retryCount,
+          upstreamRequestId: result.upstreamRequestId,
+        });
+
+        logger.info('provider_async_job_completed', {
+          providerKey: candidateKey,
+          requestedProviderKey: request.providerKey,
+          model,
+          kind: request.kind,
+          latencyMs,
+          upstreamRequestId: result.upstreamRequestId,
+          externalJobId: result.externalJobId,
+          chatId: request.chatId ?? null,
+          userId: request.userId ?? null,
+          isFallback,
+          retryCount,
+          fallbackUsed: attempts.some((attempt) => attempt.isFallback && attempt.status === 'succeeded'),
+        });
+
+        return {
+          ...result,
+          decision,
+          capabilities: provider.metadata.capabilities,
+          latencyMs,
+          providerKey: candidateKey,
+          model,
+          fallbackUsed: isFallback,
+          attempts,
+        };
+      } catch (error) {
+        const classified = provider.adapter.classifyError(error);
+        lastError = classified;
+        attempts.push({
+          providerKey: candidateKey,
+          model,
+          status: 'failed',
+          isFallback,
+          retryCount,
+          errorCode: classified.code,
+          errorCategory: classified.category,
+          retryable: classified.retryable,
+          upstreamStatus: classified.upstreamStatus ?? null,
+          upstreamRequestId: classified.upstreamRequestId ?? null,
+        });
+
+        logger.error('provider_async_job_failed', {
+          providerKey: candidateKey,
+          requestedProviderKey: request.providerKey,
+          model,
+          kind: request.kind,
+          latencyMs: Date.now() - startedAt,
+          errorCode: classified.code,
+          errorCategory: classified.category,
+          retryable: classified.retryable,
+          upstreamStatus: classified.upstreamStatus ?? null,
+          upstreamRequestId: classified.upstreamRequestId ?? null,
+          chatId: request.chatId ?? null,
+          userId: request.userId ?? null,
+          isFallback,
+          retryCount,
+        });
+
+        if (shouldRetryProviderError(classified, retryCount)) {
+          logger.info('provider_async_job_retry_scheduled', {
+            providerKey: candidateKey,
+            requestedProviderKey: request.providerKey,
+            model,
+            kind: request.kind,
+            retryCount: retryCount + 1,
+            errorCode: classified.code,
+            errorCategory: classified.category,
+            chatId: request.chatId ?? null,
+            userId: request.userId ?? null,
+          });
+          continue;
+        }
+
+        if (providerIndex < candidateKeys.length - 1 && shouldFallbackProviderError(classified)) {
+          logger.info('provider_async_job_fallback_selected', {
+            fromProviderKey: candidateKey,
+            toProviderKey: candidateKeys[providerIndex + 1],
+            requestedProviderKey: request.providerKey,
+            kind: request.kind,
+            errorCode: classified.code,
+            errorCategory: classified.category,
+            chatId: request.chatId ?? null,
+            userId: request.userId ?? null,
+          });
+        }
+
+        break;
+      }
+    }
   }
+
+  throw lastError ?? new AppError('Provider async job failed', 502, 'PROVIDER_REQUEST_FAILED');
 }

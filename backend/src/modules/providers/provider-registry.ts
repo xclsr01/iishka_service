@@ -1,5 +1,6 @@
 import { ProviderKey } from '@prisma/client';
 import { AppError } from '../../lib/errors';
+import { env } from '../../env';
 import { AnthropicProviderAdapter } from './anthropic-provider';
 import { GeminiProviderAdapter } from './gemini-provider';
 import { OpenAiProviderAdapter } from './openai-provider';
@@ -61,4 +62,17 @@ export function getProviderCapabilities(providerKey: ProviderKey): ProviderCapab
 
 export function listRegisteredProviders() {
   return Array.from(registry.values());
+}
+
+export function getProviderRuntimeModel(providerKey: ProviderKey) {
+  switch (providerKey) {
+    case ProviderKey.OPENAI:
+      return env.OPENAI_MODEL;
+    case ProviderKey.ANTHROPIC:
+      return env.ANTHROPIC_MODEL;
+    case ProviderKey.GEMINI:
+      return env.GOOGLE_AI_MODEL;
+    default:
+      throw new AppError('Provider runtime model not configured', 500, 'PROVIDER_MODEL_NOT_CONFIGURED');
+  }
 }

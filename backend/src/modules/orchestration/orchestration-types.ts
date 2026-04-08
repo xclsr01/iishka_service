@@ -1,5 +1,6 @@
 import type { GenerationJobKind, ProviderKey } from '@prisma/client';
 import type {
+  ProviderErrorCategory,
   ProviderAsyncJobResult,
   ProviderCapabilitySet,
   ProviderChatMessage,
@@ -20,6 +21,19 @@ export type OrchestrationDecision = {
   shouldEnqueueJob: boolean;
 };
 
+export type ProviderExecutionAttempt = {
+  providerKey: ProviderKey;
+  model: string;
+  status: 'succeeded' | 'failed';
+  isFallback: boolean;
+  retryCount: number;
+  errorCode?: string;
+  errorCategory?: ProviderErrorCategory;
+  retryable?: boolean;
+  upstreamStatus?: number | null;
+  upstreamRequestId?: string | null;
+};
+
 export type InteractiveGenerationRequest = {
   providerKey: ProviderKey;
   model: string;
@@ -33,6 +47,10 @@ export type InteractiveGenerationResult = ProviderGenerateResult & {
   decision: OrchestrationDecision;
   capabilities: ProviderCapabilitySet;
   latencyMs: number;
+  providerKey: ProviderKey;
+  model: string;
+  fallbackUsed: boolean;
+  attempts: ProviderExecutionAttempt[];
 };
 
 export type AsyncGenerationJobRequest = {
@@ -50,4 +68,8 @@ export type AsyncGenerationJobResult = ProviderAsyncJobResult & {
   decision: OrchestrationDecision;
   capabilities: ProviderCapabilitySet;
   latencyMs: number;
+  providerKey: ProviderKey;
+  model: string;
+  fallbackUsed: boolean;
+  attempts: ProviderExecutionAttempt[];
 };
