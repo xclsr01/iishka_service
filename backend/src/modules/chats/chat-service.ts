@@ -169,6 +169,25 @@ async function assembleChat(chat: Chat, messages: Message[]) {
   };
 }
 
+async function resolveUsageProvider(chatProvider: Provider, executedProviderKey: Provider['key']) {
+  if (chatProvider.key === executedProviderKey) {
+    return chatProvider;
+  }
+
+  return assertPresent(
+    await withTimeout(
+      'resolveUsageProvider.findFirst',
+      prisma.provider.findFirst({
+        where: {
+          key: executedProviderKey,
+          status: ProviderStatus.ACTIVE,
+        },
+      }),
+    ),
+    'Provider not found',
+  );
+}
+
 export async function listChats(userId: string) {
   const chats = await withTimeout(
     'listChats.findManyChats',
@@ -404,6 +423,12 @@ export async function createMessage(input: {
           status: MessageStatus.COMPLETED,
           providerMeta: {
             ...result.raw,
+            requestedProviderKey: chat.provider.key,
+            executedProviderKey: result.providerKey,
+            requestedModel: chat.provider.defaultModel,
+            executedModel: result.model,
+            fallbackUsed: result.fallbackUsed,
+            attempts: result.attempts,
             executionMode: result.decision.mode,
             capabilities: result.capabilities,
             usage: result.usage,
@@ -418,28 +443,36 @@ export async function createMessage(input: {
     );
     await withTimeout(
       'createMessage.persistProviderUsage',
-      persistProviderUsage({
-        userId: input.userId,
-        providerId: chat.provider.id,
-        chatId: chat.id,
-        messageId: assistantMessage.id,
-        operation: 'CHAT_GENERATION',
-        model: chat.provider.defaultModel,
-        upstreamRequestId: result.upstreamRequestId,
-        inputTokens: result.usage?.inputTokens ?? null,
-        outputTokens: result.usage?.outputTokens ?? null,
-        totalTokens: result.usage?.totalTokens ?? null,
-        requestUnits: result.usage?.requestUnits ?? null,
-        latencyMs: result.latencyMs,
-        metadata: {
-          executionMode: result.decision.mode,
-          capabilities: result.capabilities,
-          rawUsage: result.usage?.raw ?? null,
-        },
-      }).catch((usageError) => {
+      (async () => {
+        const usageProvider = await resolveUsageProvider(chat.provider, result.providerKey);
+        return persistProviderUsage({
+          userId: input.userId,
+          providerId: usageProvider.id,
+          chatId: chat.id,
+          messageId: assistantMessage.id,
+          operation: 'CHAT_GENERATION',
+          model: result.model,
+          upstreamRequestId: result.upstreamRequestId,
+          inputTokens: result.usage?.inputTokens ?? null,
+          outputTokens: result.usage?.outputTokens ?? null,
+          totalTokens: result.usage?.totalTokens ?? null,
+          requestUnits: result.usage?.requestUnits ?? null,
+          latencyMs: result.latencyMs,
+          metadata: {
+            requestedProviderKey: chat.provider.key,
+            executedProviderKey: result.providerKey,
+            fallbackUsed: result.fallbackUsed,
+            attempts: result.attempts,
+            executionMode: result.decision.mode,
+            capabilities: result.capabilities,
+            rawUsage: result.usage?.raw ?? null,
+          },
+        });
+      })().catch((usageError) => {
         logger.error('provider_usage_record_failed', {
           chatId: chat.id,
-          providerKey: chat.provider.key,
+          providerKey: result.providerKey,
+          requestedProviderKey: chat.provider.key,
           message: usageError instanceof Error ? usageError.message : 'unknown',
         });
       }),
@@ -447,6 +480,8 @@ export async function createMessage(input: {
     logger.info('create_message_provider_request_completed', {
       chatId: chat.id,
       assistantMessageId: assistantMessage.id,
+      providerKey: result.providerKey,
+      fallbackUsed: result.fallbackUsed,
     });
   } catch (error) {
     logger.error('create_message_provider_request_failed', {
