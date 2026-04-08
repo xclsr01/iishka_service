@@ -1,5 +1,6 @@
-import type { ProviderKey } from '@prisma/client';
+import type { GenerationJobKind, ProviderKey } from '@prisma/client';
 import type {
+  ProviderAsyncJobResult,
   ProviderCapabilitySet,
   ProviderChatMessage,
   ProviderGenerateResult,
@@ -29,6 +30,23 @@ export type InteractiveGenerationRequest = {
 };
 
 export type InteractiveGenerationResult = ProviderGenerateResult & {
+  decision: OrchestrationDecision;
+  capabilities: ProviderCapabilitySet;
+  latencyMs: number;
+};
+
+export type AsyncGenerationJobRequest = {
+  providerKey: ProviderKey;
+  jobId: string;
+  kind: GenerationJobKind;
+  model: string;
+  prompt: string;
+  chatId?: string;
+  userId?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type AsyncGenerationJobResult = ProviderAsyncJobResult & {
   decision: OrchestrationDecision;
   capabilities: ProviderCapabilitySet;
   latencyMs: number;
