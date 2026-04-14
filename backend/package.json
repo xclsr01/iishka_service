@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "deploy": "wrangler deploy --keep-vars",
-    "test": "npm run db:generate && tsx --import ./src/test/setup-env.ts --test \"src/**/*.test.ts\"",
+    "test": "npm run db:generate && tsx --import ./src/test/setup-env.ts ./src/test/prepare-db.ts && tsx --import ./src/test/setup-env.ts --test \"src/**/*.test.ts\"",
     "lint": "tsc -p tsconfig.json --noEmit",
     "format": "prettier --check \"src/**/*.ts\" \"prisma/**/*.ts\"",
     "db:generate": "prisma generate",

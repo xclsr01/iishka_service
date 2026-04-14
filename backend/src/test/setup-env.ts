@@ -1,7 +1,18 @@
+import os from 'node:os';
+
 process.env.APP_ENV ??= 'test';
 process.env.FRONTEND_URL ??= 'http://localhost:5173';
 process.env.API_BASE_URL ??= 'http://localhost:8787';
-process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/iishka_service_test?schema=public';
+
+const defaultLocalPostgresUser = process.env.PGUSER?.trim() || os.userInfo().username;
+const defaultTestDatabaseUrl = `postgresql://${encodeURIComponent(defaultLocalPostgresUser)}@localhost:5432/iishka_service_test?schema=public`;
+const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim() || defaultTestDatabaseUrl;
+const testDirectUrl = process.env.TEST_DIRECT_URL?.trim() || testDatabaseUrl;
+const testMigrationUrl = process.env.TEST_MIGRATION_DATABASE_URL?.trim() || testDirectUrl;
+
+process.env.DATABASE_URL = testDatabaseUrl;
+process.env.DIRECT_URL = testDirectUrl;
+process.env.MIGRATION_DATABASE_URL = testMigrationUrl;
 process.env.JWT_SECRET ??= 'test-secret-test-secret-test-secret';
 process.env.SESSION_TTL_MINUTES ??= '60';
 process.env.TELEGRAM_INIT_DATA_TTL_SECONDS ??= '3600';

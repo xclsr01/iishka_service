@@ -1,12 +1,24 @@
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { defineConfig } from 'prisma/config';
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
+const explicitEnv = {
+  DATABASE_URL: process.env.DATABASE_URL,
+  DIRECT_URL: process.env.DIRECT_URL,
+  MIGRATION_DATABASE_URL: process.env.MIGRATION_DATABASE_URL,
+};
 
 dotenv.config({ path: path.resolve(currentDir, '../.env') });
 dotenv.config({ path: path.resolve(currentDir, '.env'), override: true });
+
+for (const [key, value] of Object.entries(explicitEnv)) {
+  if (typeof value === 'string' && value.length > 0) {
+    process.env[key] = value;
+  }
+}
 
 function resolveDatasourceUrl() {
   const migrationUrl = process.env.MIGRATION_DATABASE_URL?.trim();

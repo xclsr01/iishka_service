@@ -17,6 +17,14 @@ export const jobsRoutes = new Hono<{ Variables: AppVariables }>();
 
 jobsRoutes.use('*', authMiddleware);
 
+function getExecutionCtx(c: { executionCtx?: { waitUntil?: (task: Promise<unknown>) => void } }) {
+  try {
+    return c.executionCtx && typeof c.executionCtx.waitUntil === 'function' ? c.executionCtx : null;
+  } catch {
+    return null;
+  }
+}
+
 jobsRoutes.get('/', async (c) => {
   const user = c.get('currentUser');
   const jobs = await listGenerationJobs(user.id);
@@ -26,10 +34,7 @@ jobsRoutes.get('/', async (c) => {
 jobsRoutes.post('/', async (c) => {
   const user = c.get('currentUser');
   const payload = createGenerationJobSchema.parse(await c.req.json());
-  const executionCtx =
-    'executionCtx' in c && c.executionCtx && typeof c.executionCtx.waitUntil === 'function'
-      ? c.executionCtx
-      : null;
+  const executionCtx = getExecutionCtx(c);
   const job = await createGenerationJob({
     userId: user.id,
     providerId: payload.providerId,
@@ -38,7 +43,7 @@ jobsRoutes.post('/', async (c) => {
     chatId: payload.chatId,
     metadata: payload.metadata,
   }, {
-    schedule: executionCtx ? (task) => executionCtx.waitUntil(task) : undefined,
+    schedule: executionCtx?.waitUntil ? (task) => executionCtx.waitUntil!(task) : undefined,
   });
 
   return c.json({ job }, 201);
