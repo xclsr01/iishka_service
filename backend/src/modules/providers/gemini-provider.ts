@@ -86,32 +86,29 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
     const prompt = input.messages
       .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
       .join('\n\n');
+    const model = input.model || env.GOOGLE_AI_MODEL;
 
     let response: Response;
     try {
-      response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${
-          input.model || env.GOOGLE_AI_MODEL
-        }:generateContent?key=${env.GOOGLE_AI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: prompt,
-                  },
-                ],
-              },
-            ],
-          }),
-          signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
+      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-goog-api-key': env.GOOGLE_AI_API_KEY,
         },
-      );
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt,
+                },
+              ],
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
+      });
     } catch (error) {
       throw this.classifyError(error);
     }
@@ -134,7 +131,12 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
           parts?: Array<{ text?: string }>;
         };
       }>;
-      usageMetadata?: Record<string, unknown>;
+      usageMetadata?: {
+        promptTokenCount?: number;
+        candidatesTokenCount?: number;
+        totalTokenCount?: number;
+        [key: string]: unknown;
+      };
     };
 
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
@@ -154,6 +156,9 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
       },
       usage: data.usageMetadata
         ? {
+            inputTokens: data.usageMetadata.promptTokenCount ?? null,
+            outputTokens: data.usageMetadata.candidatesTokenCount ?? null,
+            totalTokens: data.usageMetadata.totalTokenCount ?? null,
             raw: data.usageMetadata,
           }
         : null,
