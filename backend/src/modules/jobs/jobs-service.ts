@@ -1,4 +1,5 @@
 import {
+  GenerationJobKind,
   GenerationJobStatus,
   ProviderStatus,
   type GenerationJob,
@@ -9,6 +10,7 @@ import { assertPresent } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
 import { getRegisteredProvider } from '../providers/provider-registry';
 import { decideOrchestration } from '../orchestration/orchestration-service';
+import { requireSubscriptionTokenBalance, TOKEN_COSTS } from '../subscriptions/subscription-service';
 import { generationJobQueue } from './jobs-queue';
 import type {
   EnqueueGenerationJobOptions,
@@ -68,6 +70,21 @@ async function assertJobChatOwnership(userId: string, chatId: string) {
   assertPresent(chat, 'Chat not found');
 }
 
+export function getGenerationJobTokenCost(kind: GenerationJobKind) {
+  switch (kind) {
+    case GenerationJobKind.IMAGE:
+      return TOKEN_COSTS.image;
+    case GenerationJobKind.MUSIC:
+      return TOKEN_COSTS.music;
+    case GenerationJobKind.VIDEO:
+      return TOKEN_COSTS.video;
+    case GenerationJobKind.PROVIDER_ASYNC:
+      return TOKEN_COSTS.text;
+    default:
+      return TOKEN_COSTS.text;
+  }
+}
+
 function buildQueueInput(job: GenerationJob, provider: Provider): EnqueueGenerationJobInput {
   return {
     jobId: job.id,
@@ -100,6 +117,8 @@ export async function createGenerationJob(
   if (input.chatId) {
     await assertJobChatOwnership(input.userId, input.chatId);
   }
+
+  await requireSubscriptionTokenBalance(input.userId, getGenerationJobTokenCost(input.kind));
 
   const job = await prisma.generationJob.create({
     data: {

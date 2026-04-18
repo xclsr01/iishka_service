@@ -53,8 +53,8 @@ export function ProviderCard({ provider }: { provider: Provider }) {
               <Link to={`/providers/${provider.id}`}>{t('enterChat')}</Link>
             </Button>
           ) : provider.isAvailable ? (
-            <Button type="button" disabled>
-              {t('imageJobSoon')}
+            <Button asChild>
+              <Link to={`/providers/${provider.id}`}>{t('openStudio')}</Link>
             </Button>
           ) : (
             <Button type="button" disabled>

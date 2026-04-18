@@ -68,6 +68,50 @@ export type Chat = {
   messages?: ChatMessage[];
 };
 
+export type GenerationJobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED';
+
+export type GenerationJobKind = 'IMAGE' | 'MUSIC' | 'VIDEO' | 'PROVIDER_ASYNC';
+
+export type GeneratedImage = {
+  index: number;
+  mimeType: string;
+  filename: string;
+  dataBase64: string;
+  sizeBytes: number;
+};
+
+export type ImageJobResultPayload = {
+  kind: 'IMAGE';
+  text?: string | null;
+  images?: GeneratedImage[];
+};
+
+export type GenerationJob = {
+  id: string;
+  kind: GenerationJobKind;
+  status: GenerationJobStatus;
+  prompt: string;
+  failureCode: string | null;
+  failureMessage: string | null;
+  externalJobId: string | null;
+  providerRequestId: string | null;
+  attemptCount: number;
+  queuedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  chatId: string | null;
+  provider: {
+    id: string;
+    key: Provider['key'];
+    name: string;
+    slug: string;
+    defaultModel: string;
+  };
+  resultPayload: unknown;
+};
+
 export type BootstrapResponse = {
   token: string;
   user: User;
@@ -207,6 +251,25 @@ class ApiClient {
     return this.request<{ subscription: Subscription }>('/api/subscription/dev/unsubscribe', {
       method: 'POST',
     });
+  }
+
+  createGenerationJob(payload: {
+    providerId: string;
+    kind: GenerationJobKind;
+    prompt: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    return this.request<{ job: GenerationJob }>('/api/jobs', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  getGenerationJob(jobId: string) {
+    return this.request<{ job: GenerationJob }>(`/api/jobs/${jobId}`);
   }
 }
 

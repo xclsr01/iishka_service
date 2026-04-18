@@ -362,6 +362,9 @@ test('chat flow creates a chat sends a message and decrements tokens', async () 
 test('jobs API creates runs and reports async provider jobs', async () => {
   const app = createApp();
   const bootstrap = await bootstrapDev(app);
+  await requestWithAuth(app, bootstrap.token, '/api/subscription/dev/activate', {
+    method: 'POST',
+  });
   const openAiProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.OPENAI);
   assert.ok(openAiProvider);
 
@@ -433,6 +436,9 @@ test('jobs API creates runs and reports async provider jobs', async () => {
 test('jobs API creates and completes Nano Banana image jobs', async () => {
   const app = createApp();
   const bootstrap = await bootstrapDev(app);
+  await requestWithAuth(app, bootstrap.token, '/api/subscription/dev/activate', {
+    method: 'POST',
+  });
   const nanoBananaProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.NANO_BANANA);
   assert.ok(nanoBananaProvider);
 

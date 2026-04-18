@@ -9,6 +9,7 @@ import { useLocale } from '@/lib/i18n';
 import { bootstrapErrors, useBootstrap } from '@/hooks/use-bootstrap';
 import { ChatPage } from '@/pages/chat-page';
 import { HomePage } from '@/pages/home-page';
+import { ImageJobPage } from '@/pages/image-job-page';
 
 function ProviderRoute({
   providers,
@@ -32,6 +33,19 @@ function ProviderRoute({
 
   if (!provider) {
     return <Navigate to="/" replace />;
+  }
+
+  if (provider.capabilities?.supportsImage && provider.executionMode === 'async-job') {
+    return (
+      <ImageJobPage
+        provider={provider}
+        subscription={subscription}
+        onActivateDevSubscription={onActivateDevSubscription}
+        isActivatingSubscription={isActivatingSubscription}
+        isUnsubscribingSubscription={isUnsubscribingSubscription}
+        onSubscriptionChange={onSubscriptionChange}
+      />
+    );
   }
 
   return (
