@@ -23,6 +23,7 @@ export function ChatMessageList({
     <div className="flex flex-1 flex-col gap-3 overflow-y-auto pb-2 pt-1">
       {messages.map((message) => {
         const isAssistant = message.role === 'ASSISTANT';
+        const attachments = message.attachments ?? [];
 
         return (
           <div
@@ -38,9 +39,9 @@ export function ChatMessageList({
               )}
             >
               <div className="whitespace-pre-wrap">{message.content}</div>
-              {message.attachments.length > 0 && (
+              {attachments.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {message.attachments.map((attachment) => (
+                  {attachments.map((attachment) => (
                     <div
                       key={attachment.file.id}
                       className={cn(

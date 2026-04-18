@@ -319,6 +319,7 @@ test('chat flow creates a chat sends a message and decrements tokens', async () 
     assistantMessage: {
       role: string;
       content: string;
+      attachments: unknown[];
     };
     subscription: BootstrapResponse['subscription'];
   };
@@ -327,6 +328,7 @@ test('chat flow creates a chat sends a message and decrements tokens', async () 
   assert.equal(createMessageBody.userMessage.role, 'USER');
   assert.equal(createMessageBody.assistantMessage.role, 'ASSISTANT');
   assert.equal(createMessageBody.assistantMessage.content, 'Mocked OpenAI response');
+  assert.deepEqual(createMessageBody.assistantMessage.attachments, []);
   assert.equal(createMessageBody.subscription.tokensRemaining, 999);
 
   const getChatResponse = await requestWithAuth(app, bootstrap.token, `/api/chats/${createChatBody.chat.id}/messages`);
