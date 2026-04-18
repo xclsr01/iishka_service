@@ -33,10 +33,17 @@ export function createApp() {
   );
   app.use('*', requestIdMiddleware);
   app.use('*', rateLimitMiddleware);
-  app.use('*', async (_c, next) => {
+  app.use('*', async (c, next) => {
     try {
       await next();
     } finally {
+      if (c.get('skipPrismaDisconnect')) {
+        logger.info('prisma_disconnect_deferred', {
+          path: c.req.path,
+        });
+        return;
+      }
+
       // Workers isolates can keep stale pg connections between requests; closing after each request
       // forces Prisma/pg to reconnect cleanly on the next one.
       await prisma.$disconnect().catch((error) => {

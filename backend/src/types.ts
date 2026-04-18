@@ -10,4 +10,5 @@ export type AppVariables = {
   requestId: string;
   authSession: AuthSession;
   currentUser: User;
+  skipPrismaDisconnect?: boolean;
 };
