@@ -8,7 +8,7 @@ import { requestIdMiddleware } from './middleware/request-id';
 import { toAppError } from './lib/errors';
 import { jsonSafeError } from './lib/http';
 import { logger } from './lib/logger';
-import { disconnectPrisma } from './lib/prisma';
+import { disconnectPrisma, ensurePrismaReady, retainPrisma } from './lib/prisma';
 import { authRoutes } from './modules/auth/auth-routes';
 import { catalogRoutes } from './modules/catalog/catalog-routes';
 import { chatRoutes } from './modules/chats/chat-routes';
@@ -34,18 +34,22 @@ export function createApp() {
   app.use('*', requestIdMiddleware);
   app.use('*', rateLimitMiddleware);
   app.use('*', async (c, next) => {
+    await ensurePrismaReady();
+    const releasePrisma = retainPrisma();
+
     try {
       await next();
     } finally {
-      if (c.get('skipPrismaDisconnect')) {
-        logger.info('prisma_disconnect_deferred', {
+      await releasePrisma().catch((error) => {
+        logger.error('prisma_scope_release_failed', {
           path: c.req.path,
+          message: error instanceof Error ? error.message : 'unknown',
+          stack: error instanceof Error ? error.stack ?? null : null,
         });
-        return;
-      }
+      });
 
       // Workers isolates can keep stale pg connections between requests; closing after each request
-      // forces Prisma/pg to reconnect cleanly on the next one.
+      // is deferred until foreground/background Prisma scopes are released.
       await disconnectPrisma().catch((error) => {
         logger.error('prisma_disconnect_failed', {
           message: error instanceof Error ? error.message : 'unknown',
