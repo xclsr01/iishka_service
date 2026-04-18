@@ -2,7 +2,7 @@ import { GenerationJobKind } from '@prisma/client';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { logger } from '../../lib/logger';
-import { disconnectPrisma } from '../../lib/prisma';
+import { disconnectPrisma, retainPrisma } from '../../lib/prisma';
 import { authMiddleware } from '../../middleware/auth';
 import type { AppVariables } from '../../types';
 import { createGenerationJob, getGenerationJob, listGenerationJobs } from './jobs-service';
@@ -37,7 +37,8 @@ jobsRoutes.post('/', async (c) => {
   const user = c.get('currentUser');
   const payload = createGenerationJobSchema.parse(await c.req.json());
   const executionCtx = getExecutionCtx(c);
-  c.set('skipPrismaDisconnect', true);
+  const releaseBackgroundPrisma = retainPrisma();
+  let backgroundTaskScheduled = false;
 
   try {
     const job = await createGenerationJob({
@@ -50,18 +51,22 @@ jobsRoutes.post('/', async (c) => {
     }, {
       schedule: executionCtx?.waitUntil ? (task) => executionCtx.waitUntil!(task) : undefined,
       onSettled: async () => {
+        await releaseBackgroundPrisma();
         await disconnectPrisma();
       },
     });
+    backgroundTaskScheduled = true;
 
     return c.json({ job }, 201);
   } catch (error) {
-    await disconnectPrisma().catch((disconnectError) => {
-      logger.error('generation_job_create_cleanup_failed', {
-        message: disconnectError instanceof Error ? disconnectError.message : 'unknown',
-        stack: disconnectError instanceof Error ? disconnectError.stack ?? null : null,
+    if (!backgroundTaskScheduled) {
+      await releaseBackgroundPrisma().catch((releaseError) => {
+        logger.error('generation_job_create_cleanup_failed', {
+          message: releaseError instanceof Error ? releaseError.message : 'unknown',
+          stack: releaseError instanceof Error ? releaseError.stack ?? null : null,
+        });
       });
-    });
+    }
 
     throw error;
   }

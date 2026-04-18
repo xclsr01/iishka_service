@@ -46,15 +46,14 @@ export function useImageJob(providerId: string) {
         }
 
         const imageJobs = response.jobs.filter((job) => job.kind === 'IMAGE' && job.provider.id === providerId);
-        const activeJob = imageJobs.find((job) => !isTerminalStatus(job)) ?? imageJobs[0] ?? null;
-        activeJobIdRef.current = activeJob?.id ?? null;
+        activeJobIdRef.current = null;
 
         setState((current) => ({
           ...current,
-          job: activeJob,
+          job: null,
           jobs: imageJobs,
           isLoadingHistory: false,
-          isPolling: Boolean(activeJob && !isTerminalStatus(activeJob)),
+          isPolling: false,
           error: null,
         }));
       } catch (error) {

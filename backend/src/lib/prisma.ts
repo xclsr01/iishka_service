@@ -37,7 +37,11 @@ if (process.env.APP_ENV !== 'production') {
   globalThis.__prisma = prisma;
 }
 
-export async function disconnectPrisma() {
+let activePrismaScopes = 0;
+let disconnectRequested = false;
+let disconnectPromise: Promise<void> | null = null;
+
+async function rotatePrismaClient() {
   const client = prisma;
   await client.$disconnect();
 
@@ -50,4 +54,45 @@ export async function disconnectPrisma() {
   if (process.env.APP_ENV !== 'production') {
     globalThis.__prisma = prisma;
   }
+}
+
+export async function ensurePrismaReady() {
+  if (disconnectPromise) {
+    await disconnectPromise;
+  }
+}
+
+export function retainPrisma() {
+  activePrismaScopes += 1;
+  let released = false;
+
+  return async () => {
+    if (released) {
+      return;
+    }
+
+    released = true;
+    activePrismaScopes = Math.max(0, activePrismaScopes - 1);
+
+    return;
+  };
+}
+
+export async function disconnectPrisma() {
+  if (activePrismaScopes > 0) {
+    disconnectRequested = true;
+    return;
+  }
+
+  if (disconnectPromise) {
+    await disconnectPromise;
+    return;
+  }
+
+  disconnectRequested = false;
+  disconnectPromise = rotatePrismaClient().finally(() => {
+    disconnectPromise = null;
+  });
+
+  await disconnectPromise;
 }
