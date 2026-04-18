@@ -20,19 +20,19 @@ function toUserFacingError(error: unknown, fallback: string) {
     return fallback;
   }
 
-  const providerFailureHints = [
-    'request failed',
-    'provider',
-    'quota',
-    'resource_exhausted',
+  const normalized = error.message.toLowerCase();
+  const safeBackendMessages = [
+    'the provider request failed',
+    'the provider is currently busy',
+    'the provider request timed out',
     'temporarily unavailable',
-    'unsupported_country_region_territory',
-    'operation timed out',
+    'unavailable from this deployment region',
+    'out of tokens',
+    'active subscription required',
   ];
 
-  const normalized = error.message.toLowerCase();
-  if (providerFailureHints.some((hint) => normalized.includes(hint))) {
-    return null;
+  if (safeBackendMessages.some((hint) => normalized.includes(hint))) {
+    return error.message;
   }
 
   return fallback;
@@ -262,18 +262,23 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
       return createdMessages.subscription;
     } catch (error) {
       if (activeChatId) {
+        let refreshedChat: Chat | null = null;
         try {
           const refreshed = await apiClient.getChat(activeChatId);
-          writeCachedProviderChat(provider.id, refreshed.chat);
+          refreshedChat = refreshed.chat;
+        } catch {
+          refreshedChat = null;
+        }
+
+        if (refreshedChat) {
+          writeCachedProviderChat(provider.id, refreshedChat);
           setState((current) => ({
             ...current,
-            chat: refreshed.chat,
+            chat: refreshedChat,
             pendingFiles: [],
             error: toUserFacingError(error, t('messageFailed')),
           }));
           throw error;
-        } catch {
-          // Fall through to the generic error state below.
         }
       }
 

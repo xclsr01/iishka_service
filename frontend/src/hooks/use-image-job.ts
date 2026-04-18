@@ -40,7 +40,11 @@ export function useImageJob(providerId: string) {
 
     async function loadHistory() {
       try {
-        const response = await apiClient.getGenerationJobs();
+        const response = await apiClient.getGenerationJobs({
+          providerId,
+          kind: 'IMAGE',
+          limit: 5,
+        });
         if (cancelled) {
           return;
         }
@@ -61,7 +65,9 @@ export function useImageJob(providerId: string) {
           setState((current) => ({
             ...current,
             isLoadingHistory: false,
-            error: toUserFacingError(error, t('imageGenerationFailed')),
+            error: current.job || current.jobs.length > 0
+              ? current.error
+              : toUserFacingError(error, t('imageGenerationFailed')),
           }));
         }
       }

@@ -15,6 +15,14 @@ export type CreateGenerationJobInput = {
   metadata?: Record<string, unknown>;
 };
 
+export type ListGenerationJobsInput = {
+  userId: string;
+  providerId?: string;
+  kind?: GenerationJobKind;
+  status?: GenerationJobStatus;
+  limit?: number;
+};
+
 export type EnqueueGenerationJobInput = {
   jobId: string;
   providerKey: ProviderKey;

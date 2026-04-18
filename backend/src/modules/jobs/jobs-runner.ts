@@ -120,7 +120,9 @@ export async function runGenerationJob(jobId: string) {
       failureMessage,
       upstreamRequestId: error instanceof ProviderAdapterError ? error.upstreamRequestId ?? null : null,
       upstreamStatus: error instanceof ProviderAdapterError ? error.upstreamStatus ?? null : null,
+      errorCategory: error instanceof ProviderAdapterError ? error.category : null,
       retryable: error instanceof ProviderAdapterError ? error.retryable : null,
+      details: error instanceof ProviderAdapterError ? error.details ?? null : null,
       message: error instanceof Error ? error.message : 'unknown',
       stack: error instanceof Error ? error.stack ?? null : null,
     });
