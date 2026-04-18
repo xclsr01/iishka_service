@@ -286,8 +286,32 @@ class ApiClient {
     return this.request<{ job: GenerationJob }>(`/api/jobs/${jobId}`);
   }
 
-  getGenerationJobs() {
-    return this.request<{ jobs: GenerationJob[] }>('/api/jobs');
+  getGenerationJobs(params?: {
+    providerId?: string;
+    kind?: GenerationJobKind;
+    status?: GenerationJobStatus;
+    limit?: number;
+  }) {
+    const searchParams = new URLSearchParams();
+
+    if (params?.providerId) {
+      searchParams.set('providerId', params.providerId);
+    }
+
+    if (params?.kind) {
+      searchParams.set('kind', params.kind);
+    }
+
+    if (params?.status) {
+      searchParams.set('status', params.status);
+    }
+
+    if (params?.limit) {
+      searchParams.set('limit', String(params.limit));
+    }
+
+    const query = searchParams.toString();
+    return this.request<{ jobs: GenerationJob[] }>(`/api/jobs${query ? `?${query}` : ''}`);
   }
 }
 

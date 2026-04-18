@@ -1,4 +1,4 @@
-import { GenerationJobKind } from '@prisma/client';
+import { GenerationJobKind, GenerationJobStatus } from '@prisma/client';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { authMiddleware } from '../../middleware/auth';
@@ -11,6 +11,13 @@ const createGenerationJobSchema = z.object({
   prompt: z.string().trim().min(1).max(12000),
   chatId: z.string().min(1).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+});
+
+const listGenerationJobsSchema = z.object({
+  providerId: z.string().min(1).optional(),
+  kind: z.nativeEnum(GenerationJobKind).optional(),
+  status: z.nativeEnum(GenerationJobStatus).optional(),
+  limit: z.coerce.number().int().positive().max(20).default(10),
 });
 
 export const jobsRoutes = new Hono<{ Variables: AppVariables }>();
@@ -27,7 +34,19 @@ function getExecutionCtx(c: { executionCtx?: { waitUntil?: (task: Promise<unknow
 
 jobsRoutes.get('/', async (c) => {
   const user = c.get('currentUser');
-  const jobs = await listGenerationJobs(user.id);
+  const query = listGenerationJobsSchema.parse({
+    providerId: c.req.query('providerId'),
+    kind: c.req.query('kind'),
+    status: c.req.query('status'),
+    limit: c.req.query('limit'),
+  });
+  const jobs = await listGenerationJobs({
+    userId: user.id,
+    providerId: query.providerId,
+    kind: query.kind,
+    status: query.status,
+    limit: query.limit,
+  });
   return c.json({ jobs });
 });
 

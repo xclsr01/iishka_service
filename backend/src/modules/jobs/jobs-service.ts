@@ -8,6 +8,7 @@ import {
 } from '@prisma/client';
 import { assertPresent } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
+import { withOperationTimeout } from '../../lib/timeout';
 import { getRegisteredProvider } from '../providers/provider-registry';
 import { decideOrchestration } from '../orchestration/orchestration-service';
 import { requireSubscriptionTokenBalance, TOKEN_COSTS } from '../subscriptions/subscription-service';
@@ -17,6 +18,7 @@ import type {
   CreateGenerationJobInput,
   EnqueueGenerationJobInput,
   GenerationJobRecord,
+  ListGenerationJobsInput,
   PresentedGenerationJob,
 } from './jobs-types';
 
@@ -49,23 +51,29 @@ function presentGenerationJob(job: GenerationJobRecord): PresentedGenerationJob 
 }
 
 async function resolveJobProvider(providerId: string) {
-  const provider = await prisma.provider.findFirst({
-    where: {
-      id: providerId,
-      status: ProviderStatus.ACTIVE,
-    },
-  });
+  const provider = await withOperationTimeout(
+    'jobs.resolveProvider',
+    prisma.provider.findFirst({
+      where: {
+        id: providerId,
+        status: ProviderStatus.ACTIVE,
+      },
+    }),
+  );
 
   return assertPresent(provider, 'Provider not found');
 }
 
 async function assertJobChatOwnership(userId: string, chatId: string) {
-  const chat = await prisma.chat.findFirst({
-    where: {
-      id: chatId,
-      userId,
-    },
-  });
+  const chat = await withOperationTimeout(
+    'jobs.assertChatOwnership',
+    prisma.chat.findFirst({
+      where: {
+        id: chatId,
+        userId,
+      },
+    }),
+  );
 
   assertPresent(chat, 'Chat not found');
 }
@@ -120,84 +128,100 @@ export async function createGenerationJob(
 
   await requireSubscriptionTokenBalance(input.userId, getGenerationJobTokenCost(input.kind));
 
-  const job = await prisma.generationJob.create({
-    data: {
-      userId: input.userId,
-      providerId: provider.id,
-      chatId: input.chatId,
-      kind: input.kind,
-      prompt: input.prompt,
-      inputPayload: {
+  const job = await withOperationTimeout(
+    'jobs.create',
+    prisma.generationJob.create({
+      data: {
+        userId: input.userId,
+        providerId: provider.id,
+        chatId: input.chatId,
+        kind: input.kind,
         prompt: input.prompt,
-      } as Prisma.InputJsonValue,
-      metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
-    },
-    include: {
-      provider: true,
-    },
-  });
+        inputPayload: {
+          prompt: input.prompt,
+        } as Prisma.InputJsonValue,
+        metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
+      },
+      include: {
+        provider: true,
+      },
+    }),
+  );
 
   await generationJobQueue.enqueue(buildQueueInput(job, provider), enqueueOptions);
 
   return presentGenerationJob(job);
 }
 
-export async function listGenerationJobs(userId: string) {
-  const jobs = await prisma.generationJob.findMany({
+export async function listGenerationJobs(input: ListGenerationJobsInput) {
+  const jobs = await withOperationTimeout('jobs.list', prisma.generationJob.findMany({
     where: {
-      userId,
+      userId: input.userId,
+      providerId: input.providerId,
+      kind: input.kind,
+      status: input.status,
     },
     include: {
       provider: true,
     },
     orderBy: [{ createdAt: 'desc' }],
-  });
+    take: input.limit ?? 20,
+  }));
 
   return jobs.map(presentGenerationJob);
 }
 
 export async function getGenerationJob(userId: string, jobId: string) {
-  const job = await prisma.generationJob.findFirst({
-    where: {
-      id: jobId,
-      userId,
-    },
-    include: {
-      provider: true,
-    },
-  });
+  const job = await withOperationTimeout(
+    'jobs.get',
+    prisma.generationJob.findFirst({
+      where: {
+        id: jobId,
+        userId,
+      },
+      include: {
+        provider: true,
+      },
+    }),
+  );
 
   return presentGenerationJob(assertPresent(job, 'Generation job not found'));
 }
 
 export async function markGenerationJobRunning(jobId: string) {
-  const result = await prisma.generationJob.updateMany({
-    where: {
-      id: jobId,
-      status: GenerationJobStatus.QUEUED,
-    },
-    data: {
-      status: GenerationJobStatus.RUNNING,
-      startedAt: new Date(),
-      completedAt: null,
-      failureCode: null,
-      failureMessage: null,
-      attemptCount: {
-        increment: 1,
+  const result = await withOperationTimeout(
+    'jobs.markRunning',
+    prisma.generationJob.updateMany({
+      where: {
+        id: jobId,
+        status: GenerationJobStatus.QUEUED,
       },
-    },
-  });
+      data: {
+        status: GenerationJobStatus.RUNNING,
+        startedAt: new Date(),
+        completedAt: null,
+        failureCode: null,
+        failureMessage: null,
+        attemptCount: {
+          increment: 1,
+        },
+      },
+    }),
+  );
 
   if (result.count === 0) {
     return null;
   }
 
-  return prisma.generationJob.findUnique({
-    where: { id: jobId },
-    include: {
-      provider: true,
-    },
-  });
+  return withOperationTimeout(
+    'jobs.findRunning',
+    prisma.generationJob.findUnique({
+      where: { id: jobId },
+      include: {
+        provider: true,
+      },
+    }),
+  );
 }
 
 export async function completeGenerationJob(input: {
@@ -206,18 +230,21 @@ export async function completeGenerationJob(input: {
   providerRequestId?: string | null;
   externalJobId?: string | null;
 }) {
-  return prisma.generationJob.update({
-    where: { id: input.jobId },
-    data: {
-      status: GenerationJobStatus.COMPLETED,
-      resultPayload: input.resultPayload,
-      providerRequestId: input.providerRequestId ?? null,
-      externalJobId: input.externalJobId ?? null,
-      completedAt: new Date(),
-      failureCode: null,
-      failureMessage: null,
-    },
-  });
+  return withOperationTimeout(
+    'jobs.complete',
+    prisma.generationJob.update({
+      where: { id: input.jobId },
+      data: {
+        status: GenerationJobStatus.COMPLETED,
+        resultPayload: input.resultPayload,
+        providerRequestId: input.providerRequestId ?? null,
+        externalJobId: input.externalJobId ?? null,
+        completedAt: new Date(),
+        failureCode: null,
+        failureMessage: null,
+      },
+    }),
+  );
 }
 
 export async function failGenerationJob(input: {
@@ -227,26 +254,32 @@ export async function failGenerationJob(input: {
   providerRequestId?: string | null;
   externalJobId?: string | null;
 }) {
-  return prisma.generationJob.update({
-    where: { id: input.jobId },
-    data: {
-      status: GenerationJobStatus.FAILED,
-      failureCode: input.failureCode,
-      failureMessage: input.failureMessage,
-      providerRequestId: input.providerRequestId ?? null,
-      externalJobId: input.externalJobId ?? null,
-      completedAt: new Date(),
-    },
-  });
+  return withOperationTimeout(
+    'jobs.fail',
+    prisma.generationJob.update({
+      where: { id: input.jobId },
+      data: {
+        status: GenerationJobStatus.FAILED,
+        failureCode: input.failureCode,
+        failureMessage: input.failureMessage,
+        providerRequestId: input.providerRequestId ?? null,
+        externalJobId: input.externalJobId ?? null,
+        completedAt: new Date(),
+      },
+    }),
+  );
 }
 
 export async function getGenerationJobForExecution(jobId: string) {
-  const job = await prisma.generationJob.findUnique({
-    where: { id: jobId },
-    include: {
-      provider: true,
-    },
-  });
+  const job = await withOperationTimeout(
+    'jobs.getForExecution',
+    prisma.generationJob.findUnique({
+      where: { id: jobId },
+      include: {
+        provider: true,
+      },
+    }),
+  );
 
   return assertPresent(job, 'Generation job not found');
 }

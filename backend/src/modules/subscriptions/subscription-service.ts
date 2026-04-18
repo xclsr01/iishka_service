@@ -3,6 +3,7 @@ import { env } from '../../env';
 import { AppError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
+import { withOperationTimeout } from '../../lib/timeout';
 
 const ACTIVE_STATUSES: SubscriptionStatus[] = [
   SubscriptionStatus.ACTIVE,
@@ -39,34 +40,43 @@ export function presentSubscription(subscription: Subscription) {
 }
 
 export async function ensureDefaultSubscription(userId: string) {
-  const existing = await prisma.subscription.findFirst({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-  });
+  const existing = await withOperationTimeout(
+    'subscription.ensureDefault.findExisting',
+    prisma.subscription.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    }),
+  );
 
   if (existing) {
     return existing;
   }
 
-  return prisma.subscription.create({
-    data: {
-      userId,
-      planCode: 'mvp-monthly',
-      status: SubscriptionStatus.INACTIVE,
-      tokensAllowed: 0,
-      tokensUsed: 0,
-      metadata: {
-        source: 'bootstrap-default',
+  return withOperationTimeout(
+    'subscription.ensureDefault.create',
+    prisma.subscription.create({
+      data: {
+        userId,
+        planCode: 'mvp-monthly',
+        status: SubscriptionStatus.INACTIVE,
+        tokensAllowed: 0,
+        tokensUsed: 0,
+        metadata: {
+          source: 'bootstrap-default',
+        },
       },
-    },
-  });
+    }),
+  );
 }
 
 export async function getCurrentSubscription(userId: string) {
-  const subscription = await prisma.subscription.findFirst({
-    where: { userId },
-    orderBy: [{ currentPeriodEnd: 'desc' }, { createdAt: 'desc' }],
-  });
+  const subscription = await withOperationTimeout(
+    'subscription.getCurrent.findFirst',
+    prisma.subscription.findFirst({
+      where: { userId },
+      orderBy: [{ currentPeriodEnd: 'desc' }, { createdAt: 'desc' }],
+    }),
+  );
 
   return subscription ?? ensureDefaultSubscription(userId);
 }
@@ -123,19 +133,22 @@ export async function consumeSubscriptionTokens(userId: string, amount: number) 
 
   const subscription = await requireSubscriptionTokenBalance(userId, amount);
 
-  const result = await prisma.subscription.updateMany({
-    where: {
-      id: subscription.id,
-      tokensUsed: {
-        lte: subscription.tokensAllowed - amount,
+  const result = await withOperationTimeout(
+    'subscription.consume.update',
+    prisma.subscription.updateMany({
+      where: {
+        id: subscription.id,
+        tokensUsed: {
+          lte: subscription.tokensAllowed - amount,
+        },
       },
-    },
-    data: {
-      tokensUsed: {
-        increment: amount,
+      data: {
+        tokensUsed: {
+          increment: amount,
+        },
       },
-    },
-  });
+    }),
+  );
 
   if (result.count === 0) {
     throw new AppError(
@@ -145,9 +158,12 @@ export async function consumeSubscriptionTokens(userId: string, amount: number) 
     );
   }
 
-  return prisma.subscription.findUniqueOrThrow({
-    where: { id: subscription.id },
-  });
+  return withOperationTimeout(
+    'subscription.consume.findUpdated',
+    prisma.subscription.findUniqueOrThrow({
+      where: { id: subscription.id },
+    }),
+  );
 }
 
 export async function activateDevSubscription(userId: string) {
@@ -164,25 +180,31 @@ export async function activateDevSubscription(userId: string) {
     userId,
   });
 
-  const result = await prisma.subscription.updateMany({
-    where: { id: existing.id },
-    data: {
-      status: SubscriptionStatus.ACTIVE,
-      tokensAllowed: SUBSCRIPTION_TOKEN_ALLOWANCE,
-      tokensUsed: 0,
-      currentPeriodStart: now,
-      currentPeriodEnd: nextMonth,
-      isAutoRenew: false,
-    },
-  });
+  const result = await withOperationTimeout(
+    'subscription.devActivate.update',
+    prisma.subscription.updateMany({
+      where: { id: existing.id },
+      data: {
+        status: SubscriptionStatus.ACTIVE,
+        tokensAllowed: SUBSCRIPTION_TOKEN_ALLOWANCE,
+        tokensUsed: 0,
+        currentPeriodStart: now,
+        currentPeriodEnd: nextMonth,
+        isAutoRenew: false,
+      },
+    }),
+  );
 
   if (result.count === 0) {
     throw new AppError('Subscription not found', 404, 'SUBSCRIPTION_NOT_FOUND');
   }
 
-  const subscription = await prisma.subscription.findUniqueOrThrow({
-    where: { id: existing.id },
-  });
+  const subscription = await withOperationTimeout(
+    'subscription.devActivate.findUpdated',
+    prisma.subscription.findUniqueOrThrow({
+      where: { id: existing.id },
+    }),
+  );
 
   logger.info('subscription_dev_activate_completed', {
     subscriptionId: subscription.id,
@@ -206,25 +228,31 @@ export async function unsubscribeDevSubscription(userId: string) {
     userId,
   });
 
-  const result = await prisma.subscription.updateMany({
-    where: { id: existing.id },
-    data: {
-      status: SubscriptionStatus.INACTIVE,
-      tokensAllowed: 0,
-      tokensUsed: 0,
-      currentPeriodStart: null,
-      currentPeriodEnd: null,
-      isAutoRenew: false,
-    },
-  });
+  const result = await withOperationTimeout(
+    'subscription.devUnsubscribe.update',
+    prisma.subscription.updateMany({
+      where: { id: existing.id },
+      data: {
+        status: SubscriptionStatus.INACTIVE,
+        tokensAllowed: 0,
+        tokensUsed: 0,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        isAutoRenew: false,
+      },
+    }),
+  );
 
   if (result.count === 0) {
     throw new AppError('Subscription not found', 404, 'SUBSCRIPTION_NOT_FOUND');
   }
 
-  const subscription = await prisma.subscription.findUniqueOrThrow({
-    where: { id: existing.id },
-  });
+  const subscription = await withOperationTimeout(
+    'subscription.devUnsubscribe.findUpdated',
+    prisma.subscription.findUniqueOrThrow({
+      where: { id: existing.id },
+    }),
+  );
 
   logger.info('subscription_dev_unsubscribe_completed', {
     subscriptionId: subscription.id,

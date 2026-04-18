@@ -4,6 +4,7 @@ import { verifySession } from '../lib/auth';
 import { AppError } from '../lib/errors';
 import { appendLogContext } from '../lib/request-context';
 import { prisma } from '../lib/prisma';
+import { withOperationTimeout } from '../lib/timeout';
 import type { AppVariables } from '../types';
 
 type TypedContext = Context<{ Variables: AppVariables }>;
@@ -17,9 +18,12 @@ export async function authMiddleware(c: TypedContext, next: Next) {
   }
 
   const payload = verifySession(token, env.JWT_SECRET);
-  const user = await prisma.user.findUnique({
-    where: { id: payload.sub },
-  });
+  const user = await withOperationTimeout(
+    'auth.findUser',
+    prisma.user.findUnique({
+      where: { id: payload.sub },
+    }),
+  );
 
   if (!user) {
     throw new AppError('User not found', 401, 'UNAUTHORIZED');
