@@ -24,6 +24,7 @@ type BootstrapResponse = {
     executionMode: string;
     capabilities: {
       supportsText: boolean;
+      supportsImage: boolean;
       supportsFiles: boolean;
       supportsAsyncJobs: boolean;
     };
@@ -89,6 +90,17 @@ async function seedProviders() {
         description:
           'Google-backed assistant with strong multimodal tooling and practical speed for lightweight chat experiences.',
         defaultModel: 'gemini-flash-latest',
+        status: ProviderStatus.ACTIVE,
+        isFileUploadBeta: true,
+      },
+      {
+        key: ProviderKey.NANO_BANANA,
+        name: 'Nano Banana',
+        slug: 'nano-banana',
+        summary: 'Google image model for fast generation and visual editing workflows.',
+        description:
+          'Nano Banana uses Gemini image generation for prompt-based image creation and future image editing flows.',
+        defaultModel: 'gemini-2.5-flash-image',
         status: ProviderStatus.ACTIVE,
         isFileUploadBeta: true,
       },
@@ -199,7 +211,7 @@ test('dev bootstrap returns token user providers and default subscription', asyn
 
   assert.ok(result.token);
   assert.equal(result.user.telegramUserId, 'dev-user');
-  assert.equal(result.providers.length, 3);
+  assert.equal(result.providers.length, 4);
   assert.equal(result.subscription.status, 'INACTIVE');
   assert.equal(result.subscription.tokensRemaining, 0);
   assert.equal(result.subscription.hasAccess, false);
@@ -215,10 +227,15 @@ test('catalog providers endpoint exposes availability and capability metadata', 
   };
 
   assert.equal(response.status, 200);
-  assert.equal(body.providers.length, 3);
+  assert.equal(body.providers.length, 4);
   assert.ok(body.providers.every((provider) => typeof provider.isAvailable === 'boolean'));
   assert.ok(body.providers.every((provider) => typeof provider.executionMode === 'string'));
   assert.ok(body.providers.every((provider) => typeof provider.capabilities.supportsText === 'boolean'));
+  const nanoBanana = body.providers.find((provider) => provider.key === ProviderKey.NANO_BANANA);
+  assert.ok(nanoBanana);
+  assert.equal(nanoBanana.executionMode, 'async-job');
+  assert.equal(nanoBanana.capabilities.supportsImage, true);
+  assert.equal(nanoBanana.capabilities.supportsAsyncJobs, true);
 });
 
 test('subscription activation grants prepaid tokens and current user endpoint works', async () => {
@@ -411,4 +428,76 @@ test('jobs API creates runs and reports async provider jobs', async () => {
 
   assert.equal(jobsResponse.status, 200);
   assert.ok(jobsBody.jobs.some((job) => job.id === createJobBody.job.id));
+});
+
+test('jobs API creates and completes Nano Banana image jobs', async () => {
+  const app = createApp();
+  const bootstrap = await bootstrapDev(app);
+  const nanoBananaProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.NANO_BANANA);
+  assert.ok(nanoBananaProvider);
+
+  mockExecuteAsyncJob(ProviderKey.NANO_BANANA, async () => ({
+    resultPayload: {
+      kind: GenerationJobKind.IMAGE,
+      text: 'Generated a neon banana.',
+      images: [
+        {
+          index: 0,
+          mimeType: 'image/png',
+          filename: 'nano-banana-test.png',
+          dataBase64: 'aW1hZ2U=',
+          sizeBytes: 5,
+        },
+      ],
+    },
+    usage: {
+      inputTokens: 6,
+      outputTokens: 10,
+      totalTokens: 16,
+      raw: {
+        promptTokenCount: 6,
+        candidatesTokenCount: 10,
+        totalTokenCount: 16,
+      },
+    },
+    upstreamRequestId: 'req_nano_banana',
+    externalJobId: null,
+  }));
+
+  const createJobResponse = await requestWithAuth(app, bootstrap.token, '/api/jobs', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      providerId: nanoBananaProvider.id,
+      kind: GenerationJobKind.IMAGE,
+      prompt: 'Generate a cyberpunk banana mascot',
+    }),
+  });
+  const createJobBody = (await createJobResponse.json()) as {
+    job: {
+      id: string;
+      status: string;
+    };
+  };
+
+  assert.equal(createJobResponse.status, 201);
+
+  const completedJob = await waitForJobCompletion(app, bootstrap.token, createJobBody.job.id);
+  assert.equal(completedJob.status, 'COMPLETED');
+  assert.equal(completedJob.failureCode, null);
+  assert.deepEqual(completedJob.resultPayload, {
+    kind: GenerationJobKind.IMAGE,
+    text: 'Generated a neon banana.',
+    images: [
+      {
+        index: 0,
+        mimeType: 'image/png',
+        filename: 'nano-banana-test.png',
+        dataBase64: 'aW1hZ2U=',
+        sizeBytes: 5,
+      },
+    ],
+  });
 });

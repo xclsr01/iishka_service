@@ -5,6 +5,7 @@ const INTERACTIVE_FALLBACK_ORDER: Record<ProviderKey, ProviderKey[]> = {
   [ProviderKey.OPENAI]: [ProviderKey.ANTHROPIC, ProviderKey.GEMINI],
   [ProviderKey.ANTHROPIC]: [ProviderKey.GEMINI, ProviderKey.OPENAI],
   [ProviderKey.GEMINI]: [ProviderKey.ANTHROPIC, ProviderKey.OPENAI],
+  [ProviderKey.NANO_BANANA]: [],
 };
 
 const RETRYABLE_RETRY_CATEGORIES = new Set(['timeout', 'network', 'service_unavailable']);
@@ -35,7 +36,7 @@ export function providerSupportsRequest(
     return false;
   }
 
-  return capabilities.supportsText;
+  return input.requiresAsyncJobs ? capabilities.supportsAsyncJobs : capabilities.supportsText;
 }
 
 export function shouldRetryProviderError(error: ProviderAdapterError, attemptNumber: number) {

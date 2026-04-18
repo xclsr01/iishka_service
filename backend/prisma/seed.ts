@@ -101,6 +101,29 @@ async function main() {
       isFileUploadBeta: true,
     },
   });
+
+  await prisma.provider.upsert({
+    where: { key: ProviderKey.NANO_BANANA },
+    update: {
+      name: 'Nano Banana',
+      slug: 'nano-banana',
+      summary: 'Google image model for fast generation and visual editing workflows.',
+      description:
+        'Nano Banana uses Gemini image generation for prompt-based image creation and future image editing flows.',
+      defaultModel: 'gemini-2.5-flash-image',
+      isFileUploadBeta: true,
+    },
+    create: {
+      key: ProviderKey.NANO_BANANA,
+      name: 'Nano Banana',
+      slug: 'nano-banana',
+      summary: 'Google image model for fast generation and visual editing workflows.',
+      description:
+        'Nano Banana uses Gemini image generation for prompt-based image creation and future image editing flows.',
+      defaultModel: 'gemini-2.5-flash-image',
+      isFileUploadBeta: true,
+    },
+  });
 }
 
 main()

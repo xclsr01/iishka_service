@@ -2,7 +2,7 @@ import { clientEnv } from './env';
 
 export type Provider = {
   id: string;
-  key: 'OPENAI' | 'ANTHROPIC' | 'GEMINI';
+  key: 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'NANO_BANANA';
   name: string;
   slug: string;
   summary: string;
@@ -11,6 +11,14 @@ export type Provider = {
   isFileUploadBeta: boolean;
   isAvailable: boolean;
   availabilityMessage?: string | null;
+  capabilities?: {
+    supportsText: boolean;
+    supportsImage: boolean;
+    supportsStreaming: boolean;
+    supportsAsyncJobs: boolean;
+    supportsFiles: boolean;
+  };
+  executionMode?: 'interactive' | 'streaming' | 'async-job';
 };
 
 export type User = {
