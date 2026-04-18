@@ -46,7 +46,7 @@ export type ChatMessage = {
   role: 'USER' | 'ASSISTANT' | 'SYSTEM';
   content: string;
   createdAt: string;
-  attachments: Array<{
+  attachments?: Array<{
     file: FileAsset;
   }>;
 };

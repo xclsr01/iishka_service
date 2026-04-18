@@ -493,6 +493,7 @@ export async function createMessage(input: {
       upstreamStatus: error instanceof ProviderAdapterError ? error.upstreamStatus ?? null : null,
       upstreamRequestId:
         error instanceof ProviderAdapterError ? error.upstreamRequestId ?? null : null,
+      details: error instanceof ProviderAdapterError ? error.details ?? null : null,
       message: error instanceof Error ? error.message : 'unknown',
       stack: error instanceof Error ? error.stack ?? null : null,
     });
@@ -530,7 +531,10 @@ export async function createMessage(input: {
 
   return {
     userMessage: userMessageWithAttachments,
-    assistantMessage,
+    assistantMessage: {
+      ...assistantMessage,
+      attachments: [],
+    },
     subscription: presentSubscription(updatedSubscription),
   };
 }
