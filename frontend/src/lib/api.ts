@@ -1,5 +1,7 @@
 import { clientEnv } from './env';
 
+const TOKEN_STORAGE_KEY = 'iishka.token';
+
 export type Provider = {
   id: string;
   key: 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'NANO_BANANA';
@@ -126,27 +128,39 @@ type ApiErrorPayload = {
 };
 
 class ApiClient {
-  private token: string | null = localStorage.getItem('iishka.token');
+  private token: string | null = localStorage.getItem(TOKEN_STORAGE_KEY);
 
   setToken(token: string | null) {
     this.token = token;
     if (token) {
-      localStorage.setItem('iishka.token', token);
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
     } else {
-      localStorage.removeItem('iishka.token');
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
     }
   }
 
   getToken() {
+    if (this.token) {
+      return this.token;
+    }
+
+    this.token = localStorage.getItem(TOKEN_STORAGE_KEY);
     return this.token;
   }
 
   private async request<T>(path: string, init?: RequestInit) {
+    const token = this.getToken();
+    const isBootstrapRequest = path.startsWith('/api/auth/');
+
+    if (!token && !isBootstrapRequest) {
+      throw new Error('Auth session is not ready. Please reopen the Mini App.');
+    }
+
     const response = await fetch(`${clientEnv.apiBaseUrl}${path}`, {
       ...init,
       headers: {
         ...(init?.headers ?? {}),
-        ...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
       },
     });
 

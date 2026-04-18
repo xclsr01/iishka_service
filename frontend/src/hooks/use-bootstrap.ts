@@ -30,7 +30,12 @@ function readCachedBootstrap(): BootstrapResponse | null {
     }
 
     const parsed = JSON.parse(raw) as CachedBootstrap;
-    return parsed?.data ?? null;
+    const data = parsed?.data ?? null;
+    if (data?.token) {
+      apiClient.setToken(data.token);
+    }
+
+    return data;
   } catch {
     return null;
   }
@@ -51,11 +56,13 @@ function writeCachedBootstrap(data: BootstrapResponse) {
 }
 
 export function useBootstrap() {
-  const cachedData = readCachedBootstrap();
-  const [state, setState] = useState<BootstrapState>({
-    data: cachedData,
-    error: null,
-    isLoading: !cachedData,
+  const [state, setState] = useState<BootstrapState>(() => {
+    const cachedData = readCachedBootstrap();
+    return {
+      data: cachedData,
+      error: null,
+      isLoading: !cachedData,
+    };
   });
 
   useEffect(() => {
