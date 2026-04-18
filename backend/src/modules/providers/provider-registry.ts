@@ -3,6 +3,7 @@ import { AppError } from '../../lib/errors';
 import { env } from '../../env';
 import { AnthropicProviderAdapter } from './anthropic-provider';
 import { GeminiProviderAdapter } from './gemini-provider';
+import { NanoBananaProviderAdapter } from './nano-banana-provider';
 import { OpenAiProviderAdapter } from './openai-provider';
 import type { AiProviderAdapter, ProviderAdapterMetadata, ProviderCapabilitySet } from './provider-types';
 
@@ -15,6 +16,7 @@ export type RegisteredProvider = {
 const openAiAdapter = new OpenAiProviderAdapter();
 const anthropicAdapter = new AnthropicProviderAdapter();
 const geminiAdapter = new GeminiProviderAdapter();
+const nanoBananaAdapter = new NanoBananaProviderAdapter();
 
 const registry = new Map<ProviderKey, RegisteredProvider>([
   [
@@ -39,6 +41,14 @@ const registry = new Map<ProviderKey, RegisteredProvider>([
       key: ProviderKey.GEMINI,
       adapter: geminiAdapter,
       metadata: geminiAdapter.metadata,
+    },
+  ],
+  [
+    ProviderKey.NANO_BANANA,
+    {
+      key: ProviderKey.NANO_BANANA,
+      adapter: nanoBananaAdapter,
+      metadata: nanoBananaAdapter.metadata,
     },
   ],
 ]);
@@ -72,6 +82,8 @@ export function getProviderRuntimeModel(providerKey: ProviderKey) {
       return env.ANTHROPIC_MODEL;
     case ProviderKey.GEMINI:
       return env.GOOGLE_AI_MODEL;
+    case ProviderKey.NANO_BANANA:
+      return env.NANO_BANANA_MODEL;
     default:
       throw new AppError('Provider runtime model not configured', 500, 'PROVIDER_MODEL_NOT_CONFIGURED');
   }

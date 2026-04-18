@@ -35,6 +35,8 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     scroll: 'Листать',
     unavailable: 'Недоступно',
     fileUploadsEnabled: 'Загрузка файлов включена',
+    imageJobsEnabled: 'Генерация изображений',
+    imageJobSoon: 'Скоро в UI',
     enterChat: 'Открыть чат',
     back: 'Назад',
     subscriptionRequired: 'Нужна подписка',
@@ -78,6 +80,8 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     scroll: 'Scroll',
     unavailable: 'Unavailable',
     fileUploadsEnabled: 'File uploads enabled',
+    imageJobsEnabled: 'Image jobs enabled',
+    imageJobSoon: 'UI soon',
     enterChat: 'Enter chat',
     back: 'Back',
     subscriptionRequired: 'Subscription required',
@@ -133,6 +137,16 @@ const localizedProviders: Record<
     description: {
       ru: 'Ассистент на базе Google с сильными мультимодальными инструментами и практичной скоростью для лёгких чат-сценариев.',
       en: 'Google-backed assistant with strong multimodal tooling and practical speed for lightweight chat experiences.',
+    },
+  },
+  NANO_BANANA: {
+    summary: {
+      ru: 'Google-модель для быстрой генерации и редактирования изображений.',
+      en: 'Google image model for fast generation and visual editing workflows.',
+    },
+    description: {
+      ru: 'Nano Banana использует Gemini Image для создания картинок по промпту и будущих сценариев редактирования изображений.',
+      en: 'Nano Banana uses Gemini image generation for prompt-based image creation and future image editing flows.',
     },
   },
 };
