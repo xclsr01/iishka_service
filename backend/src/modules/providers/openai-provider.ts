@@ -1,6 +1,7 @@
 import { ProviderKey } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { env } from '../../env';
+import { getLogContext } from '../../lib/request-context';
 import type {
   AiProviderAdapter,
   ProviderAsyncJobInput,
@@ -20,6 +21,46 @@ import {
   createUpstreamHttpError,
   isProviderTimeoutError,
 } from './provider-error-mapping';
+
+type OpenAiChatCompletionsResponse = {
+  id: string;
+  choices?: Array<{
+    message?: {
+      content?: string;
+    };
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    [key: string]: unknown;
+  };
+};
+
+type OpenAiGatewayResponse = {
+  text?: string;
+  raw?: Record<string, unknown>;
+  usage?: {
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+    totalTokens?: number | null;
+    requestUnits?: number | null;
+    raw?: Record<string, unknown> | null;
+  } | null;
+  upstreamRequestId?: string | null;
+};
+
+type OpenAiGatewayErrorResponse = {
+  error?: {
+    code?: string;
+    message?: string;
+    requestId?: string;
+  };
+};
+
+function trimTrailingSlashes(value: string) {
+  return value.replace(/\/+$/, '');
+}
 
 export class OpenAiProviderAdapter implements AiProviderAdapter {
   readonly metadata = {
@@ -102,6 +143,139 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
       );
     }
 
+    if (env.OPENAI_GATEWAY_URL) {
+      return this.generateResponseViaGateway(input);
+    }
+
+    return this.generateResponseDirect(input);
+  }
+
+  private createGatewayError(input: {
+    status: number;
+    code?: string;
+    message?: string;
+    upstreamRequestId?: string | null;
+  }) {
+    const code = input.code ?? 'PROVIDER_REQUEST_FAILED';
+
+    if (code === 'PROVIDER_TIMEOUT') {
+      return createProviderTimeoutError({
+        key: ProviderKey.OPENAI,
+        label: 'OpenAI gateway',
+      });
+    }
+
+    if (code === 'PROVIDER_EMPTY_RESPONSE') {
+      return createProviderEmptyResponseError({
+        key: ProviderKey.OPENAI,
+        label: 'OpenAI gateway',
+      });
+    }
+
+    if (code === 'PROVIDER_RATE_LIMITED') {
+      return new NormalizedProviderError({
+        providerKey: ProviderKey.OPENAI,
+        message: 'OpenAI gateway reported rate limiting',
+        code,
+        category: 'rate_limit',
+        retryable: true,
+        statusCode: 502,
+        upstreamStatus: input.status,
+        upstreamRequestId: input.upstreamRequestId ?? null,
+      });
+    }
+
+    if (code === 'GATEWAY_UNAUTHORIZED') {
+      return new NormalizedProviderError({
+        providerKey: ProviderKey.OPENAI,
+        message: 'OpenAI gateway authorization failed',
+        code: 'PROVIDER_REQUEST_FAILED',
+        category: 'auth',
+        retryable: false,
+        statusCode: 502,
+        upstreamStatus: input.status,
+        upstreamRequestId: input.upstreamRequestId ?? null,
+      });
+    }
+
+    return new NormalizedProviderError({
+      providerKey: ProviderKey.OPENAI,
+      message: input.message || 'OpenAI gateway request failed',
+      code: code.startsWith('PROVIDER_') ? code : 'PROVIDER_REQUEST_FAILED',
+      category: input.status >= 500 ? 'service_unavailable' : 'bad_request',
+      retryable: input.status === 408 || input.status === 429 || input.status >= 500,
+      statusCode: 502,
+      upstreamStatus: input.status,
+      upstreamRequestId: input.upstreamRequestId ?? null,
+    });
+  }
+
+  private async generateResponseViaGateway(input: ProviderGenerateInput): Promise<ProviderGenerateResult> {
+    let response: Response;
+    const requestId = getLogContext().requestId;
+
+    try {
+      response = await fetch(`${trimTrailingSlashes(env.OPENAI_GATEWAY_URL!)}/v1/chat/respond`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${env.OPENAI_GATEWAY_INTERNAL_TOKEN}`,
+          ...(requestId ? { 'x-request-id': requestId } : {}),
+        },
+        body: JSON.stringify({
+          model: input.model || env.OPENAI_MODEL,
+          messages: input.messages,
+          requestId,
+        }),
+        signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
+      });
+    } catch (error) {
+      throw this.classifyError(error);
+    }
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as OpenAiGatewayErrorResponse | null;
+      throw this.classifyError(
+        this.createGatewayError({
+          status: response.status,
+          code: payload?.error?.code,
+          message: payload?.error?.message,
+          upstreamRequestId:
+            response.headers.get('x-request-id') ??
+            response.headers.get('request-id') ??
+            payload?.error?.requestId ??
+            null,
+        }),
+      );
+    }
+
+    const data = (await response.json()) as OpenAiGatewayResponse;
+    const text = data.text?.trim();
+    if (!text) {
+      throw this.classifyError(
+        createProviderEmptyResponseError({
+          key: ProviderKey.OPENAI,
+          label: 'OpenAI gateway',
+        }),
+      );
+    }
+
+    return {
+      text,
+      raw: {
+        gateway: true,
+        ...(data.raw ?? {}),
+      },
+      usage: data.usage ?? null,
+      upstreamRequestId:
+        response.headers.get('x-request-id') ??
+        response.headers.get('request-id') ??
+        data.upstreamRequestId ??
+        null,
+    };
+  }
+
+  private async generateResponseDirect(input: ProviderGenerateInput): Promise<ProviderGenerateResult> {
     let response: Response;
     try {
       response = await fetch(`${env.OPENAI_BASE_URL}/chat/completions`, {
@@ -148,20 +322,7 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
       );
     }
 
-    const data = (await response.json()) as {
-      id: string;
-      choices?: Array<{
-        message?: {
-          content?: string;
-        };
-      }>;
-      usage?: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        total_tokens?: number;
-        [key: string]: unknown;
-      };
-    };
+    const data = (await response.json()) as OpenAiChatCompletionsResponse;
 
     const text = data.choices?.[0]?.message?.content?.trim();
     if (!text) {

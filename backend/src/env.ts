@@ -30,6 +30,8 @@ const envSchema = z.object({
     .transform((value) => value === 'true'),
   OPENAI_API_KEY: z.string().min(1).default(placeholderToken),
   OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
+  OPENAI_GATEWAY_URL: z.string().url().optional(),
+  OPENAI_GATEWAY_INTERNAL_TOKEN: z.string().min(32).optional(),
   OPENAI_MODEL: z.string().min(1).default('gpt-4.1-mini'),
   ANTHROPIC_API_KEY: z.string().min(1).default(placeholderToken),
   ANTHROPIC_MODEL: z.string().min(1).default('claude-3-5-sonnet-latest'),
@@ -76,4 +78,8 @@ if (env.UPLOAD_STORAGE_DRIVER === 'supabase') {
       `Missing Supabase storage configuration: ${missing.map(([key]) => key).join(', ')}`,
     );
   }
+}
+
+if (env.OPENAI_GATEWAY_URL && !env.OPENAI_GATEWAY_INTERNAL_TOKEN) {
+  throw new Error('OPENAI_GATEWAY_INTERNAL_TOKEN is required when OPENAI_GATEWAY_URL is set');
 }
