@@ -97,11 +97,7 @@ export async function requireActiveSubscription(userId: string) {
   return subscription;
 }
 
-export async function consumeSubscriptionTokens(userId: string, amount: number) {
-  if (amount <= 0) {
-    throw new AppError('Token amount must be positive', 400, 'INVALID_TOKEN_AMOUNT');
-  }
-
+export async function requireSubscriptionTokenBalance(userId: string, amount: number) {
   const subscription = await requireActiveSubscription(userId);
   const remainingTokens = getRemainingTokens(subscription);
 
@@ -116,6 +112,16 @@ export async function consumeSubscriptionTokens(userId: string, amount: number) 
       },
     );
   }
+
+  return subscription;
+}
+
+export async function consumeSubscriptionTokens(userId: string, amount: number) {
+  if (amount <= 0) {
+    throw new AppError('Token amount must be positive', 400, 'INVALID_TOKEN_AMOUNT');
+  }
+
+  const subscription = await requireSubscriptionTokenBalance(userId, amount);
 
   const result = await prisma.subscription.updateMany({
     where: {

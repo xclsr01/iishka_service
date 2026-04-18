@@ -3,11 +3,13 @@ import { logger } from '../../lib/logger';
 import { executeAsyncGenerationJob } from '../orchestration/orchestration-service';
 import { toClientSafeProviderMessage } from '../providers/provider-error-mapping';
 import { ProviderAdapterError } from '../providers/provider-types';
+import { consumeSubscriptionTokens } from '../subscriptions/subscription-service';
 import { persistProviderUsage } from '../usage/usage-service';
 import {
   completeGenerationJob,
   failGenerationJob,
   getGenerationJobForExecution,
+  getGenerationJobTokenCost,
   markGenerationJobRunning,
 } from './jobs-service';
 
@@ -49,6 +51,8 @@ export async function runGenerationJob(jobId: string) {
       userId: runningJob.userId,
       metadata: toMetadataObject(runningJob.metadata),
     });
+
+    await consumeSubscriptionTokens(runningJob.userId, getGenerationJobTokenCost(runningJob.kind));
 
     await completeGenerationJob({
       jobId: runningJob.id,
