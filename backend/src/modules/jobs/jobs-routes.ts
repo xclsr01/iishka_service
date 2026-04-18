@@ -1,8 +1,6 @@
 import { GenerationJobKind } from '@prisma/client';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { logger } from '../../lib/logger';
-import { disconnectPrisma, retainPrisma } from '../../lib/prisma';
 import { authMiddleware } from '../../middleware/auth';
 import type { AppVariables } from '../../types';
 import { createGenerationJob, getGenerationJob, listGenerationJobs } from './jobs-service';
@@ -37,39 +35,19 @@ jobsRoutes.post('/', async (c) => {
   const user = c.get('currentUser');
   const payload = createGenerationJobSchema.parse(await c.req.json());
   const executionCtx = getExecutionCtx(c);
-  const releaseBackgroundPrisma = retainPrisma();
-  let backgroundTaskScheduled = false;
 
-  try {
-    const job = await createGenerationJob({
-      userId: user.id,
-      providerId: payload.providerId,
-      kind: payload.kind,
-      prompt: payload.prompt,
-      chatId: payload.chatId,
-      metadata: payload.metadata,
-    }, {
-      schedule: executionCtx?.waitUntil ? (task) => executionCtx.waitUntil!(task) : undefined,
-      onSettled: async () => {
-        await releaseBackgroundPrisma();
-        await disconnectPrisma();
-      },
-    });
-    backgroundTaskScheduled = true;
+  const job = await createGenerationJob({
+    userId: user.id,
+    providerId: payload.providerId,
+    kind: payload.kind,
+    prompt: payload.prompt,
+    chatId: payload.chatId,
+    metadata: payload.metadata,
+  }, {
+    schedule: executionCtx?.waitUntil ? (task) => executionCtx.waitUntil!(task) : undefined,
+  });
 
-    return c.json({ job }, 201);
-  } catch (error) {
-    if (!backgroundTaskScheduled) {
-      await releaseBackgroundPrisma().catch((releaseError) => {
-        logger.error('generation_job_create_cleanup_failed', {
-          message: releaseError instanceof Error ? releaseError.message : 'unknown',
-          stack: releaseError instanceof Error ? releaseError.stack ?? null : null,
-        });
-      });
-    }
-
-    throw error;
-  }
+  return c.json({ job }, 201);
 });
 
 jobsRoutes.get('/:jobId', async (c) => {
