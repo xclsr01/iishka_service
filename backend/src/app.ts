@@ -8,7 +8,7 @@ import { requestIdMiddleware } from './middleware/request-id';
 import { toAppError } from './lib/errors';
 import { jsonSafeError } from './lib/http';
 import { logger } from './lib/logger';
-import { prisma } from './lib/prisma';
+import { disconnectPrisma } from './lib/prisma';
 import { authRoutes } from './modules/auth/auth-routes';
 import { catalogRoutes } from './modules/catalog/catalog-routes';
 import { chatRoutes } from './modules/chats/chat-routes';
@@ -46,7 +46,7 @@ export function createApp() {
 
       // Workers isolates can keep stale pg connections between requests; closing after each request
       // forces Prisma/pg to reconnect cleanly on the next one.
-      await prisma.$disconnect().catch((error) => {
+      await disconnectPrisma().catch((error) => {
         logger.error('prisma_disconnect_failed', {
           message: error instanceof Error ? error.message : 'unknown',
           stack: error instanceof Error ? error.stack ?? null : null,

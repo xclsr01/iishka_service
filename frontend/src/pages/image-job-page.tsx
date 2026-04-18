@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Download, ExternalLink, ImageIcon, Loader2, ShieldAlert, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { apiClient, type GeneratedImage, type ImageJobResultPayload, type Provider, type Subscription } from '@/lib/api';
+import {
+  apiClient,
+  type GeneratedImage,
+  type GenerationJob,
+  type ImageJobResultPayload,
+  type Provider,
+  type Subscription,
+} from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -22,6 +29,12 @@ function imageToDataUrl(image: GeneratedImage) {
   return `data:${image.mimeType};base64,${image.dataBase64}`;
 }
 
+type ImageHistoryItem = {
+  job: GenerationJob;
+  image: GeneratedImage;
+  text: string | null;
+};
+
 export function ImageJobPage({
   provider,
   subscription,
@@ -39,13 +52,19 @@ export function ImageJobPage({
 }) {
   const { t } = useLocale();
   const [prompt, setPrompt] = useState('');
-  const { job, isSubmitting, isPolling, error, createImageJob, resetJob } = useImageJob(provider.id);
+  const { job, jobs, isLoadingHistory, isSubmitting, isPolling, error, createImageJob, resetJob } = useImageJob(provider.id);
   const syncedJobIdRef = useRef<string | null>(null);
   const isBusy = isSubmitting || isPolling;
-  const result = useMemo(() => {
-    return isImageJobResult(job?.resultPayload) ? job.resultPayload : null;
-  }, [job?.resultPayload]);
-  const images = result?.images ?? [];
+  const imageHistory = useMemo<ImageHistoryItem[]>(() => {
+    return jobs.flatMap((historyJob) => {
+      const payload = isImageJobResult(historyJob.resultPayload) ? historyJob.resultPayload : null;
+      return (payload?.images ?? []).map((image) => ({
+        job: historyJob,
+        image,
+        text: payload?.text ?? null,
+      }));
+    });
+  }, [jobs]);
 
   useEffect(() => {
     if (job?.status !== 'COMPLETED' || syncedJobIdRef.current === job.id) {
@@ -67,6 +86,7 @@ export function ImageJobPage({
     }
 
     await createImageJob(normalizedPrompt);
+    setPrompt('');
   }
 
   return (
@@ -197,30 +217,41 @@ export function ImageJobPage({
         </Card>
       )}
 
-      {images.length > 0 && (
+      {isLoadingHistory && (
+        <Card className="flex items-center gap-2 border-border/70 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {t('loading')}
+        </Card>
+      )}
+
+      {imageHistory.length > 0 && (
         <section className="space-y-3 pb-4">
           <div className="flex items-center justify-between">
             <h2 className="font-display text-xl font-bold text-white">{t('generatedImages')}</h2>
-            <Badge className="border-border/60 bg-muted/70">{images.length}</Badge>
+            <Badge className="border-border/60 bg-muted/70">{imageHistory.length}</Badge>
           </div>
-          {result?.text && (
-            <Card className="border-border/70 bg-muted/50 px-4 py-3 text-sm leading-6 text-muted-foreground">
-              {result.text}
-            </Card>
-          )}
           <div className="grid gap-3 md:grid-cols-2">
-            {images.map((image) => {
-              const dataUrl = imageToDataUrl(image);
+            {imageHistory.map((item) => {
+              const dataUrl = imageToDataUrl(item.image);
               return (
-                <Card key={`${image.filename}-${image.index}`} className="overflow-hidden border-primary/20 bg-background/70 p-0">
+                <Card
+                  key={`${item.job.id}-${item.image.filename}-${item.image.index}`}
+                  className="overflow-hidden border-primary/20 bg-background/70 p-0"
+                >
                   <img
                     src={dataUrl}
-                    alt={prompt || provider.name}
+                    alt={item.job.prompt || provider.name}
                     className="aspect-square w-full object-cover"
                   />
+                  <div className="space-y-1 border-b border-border/60 px-3 py-2">
+                    <p className="line-clamp-2 text-sm font-semibold text-white">{item.job.prompt}</p>
+                    {item.text && (
+                      <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">{item.text}</p>
+                    )}
+                  </div>
                   <div className="flex flex-col gap-2 p-3 sm:flex-row">
                     <Button asChild className="flex-1">
-                      <a href={dataUrl} download={image.filename}>
+                      <a href={dataUrl} download={item.image.filename}>
                         <Download className="mr-2 h-4 w-4" />
                         {t('downloadImage')}
                       </a>
