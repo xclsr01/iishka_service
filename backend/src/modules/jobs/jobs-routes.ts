@@ -2,7 +2,7 @@ import { GenerationJobKind } from '@prisma/client';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { logger } from '../../lib/logger';
-import { prisma } from '../../lib/prisma';
+import { disconnectPrisma } from '../../lib/prisma';
 import { authMiddleware } from '../../middleware/auth';
 import type { AppVariables } from '../../types';
 import { createGenerationJob, getGenerationJob, listGenerationJobs } from './jobs-service';
@@ -50,13 +50,13 @@ jobsRoutes.post('/', async (c) => {
     }, {
       schedule: executionCtx?.waitUntil ? (task) => executionCtx.waitUntil!(task) : undefined,
       onSettled: async () => {
-        await prisma.$disconnect();
+        await disconnectPrisma();
       },
     });
 
     return c.json({ job }, 201);
   } catch (error) {
-    await prisma.$disconnect().catch((disconnectError) => {
+    await disconnectPrisma().catch((disconnectError) => {
       logger.error('generation_job_create_cleanup_failed', {
         message: disconnectError instanceof Error ? disconnectError.message : 'unknown',
         stack: disconnectError instanceof Error ? disconnectError.stack ?? null : null,

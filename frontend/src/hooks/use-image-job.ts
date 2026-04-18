@@ -4,6 +4,8 @@ import { useLocale } from '@/lib/i18n';
 
 type ImageJobState = {
   job: GenerationJob | null;
+  jobs: GenerationJob[];
+  isLoadingHistory: boolean;
   isSubmitting: boolean;
   isPolling: boolean;
   error: string | null;
@@ -25,11 +27,53 @@ export function useImageJob(providerId: string) {
   const { t } = useLocale();
   const [state, setState] = useState<ImageJobState>({
     job: null,
+    jobs: [],
+    isLoadingHistory: true,
     isSubmitting: false,
     isPolling: false,
     error: null,
   });
   const activeJobIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHistory() {
+      try {
+        const response = await apiClient.getGenerationJobs();
+        if (cancelled) {
+          return;
+        }
+
+        const imageJobs = response.jobs.filter((job) => job.kind === 'IMAGE' && job.provider.id === providerId);
+        const activeJob = imageJobs.find((job) => !isTerminalStatus(job)) ?? imageJobs[0] ?? null;
+        activeJobIdRef.current = activeJob?.id ?? null;
+
+        setState((current) => ({
+          ...current,
+          job: activeJob,
+          jobs: imageJobs,
+          isLoadingHistory: false,
+          isPolling: Boolean(activeJob && !isTerminalStatus(activeJob)),
+          error: null,
+        }));
+      } catch (error) {
+        if (!cancelled) {
+          setState((current) => ({
+            ...current,
+            isLoadingHistory: false,
+            error: toUserFacingError(error, t('imageGenerationFailed')),
+          }));
+        }
+      }
+    }
+
+    void loadHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [providerId, t]);
 
   useEffect(() => {
     if (!state.job || isTerminalStatus(state.job)) {
@@ -51,6 +95,7 @@ export function useImageJob(providerId: string) {
         setState((current) => ({
           ...current,
           job: response.job,
+          jobs: current.jobs.map((job) => (job.id === response.job.id ? response.job : job)),
           isPolling: !isTerminalStatus(response.job),
           error: response.job.status === 'FAILED'
             ? response.job.failureMessage || t('imageGenerationFailed')
@@ -93,12 +138,15 @@ export function useImageJob(providerId: string) {
       });
 
       activeJobIdRef.current = response.job.id;
-      setState({
+      setState((current) => ({
+        ...current,
         job: response.job,
+        jobs: [response.job, ...current.jobs.filter((job) => job.id !== response.job.id)],
+        isLoadingHistory: false,
         isSubmitting: false,
         isPolling: !isTerminalStatus(response.job),
         error: null,
-      });
+      }));
     } catch (error) {
       setState((current) => ({
         ...current,
@@ -112,12 +160,14 @@ export function useImageJob(providerId: string) {
 
   function resetJob() {
     activeJobIdRef.current = null;
-    setState({
+    setState((current) => ({
+      ...current,
       job: null,
+      isLoadingHistory: false,
       isSubmitting: false,
       isPolling: false,
       error: null,
-    });
+    }));
   }
 
   return {

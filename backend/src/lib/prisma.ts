@@ -19,18 +19,35 @@ function createAdapter() {
   );
 }
 
+function createPrismaClient() {
+  return new PrismaClient({
+    adapter: createAdapter(),
+    log: ['warn', 'error'],
+  });
+}
+
 declare global {
   // eslint-disable-next-line no-var
   var __prisma: PrismaClient | undefined;
 }
 
-export const prisma =
-  globalThis.__prisma ??
-  new PrismaClient({
-    adapter: createAdapter(),
-    log: ['warn', 'error'],
-  });
+export let prisma = globalThis.__prisma ?? createPrismaClient();
 
 if (process.env.APP_ENV !== 'production') {
   globalThis.__prisma = prisma;
+}
+
+export async function disconnectPrisma() {
+  const client = prisma;
+  await client.$disconnect();
+
+  if (prisma !== client) {
+    return;
+  }
+
+  prisma = createPrismaClient();
+
+  if (process.env.APP_ENV !== 'production') {
+    globalThis.__prisma = prisma;
+  }
 }

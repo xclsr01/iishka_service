@@ -271,6 +271,10 @@ class ApiClient {
   getGenerationJob(jobId: string) {
     return this.request<{ job: GenerationJob }>(`/api/jobs/${jobId}`);
   }
+
+  getGenerationJobs() {
+    return this.request<{ jobs: GenerationJob[] }>('/api/jobs');
+  }
 }
 
 export const apiClient = new ApiClient();
