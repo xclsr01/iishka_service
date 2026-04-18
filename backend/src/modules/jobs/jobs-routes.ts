@@ -1,6 +1,8 @@
 import { GenerationJobKind } from '@prisma/client';
 import { Hono } from 'hono';
 import { z } from 'zod';
+import { logger } from '../../lib/logger';
+import { prisma } from '../../lib/prisma';
 import { authMiddleware } from '../../middleware/auth';
 import type { AppVariables } from '../../types';
 import { createGenerationJob, getGenerationJob, listGenerationJobs } from './jobs-service';
@@ -35,18 +37,34 @@ jobsRoutes.post('/', async (c) => {
   const user = c.get('currentUser');
   const payload = createGenerationJobSchema.parse(await c.req.json());
   const executionCtx = getExecutionCtx(c);
-  const job = await createGenerationJob({
-    userId: user.id,
-    providerId: payload.providerId,
-    kind: payload.kind,
-    prompt: payload.prompt,
-    chatId: payload.chatId,
-    metadata: payload.metadata,
-  }, {
-    schedule: executionCtx?.waitUntil ? (task) => executionCtx.waitUntil!(task) : undefined,
-  });
+  c.set('skipPrismaDisconnect', true);
 
-  return c.json({ job }, 201);
+  try {
+    const job = await createGenerationJob({
+      userId: user.id,
+      providerId: payload.providerId,
+      kind: payload.kind,
+      prompt: payload.prompt,
+      chatId: payload.chatId,
+      metadata: payload.metadata,
+    }, {
+      schedule: executionCtx?.waitUntil ? (task) => executionCtx.waitUntil!(task) : undefined,
+      onSettled: async () => {
+        await prisma.$disconnect();
+      },
+    });
+
+    return c.json({ job }, 201);
+  } catch (error) {
+    await prisma.$disconnect().catch((disconnectError) => {
+      logger.error('generation_job_create_cleanup_failed', {
+        message: disconnectError instanceof Error ? disconnectError.message : 'unknown',
+        stack: disconnectError instanceof Error ? disconnectError.stack ?? null : null,
+      });
+    });
+
+    throw error;
+  }
 });
 
 jobsRoutes.get('/:jobId', async (c) => {

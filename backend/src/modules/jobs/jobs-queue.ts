@@ -14,26 +14,39 @@ class InlineGenerationJobQueue implements GenerationJobQueue {
       chatId: input.chatId ?? null,
     });
 
-    const task = (async () => {
-      const { runGenerationJob } = await import('./jobs-runner');
-      await runGenerationJob(input.jobId);
-    })().catch((error) => {
-      logger.error('generation_job_enqueue_execution_failed', {
-        jobId: input.jobId,
-        providerKey: input.providerKey,
-        kind: input.kind,
-        message: error instanceof Error ? error.message : 'unknown',
-        stack: error instanceof Error ? error.stack ?? null : null,
-      });
-    });
+    const createTask = () =>
+      (async () => {
+        try {
+          const { runGenerationJob } = await import('./jobs-runner');
+          await runGenerationJob(input.jobId);
+        } catch (error) {
+          logger.error('generation_job_enqueue_execution_failed', {
+            jobId: input.jobId,
+            providerKey: input.providerKey,
+            kind: input.kind,
+            message: error instanceof Error ? error.message : 'unknown',
+            stack: error instanceof Error ? error.stack ?? null : null,
+          });
+        } finally {
+          await options?.onSettled?.().catch((error) => {
+            logger.error('generation_job_enqueue_cleanup_failed', {
+              jobId: input.jobId,
+              providerKey: input.providerKey,
+              kind: input.kind,
+              message: error instanceof Error ? error.message : 'unknown',
+              stack: error instanceof Error ? error.stack ?? null : null,
+            });
+          });
+        }
+      })();
 
     if (options?.schedule) {
-      options.schedule(task);
+      options.schedule(createTask());
       return;
     }
 
     queueMicrotask(() => {
-      void task;
+      void createTask();
     });
   }
 }

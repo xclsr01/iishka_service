@@ -28,6 +28,7 @@ export type BackgroundTaskScheduler = (task: Promise<unknown>) => void;
 
 export type EnqueueGenerationJobOptions = {
   schedule?: BackgroundTaskScheduler;
+  onSettled?: () => Promise<void>;
 };
 
 export type PresentedGenerationJob = {
