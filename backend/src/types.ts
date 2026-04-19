@@ -1,5 +1,3 @@
-import type { User } from '@prisma/client';
-
 export type AuthSession = {
   userId: string;
   telegramUserId: string;
@@ -9,5 +7,4 @@ export type AuthSession = {
 export type AppVariables = {
   requestId: string;
   authSession: AuthSession;
-  currentUser: User;
 };

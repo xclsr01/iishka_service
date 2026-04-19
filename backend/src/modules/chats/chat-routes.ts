@@ -19,29 +19,29 @@ export const chatRoutes = new Hono<{ Variables: AppVariables }>();
 chatRoutes.use('*', authMiddleware);
 
 chatRoutes.get('/', async (c) => {
-  const user = c.get('currentUser');
-  const chats = await listChats(user.id);
+  const session = c.get('authSession');
+  const chats = await listChats(session.userId);
   return c.json({ chats });
 });
 
 chatRoutes.post('/', async (c) => {
-  const user = c.get('currentUser');
+  const session = c.get('authSession');
   const payload = createChatSchema.parse(await c.req.json());
-  const chat = await createChat(user.id, payload.providerId, payload.title);
+  const chat = await createChat(session.userId, payload.providerId, payload.title);
   return c.json({ chat }, 201);
 });
 
 chatRoutes.get('/:chatId/messages', async (c) => {
-  const user = c.get('currentUser');
-  const chat = await getChatWithMessages(user.id, c.req.param('chatId'));
+  const session = c.get('authSession');
+  const chat = await getChatWithMessages(session.userId, c.req.param('chatId'));
   return c.json({ chat });
 });
 
 chatRoutes.post('/:chatId/messages', async (c) => {
-  const user = c.get('currentUser');
+  const session = c.get('authSession');
   const payload = createMessageSchema.parse(await c.req.json());
   const result = await createMessage({
-    userId: user.id,
+    userId: session.userId,
     chatId: c.req.param('chatId'),
     content: payload.content,
     fileIds: payload.fileIds,

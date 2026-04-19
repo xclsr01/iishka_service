@@ -33,7 +33,7 @@ function getExecutionCtx(c: { executionCtx?: { waitUntil?: (task: Promise<unknow
 }
 
 jobsRoutes.get('/', async (c) => {
-  const user = c.get('currentUser');
+  const session = c.get('authSession');
   const query = listGenerationJobsSchema.parse({
     providerId: c.req.query('providerId'),
     kind: c.req.query('kind'),
@@ -41,7 +41,7 @@ jobsRoutes.get('/', async (c) => {
     limit: c.req.query('limit'),
   });
   const jobs = await listGenerationJobs({
-    userId: user.id,
+    userId: session.userId,
     providerId: query.providerId,
     kind: query.kind,
     status: query.status,
@@ -51,12 +51,12 @@ jobsRoutes.get('/', async (c) => {
 });
 
 jobsRoutes.post('/', async (c) => {
-  const user = c.get('currentUser');
+  const session = c.get('authSession');
   const payload = createGenerationJobSchema.parse(await c.req.json());
   const executionCtx = getExecutionCtx(c);
 
   const job = await createGenerationJob({
-    userId: user.id,
+    userId: session.userId,
     providerId: payload.providerId,
     kind: payload.kind,
     prompt: payload.prompt,
@@ -70,7 +70,7 @@ jobsRoutes.post('/', async (c) => {
 });
 
 jobsRoutes.get('/:jobId', async (c) => {
-  const user = c.get('currentUser');
-  const job = await getGenerationJob(user.id, c.req.param('jobId'));
+  const session = c.get('authSession');
+  const job = await getGenerationJob(session.userId, c.req.param('jobId'));
   return c.json({ job });
 });

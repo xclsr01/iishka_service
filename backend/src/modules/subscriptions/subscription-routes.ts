@@ -13,8 +13,8 @@ export const subscriptionRoutes = new Hono<{ Variables: AppVariables }>();
 subscriptionRoutes.use('*', authMiddleware);
 
 subscriptionRoutes.get('/', async (c) => {
-  const user = c.get('currentUser');
-  const subscription = await getCurrentSubscription(user.id);
+  const session = c.get('authSession');
+  const subscription = await getCurrentSubscription(session.userId);
 
   return c.json({
     subscription: presentSubscription(subscription),
@@ -22,8 +22,8 @@ subscriptionRoutes.get('/', async (c) => {
 });
 
 subscriptionRoutes.post('/dev/activate', async (c) => {
-  const user = c.get('currentUser');
-  const subscription = await activateDevSubscription(user.id);
+  const session = c.get('authSession');
+  const subscription = await activateDevSubscription(session.userId);
 
   return c.json({
     subscription: presentSubscription(subscription),
@@ -31,8 +31,8 @@ subscriptionRoutes.post('/dev/activate', async (c) => {
 });
 
 subscriptionRoutes.post('/dev/unsubscribe', async (c) => {
-  const user = c.get('currentUser');
-  const subscription = await unsubscribeDevSubscription(user.id);
+  const session = c.get('authSession');
+  const subscription = await unsubscribeDevSubscription(session.userId);
 
   return c.json({
     subscription: presentSubscription(subscription),
