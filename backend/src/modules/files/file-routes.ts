@@ -9,7 +9,7 @@ export const fileRoutes = new Hono<{ Variables: AppVariables }>();
 fileRoutes.use('*', authMiddleware);
 
 fileRoutes.post('/', async (c) => {
-  const user = c.get('currentUser');
+  const session = c.get('authSession');
   const body = await c.req.parseBody();
   const candidate = body.file;
 
@@ -17,6 +17,6 @@ fileRoutes.post('/', async (c) => {
     throw new AppError('Expected multipart file upload', 400, 'INVALID_UPLOAD');
   }
 
-  const file = await persistUploadedFile(user.id, candidate);
+  const file = await persistUploadedFile(session.userId, candidate);
   return c.json({ file }, 201);
 });
