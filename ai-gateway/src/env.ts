@@ -8,6 +8,8 @@ if (!process.env.AI_GATEWAY_INTERNAL_TOKEN && process.env.OPENAI_GATEWAY_INTERNA
 const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(8080),
+  GATEWAY_REGION: z.string().min(1).default('asia-southeast1'),
+  GATEWAY_EGRESS_MODE: z.enum(['default', 'cloud-nat-static-ip']).default('default'),
   AI_GATEWAY_INTERNAL_TOKEN: z.string().min(32),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),

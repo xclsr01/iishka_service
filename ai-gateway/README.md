@@ -95,6 +95,8 @@ curl -X POST http://localhost:8080/v1/providers/nano-banana/jobs/execute \
 ```text
 APP_ENV=production
 PORT=8080
+GATEWAY_REGION=asia-southeast1
+GATEWAY_EGRESS_MODE=cloud-nat-static-ip
 AI_GATEWAY_INTERNAL_TOKEN=<long random shared token>
 
 OPENAI_API_KEY=<real OpenAI API key>
@@ -163,13 +165,13 @@ gcloud run deploy ai-gateway \
   --region asia-southeast1 \
   --port 8080 \
   --allow-unauthenticated \
-  --set-env-vars APP_ENV=production,PORT=8080,OPENAI_BASE_URL=https://api.openai.com/v1,OPENAI_DEFAULT_MODEL=gpt-4.1-mini,ANTHROPIC_BASE_URL=https://api.anthropic.com,ANTHROPIC_DEFAULT_MODEL=claude-3-5-sonnet-latest,ANTHROPIC_VERSION=2023-06-01,GOOGLE_AI_BASE_URL=https://generativelanguage.googleapis.com,GOOGLE_AI_DEFAULT_MODEL=gemini-flash-latest,NANO_BANANA_DEFAULT_MODEL=gemini-2.5-flash-image,PROVIDER_REQUEST_TIMEOUT_MS=15000,PROVIDER_MAX_RETRIES=2,PROVIDER_RETRY_BASE_DELAY_MS=300 \
+  --set-env-vars APP_ENV=production,PORT=8080,GATEWAY_REGION=asia-southeast1,GATEWAY_EGRESS_MODE=default,OPENAI_BASE_URL=https://api.openai.com/v1,OPENAI_DEFAULT_MODEL=gpt-4.1-mini,ANTHROPIC_BASE_URL=https://api.anthropic.com,ANTHROPIC_DEFAULT_MODEL=claude-3-5-sonnet-latest,ANTHROPIC_VERSION=2023-06-01,GOOGLE_AI_BASE_URL=https://generativelanguage.googleapis.com,GOOGLE_AI_DEFAULT_MODEL=gemini-flash-latest,NANO_BANANA_DEFAULT_MODEL=gemini-2.5-flash-image,PROVIDER_REQUEST_TIMEOUT_MS=15000,PROVIDER_MAX_RETRIES=2,PROVIDER_RETRY_BASE_DELAY_MS=300 \
   --set-secrets AI_GATEWAY_INTERNAL_TOKEN=AI_GATEWAY_INTERNAL_TOKEN:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest
 ```
 
 Cloud Run may be externally reachable by the main backend, but all provider endpoints require app-level bearer auth. Do not call this service from the browser.
 
-For fixed production egress, route Cloud Run through VPC egress and Cloud NAT with a reserved static IP in `asia-southeast1`.
+For fixed production egress, route Cloud Run through VPC egress and Cloud NAT with a reserved static IP in `asia-southeast1`. See `docs/deployment/gcp-static-egress-singapore.md`.
 
 ## Main Backend Integration
 
@@ -198,4 +200,4 @@ Readiness check path:
 /ready
 ```
 
-Logs are structured JSON and include request id, route, provider, model, retry count, upstream status, upstream request id, and latency. Prompts and secrets are not logged by default.
+Logs are structured JSON and include request id, route, provider, model, gateway region, egress mode, retry count, upstream status, upstream request id, and latency. Prompts and secrets are not logged by default.
