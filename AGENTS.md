@@ -6,19 +6,24 @@
 - Preserve a clear separation between frontend, API, orchestration, provider adapters, and infrastructure concerns
 - Optimize for local developer onboarding while keeping architecture aligned with real production requirements
 - Support both interactive AI flows (chat, image) and async AI flows (video, music, long-running jobs)
+- Keep production AI provider egress behind the dedicated `ai-gateway` Cloud Run service in Singapore
 
 ## Core product principles
 - The system is an AI aggregation platform, not a thin wrapper around one provider
 - All upstream providers must be accessed through a unified orchestration layer
 - Provider-specific transport, auth, payload shapes, and error mapping must stay isolated behind adapters
+- In production, upstream provider HTTP calls should go through `ai-gateway`, not directly from the backend runtime
 - Interactive requests and long-running generation jobs must use different execution paths
 - Production safety, observability, and operational clarity are first-class concerns, not future nice-to-haves
 
 ## Architecture rules
 - Keep `/frontend` and `/backend` separated at the package boundary
+- Keep `/ai-gateway` as a separate internal app/package for provider transport and fixed-region egress
 - Treat the backend as a modular monolith: domains live in `backend/src/modules/<domain>`
 - Keep provider-specific logic behind the provider adapter layer in `backend/src/modules/providers`
 - Do not call provider APIs directly from routes or controllers; routes delegate to services
+- Do not put provider API keys in frontend code or Cloudflare Pages variables
+- Prefer `AI_GATEWAY_URL` + `AI_GATEWAY_INTERNAL_TOKEN` for production provider execution
 - Introduce a provider orchestration layer that decides provider routing, fallback behavior, retries, and execution mode
 - Separate interactive AI execution from async job execution
 - Keep storage behind an adapter so local disk can be replaced by object storage
@@ -42,6 +47,12 @@
 - `observability`: request logs, tracing metadata, provider latency/error metrics, currently implemented through shared lib + middleware primitives
 
 ## Folder responsibilities
+- `/ai-gateway`: internal provider transport service for OpenAI, Anthropic, Google AI, Nano Banana, and future providers
+- `/ai-gateway/src/app.ts`: gateway app composition and route mounting only
+- `/ai-gateway/src/env.ts`: gateway env parsing, provider secret requirements, and egress metadata
+- `/ai-gateway/src/modules/gateway`: shared gateway contracts, validation, provider request helper, and provider error mapping
+- `/ai-gateway/src/modules/openai`, `/ai-gateway/src/modules/anthropic`, `/ai-gateway/src/modules/google`: provider-specific upstream transport logic
+- `/ai-gateway/src/routes`: gateway health/readiness and provider routes
 - `/backend/prisma`: schema, migrations, seeds
 - `/backend/src/app.ts`: app composition and route mounting only
 - `/backend/src/env.ts`: env parsing and runtime config policy
@@ -64,6 +75,17 @@
 - `/frontend/src/components`: reusable UI and domain components
 - `/frontend/src/pages`: top-level screens
 - `/frontend/src/hooks`: stateful flows such as bootstrap, catalog loading, chat state, job polling
+- `/docs/deployment`: practical Cloud Run, static egress, and deployment docs
+- `/docs/migration`: migration plans and rollback notes
+- `/docs/validation`: smoke-test and validation checklists
+
+## Runtime placement
+- Frontend: Cloudflare Pages
+- Backend API: Google Cloud Run
+- AI Gateway: Google Cloud Run in `asia-southeast1`
+- AI Gateway egress: Serverless VPC Access connector + Cloud NAT + reserved static external IP
+- Database/storage: Supabase Postgres + Supabase Storage
+- Secrets: Google Secret Manager or runtime env injection
 
 ## Execution model rules
 - Interactive text and image requests should use a low-latency execution path
@@ -85,10 +107,23 @@
   - usage extraction
   - upstream error classification
   - request id capture
+- Backend adapters should call `backend/src/modules/providers/gateway-client.ts` when `AI_GATEWAY_URL` is configured
+- Gateway provider modules should own direct upstream provider fetch calls and provider API keys
 - Provider adapters must not persist business data directly
 - Provider adapters must not know about Telegram, route handlers, or UI concepts
 - If a provider needs custom file handling or prompt shaping, keep it inside the adapter or a provider-specific mapper
 - New providers must be added without modifying chat route logic
+- New production providers usually require changes in both backend provider registration and `ai-gateway` transport modules
+
+## Gateway rules
+- `ai-gateway` is an internal service, not an open proxy or public API product
+- All non-health gateway routes must require internal bearer auth
+- Gateway routes must validate request bodies with `zod`
+- Gateway logs must include request id, provider, model, region, egress mode, retry count, upstream status, upstream request id, and latency where available
+- Gateway logs must not include full prompts, provider secrets, bot tokens, or raw credentials
+- Gateway provider transport must classify timeout, rate limit, bad request, auth, network, empty response, and unavailable errors distinctly
+- Keep gateway route handlers thin; provider transport belongs under `ai-gateway/src/modules/<provider>`
+- Keep fixed egress configuration in deployment docs and Cloud Run settings, not hardcoded in source
 
 ## Coding standards
 - Use TypeScript everywhere with strict typing
@@ -116,6 +151,7 @@
 - Use job records for long-running work so retries do not create invisible duplicate generations
 - Persist enough provider metadata to debug incidents without exposing secrets
 - Design for partial failure: one provider failing must not take down the whole app
+- Use gateway health/readiness and `GATEWAY_EGRESS_MODE=cloud-nat-static-ip` metadata to confirm production egress configuration
 
 ## Observability rules
 - Every inbound request should have a request id / correlation id
@@ -140,6 +176,8 @@
 - Never accept files without MIME and size validation
 - Never expose raw upstream provider errors directly to clients
 - Keep secrets in env vars only
+- Keep provider API keys in the AI Gateway runtime for production
+- Keep `AI_GATEWAY_INTERNAL_TOKEN` backend-only and gateway-only
 - Disable dev auth and dev subscription overrides outside local development
 - Replace the in-memory rate limiter before production scale
 - Treat file storage as untrusted input; production should add malware scanning and content inspection
@@ -175,12 +213,13 @@
 2. Seed the provider in `backend/prisma/seed.ts`.
 3. Create a new adapter file in `backend/src/modules/providers`.
 4. Register it in `backend/src/modules/providers/provider-registry.ts`.
-5. Ensure the adapter conforms to the provider contract and exposes capability flags.
-6. Add provider-specific request mappers or file handling inside the provider module only.
-7. Add orchestration rules for when this provider is primary, fallback, or async-job only.
-8. Add usage extraction and upstream error mapping.
-9. Add tests for success, retryable failure, non-retryable failure, and empty response behavior.
-10. Expose catalog metadata through the existing catalog API instead of special-casing frontend logic.
+5. Add gateway transport support under `ai-gateway/src/modules/<provider>`.
+6. Ensure the backend adapter conforms to the provider contract and exposes capability flags.
+7. Add provider-specific request mappers or file handling inside the backend adapter or gateway provider module only.
+8. Add orchestration rules for when this provider is primary, fallback, or async-job only.
+9. Add usage extraction and upstream error mapping.
+10. Add tests for success, retryable failure, non-retryable failure, and empty response behavior.
+11. Expose catalog metadata through the existing catalog API instead of special-casing frontend logic.
 
 ## How to add routes
 1. Create or extend a route module under `backend/src/modules/<domain>`.
@@ -225,6 +264,7 @@
 
 ## Anti-patterns to avoid
 - Do not mix provider HTTP calls into route handlers
+- Do not add new direct production provider fetches in backend adapters when the gateway can own the transport
 - Do not make frontend components call `fetch` directly when the API client already covers the flow
 - Do not hardcode secrets, bot tokens, or provider keys in source code
 - Do not rely on local disk storage as a production architecture
