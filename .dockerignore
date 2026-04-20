@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+frontend/dist
+backend/dist
+ai-gateway/dist
+backend/storage/uploads
+.git
+.env
+frontend/.env
+backend/.env
+backend/.dev.vars
+backend/.dev.vars.*
+!backend/.dev.vars.example
+*.log
+.DS_Store
+coverage
