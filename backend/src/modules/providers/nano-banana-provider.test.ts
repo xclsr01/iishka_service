@@ -1,13 +1,18 @@
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { GenerationJobKind, ProviderKey } from '@prisma/client';
+import { env } from '../../env';
 import { NanoBananaProviderAdapter } from './nano-banana-provider';
 import { ProviderAdapterError } from './provider-types';
 
 const originalFetch = globalThis.fetch;
+const originalAiGatewayUrl = env.AI_GATEWAY_URL;
+const originalAiGatewayToken = env.AI_GATEWAY_INTERNAL_TOKEN;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  env.AI_GATEWAY_URL = originalAiGatewayUrl;
+  env.AI_GATEWAY_INTERNAL_TOKEN = originalAiGatewayToken;
 });
 
 test('NanoBananaProviderAdapter generates image jobs with Google AI Studio header auth', async () => {
@@ -23,6 +28,9 @@ test('NanoBananaProviderAdapter generates image jobs with Google AI Studio heade
       responseModalities: string[];
     };
   } | null = null;
+
+  env.AI_GATEWAY_URL = undefined;
+  env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
 
   globalThis.fetch = async (input, init) => {
     calledUrl = String(input);
@@ -105,8 +113,93 @@ test('NanoBananaProviderAdapter generates image jobs with Google AI Studio heade
   });
 });
 
+test('NanoBananaProviderAdapter executes image jobs through configured AI gateway', async () => {
+  const adapter = new NanoBananaProviderAdapter();
+  let calledUrl = '';
+  let calledHeaders: Record<string, string> = {};
+  let calledPayload: {
+    kind: string;
+    model: string;
+    prompt: string;
+    jobId: string;
+  } | null = null;
+
+  env.AI_GATEWAY_URL = 'https://ai-gateway.example.run.app';
+  env.AI_GATEWAY_INTERNAL_TOKEN = 'test-ai-gateway-token-000000000000000000';
+
+  globalThis.fetch = async (input, init) => {
+    calledUrl = String(input);
+    calledHeaders = init?.headers as Record<string, string>;
+    calledPayload = JSON.parse(String(init?.body));
+
+    return new Response(
+      JSON.stringify({
+        provider: 'nano-banana',
+        model: 'gemini-2.5-flash-image',
+        resultPayload: {
+          kind: GenerationJobKind.IMAGE,
+          text: 'Generated through gateway.',
+          images: [
+            {
+              index: 0,
+              mimeType: 'image/png',
+              filename: 'nano-banana-job_test-0.png',
+              dataBase64: 'aW1hZ2U=',
+              sizeBytes: 5,
+            },
+          ],
+        },
+        upstreamRequestId: 'req_gateway_nano',
+        externalJobId: null,
+        usage: {
+          inputTokens: 5,
+          outputTokens: 8,
+          totalTokens: 13,
+          raw: {
+            totalTokenCount: 13,
+          },
+        },
+      }),
+      { status: 200 },
+    );
+  };
+
+  const result = await adapter.executeAsyncJob({
+    providerKey: ProviderKey.NANO_BANANA,
+    jobId: 'job_test',
+    kind: GenerationJobKind.IMAGE,
+    model: 'gemini-2.5-flash-image',
+    prompt: 'Generate a neon banana mascot',
+  });
+
+  assert.equal(calledUrl, 'https://ai-gateway.example.run.app/v1/providers/nano-banana/jobs/execute');
+  assert.equal(calledHeaders.authorization, 'Bearer test-ai-gateway-token-000000000000000000');
+  assert.ok(calledPayload);
+  assert.equal(calledPayload.kind, GenerationJobKind.IMAGE);
+  assert.equal(calledPayload.model, 'gemini-2.5-flash-image');
+  assert.equal(calledPayload.prompt, 'Generate a neon banana mascot');
+  assert.equal(calledPayload.jobId, 'job_test');
+  assert.equal(result.upstreamRequestId, 'req_gateway_nano');
+  assert.deepEqual(result.resultPayload, {
+    kind: GenerationJobKind.IMAGE,
+    text: 'Generated through gateway.',
+    images: [
+      {
+        index: 0,
+        mimeType: 'image/png',
+        filename: 'nano-banana-job_test-0.png',
+        dataBase64: 'aW1hZ2U=',
+        sizeBytes: 5,
+      },
+    ],
+  });
+});
+
 test('NanoBananaProviderAdapter rejects non-image job kinds', async () => {
   const adapter = new NanoBananaProviderAdapter();
+
+  env.AI_GATEWAY_URL = undefined;
+  env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
 
   await assert.rejects(
     () =>
@@ -123,6 +216,9 @@ test('NanoBananaProviderAdapter rejects non-image job kinds', async () => {
 
 test('NanoBananaProviderAdapter classifies retryable rate limit errors', async () => {
   const adapter = new NanoBananaProviderAdapter();
+
+  env.AI_GATEWAY_URL = undefined;
+  env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
 
   globalThis.fetch = async () =>
     new Response(

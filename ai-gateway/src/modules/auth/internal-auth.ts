@@ -4,7 +4,7 @@ import { AppError } from '../../lib/errors';
 export function verifyInternalBearerAuth(headerValue: string | undefined) {
   const token = headerValue?.startsWith('Bearer ') ? headerValue.slice(7).trim() : null;
 
-  if (!token || token !== env.OPENAI_GATEWAY_INTERNAL_TOKEN) {
+  if (!token || token !== env.AI_GATEWAY_INTERNAL_TOKEN) {
     throw new AppError({
       message: 'Unauthorized',
       statusCode: 401,

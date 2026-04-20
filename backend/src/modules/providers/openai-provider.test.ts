@@ -6,11 +6,15 @@ import { runWithLogContext } from '../../lib/request-context';
 import { OpenAiProviderAdapter } from './openai-provider';
 
 const originalFetch = globalThis.fetch;
+const originalAiGatewayUrl = env.AI_GATEWAY_URL;
+const originalAiGatewayToken = env.AI_GATEWAY_INTERNAL_TOKEN;
 const originalGatewayUrl = env.OPENAI_GATEWAY_URL;
 const originalGatewayToken = env.OPENAI_GATEWAY_INTERNAL_TOKEN;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  env.AI_GATEWAY_URL = originalAiGatewayUrl;
+  env.AI_GATEWAY_INTERNAL_TOKEN = originalAiGatewayToken;
   env.OPENAI_GATEWAY_URL = originalGatewayUrl;
   env.OPENAI_GATEWAY_INTERNAL_TOKEN = originalGatewayToken;
 });
@@ -25,8 +29,10 @@ test('OpenAiProviderAdapter calls configured internal gateway instead of direct 
     messages: Array<{ role: string; content: string }>;
   } | null = null;
 
-  env.OPENAI_GATEWAY_URL = 'https://openai-gateway.example.run.app';
-  env.OPENAI_GATEWAY_INTERNAL_TOKEN = 'test-openai-gateway-token-000000000000';
+  env.AI_GATEWAY_URL = 'https://ai-gateway.example.run.app';
+  env.AI_GATEWAY_INTERNAL_TOKEN = 'test-ai-gateway-token-000000000000000000';
+  env.OPENAI_GATEWAY_URL = undefined;
+  env.OPENAI_GATEWAY_INTERNAL_TOKEN = undefined;
 
   globalThis.fetch = async (input, init) => {
     calledUrl = String(input);
@@ -47,6 +53,8 @@ test('OpenAiProviderAdapter calls configured internal gateway instead of direct 
             total_tokens: 7,
           },
         },
+        provider: 'openai',
+        model: 'gpt-4.1-mini',
         raw: {
           id: 'resp_gateway',
           model: 'gpt-4.1-mini',
@@ -72,13 +80,14 @@ test('OpenAiProviderAdapter calls configured internal gateway instead of direct 
     }),
   );
 
-  assert.equal(calledUrl, 'https://openai-gateway.example.run.app/v1/chat/respond');
-  assert.equal(calledHeaders.authorization, 'Bearer test-openai-gateway-token-000000000000');
+  assert.equal(calledUrl, 'https://ai-gateway.example.run.app/v1/providers/openai/chat/respond');
+  assert.equal(calledHeaders.authorization, 'Bearer test-ai-gateway-token-000000000000000000');
   assert.equal(calledHeaders['content-type'], 'application/json');
   assert.equal(calledHeaders['x-request-id'], 'req_local_test');
   assert.ok(calledPayload);
   assert.equal(calledPayload.requestId, 'req_local_test');
   assert.deepEqual(calledPayload.messages, [{ role: 'user', content: 'Hello' }]);
+  assert.equal(calledPayload.model, 'gpt-4.1-mini');
   assert.equal(result.text, 'Gateway response');
   assert.equal(result.upstreamRequestId, 'req_gateway_openai');
   assert.deepEqual(result.usage, {
@@ -92,5 +101,7 @@ test('OpenAiProviderAdapter calls configured internal gateway instead of direct 
     },
   });
   assert.equal(result.raw.gateway, true);
+  assert.equal(result.raw.gatewayProvider, 'openai');
+  assert.equal(result.raw.gatewayModel, 'gpt-4.1-mini');
   assert.equal(result.raw.id, 'resp_gateway');
 });

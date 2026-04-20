@@ -119,6 +119,8 @@ export async function executeInteractiveGeneration(
           providerKey: candidateKey,
           model,
           messages: request.messages,
+          chatId: request.chatId,
+          userId: request.userId,
         });
         const latencyMs = Date.now() - startedAt;
 

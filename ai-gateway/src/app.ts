@@ -4,7 +4,7 @@ import { toAppError } from './lib/errors';
 import { withRequestId, type GatewayVariables } from './lib/http';
 import { logger } from './lib/logger';
 import { healthRoutes } from './routes/health-routes';
-import { openaiRoutes } from './routes/openai-routes';
+import { providerRoutes } from './routes/provider-routes';
 import { requestIdMiddleware } from './middleware/request-id';
 
 export function createApp() {
@@ -13,7 +13,7 @@ export function createApp() {
   app.use('*', requestIdMiddleware);
 
   app.route('/', healthRoutes);
-  app.route('/v1', openaiRoutes);
+  app.route('/v1', providerRoutes);
 
   app.notFound((c) => {
     return c.json(

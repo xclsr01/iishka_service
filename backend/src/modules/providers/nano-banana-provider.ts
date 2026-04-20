@@ -1,6 +1,7 @@
 import { GenerationJobKind, ProviderKey } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { env } from '../../env';
+import { executeGatewayAsyncJob, isAiGatewayConfigured } from './gateway-client';
 import type {
   AiProviderAdapter,
   ProviderAsyncJobInput,
@@ -124,6 +125,10 @@ export class NanoBananaProviderAdapter implements AiProviderAdapter {
   }
 
   async executeAsyncJob(input: ProviderAsyncJobInput): Promise<ProviderAsyncJobResult> {
+    if (isAiGatewayConfigured()) {
+      return executeGatewayAsyncJob(input);
+    }
+
     if (input.kind !== GenerationJobKind.IMAGE) {
       throw new AppError(
         'Nano Banana only supports image generation jobs',
