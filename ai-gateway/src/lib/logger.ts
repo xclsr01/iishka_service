@@ -5,7 +5,7 @@ type LogLevel = 'info' | 'error';
 function writeLog(level: LogLevel, message: string, meta?: Record<string, unknown>) {
   const payload = {
     timestamp: new Date().toISOString(),
-    service: 'openai-gateway',
+    service: 'ai-gateway',
     level,
     message,
     ...getLogContext(),

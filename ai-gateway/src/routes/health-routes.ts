@@ -5,7 +5,7 @@ export const healthRoutes = new Hono();
 healthRoutes.get('/health', (c) => {
   return c.json({
     ok: true,
-    service: 'openai-gateway',
+    service: 'ai-gateway',
   });
 });
 
