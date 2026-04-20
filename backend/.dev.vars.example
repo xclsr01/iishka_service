@@ -11,6 +11,10 @@ TELEGRAM_BOT_USERNAME=replace_with_bot_username
 TELEGRAM_WEBHOOK_SECRET=replace_with_webhook_secret
 TELEGRAM_MINI_APP_URL=http://localhost:5173
 TELEGRAM_DELIVERY_MODE=disabled
+AI_GATEWAY_URL=
+AI_GATEWAY_INTERNAL_TOKEN=
+AI_GATEWAY_TIMEOUT_MS=15000
+
 OPENAI_API_KEY=replace_with_openai_api_key
 OPENAI_ENABLED=true
 OPENAI_BASE_URL=https://api.openai.com/v1

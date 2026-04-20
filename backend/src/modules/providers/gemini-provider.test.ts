@@ -1,13 +1,18 @@
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { ProviderKey } from '@prisma/client';
+import { env } from '../../env';
 import { GeminiProviderAdapter } from './gemini-provider';
 import { ProviderAdapterError } from './provider-types';
 
 const originalFetch = globalThis.fetch;
+const originalAiGatewayUrl = env.AI_GATEWAY_URL;
+const originalAiGatewayToken = env.AI_GATEWAY_INTERNAL_TOKEN;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  env.AI_GATEWAY_URL = originalAiGatewayUrl;
+  env.AI_GATEWAY_INTERNAL_TOKEN = originalAiGatewayToken;
 });
 
 test('GeminiProviderAdapter calls Google AI Studio generateContent with header auth', async () => {
@@ -19,6 +24,9 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
       parts: Array<{ text: string }>;
     }>;
   } | null = null;
+
+  env.AI_GATEWAY_URL = undefined;
+  env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
 
   globalThis.fetch = async (input, init) => {
     calledUrl = String(input);
@@ -85,8 +93,74 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
   });
 });
 
+test('GeminiProviderAdapter calls configured AI gateway when available', async () => {
+  const adapter = new GeminiProviderAdapter();
+  let calledUrl = '';
+  let calledHeaders: Record<string, string> = {};
+  let calledPayload: {
+    model: string;
+    messages: Array<{ role: string; content: string }>;
+  } | null = null;
+
+  env.AI_GATEWAY_URL = 'https://ai-gateway.example.run.app';
+  env.AI_GATEWAY_INTERNAL_TOKEN = 'test-ai-gateway-token-000000000000000000';
+
+  globalThis.fetch = async (input, init) => {
+    calledUrl = String(input);
+    calledHeaders = init?.headers as Record<string, string>;
+    calledPayload = JSON.parse(String(init?.body));
+
+    return new Response(
+      JSON.stringify({
+        provider: 'gemini',
+        model: 'gemini-flash-latest',
+        text: 'Gateway Gemini response',
+        upstreamRequestId: 'req_gateway_gemini',
+        usage: {
+          inputTokens: 2,
+          outputTokens: 3,
+          totalTokens: 5,
+          raw: {
+            totalTokenCount: 5,
+          },
+        },
+        raw: {
+          usage: {
+            totalTokenCount: 5,
+          },
+        },
+      }),
+      { status: 200 },
+    );
+  };
+
+  const result = await adapter.generateResponse({
+    providerKey: ProviderKey.GEMINI,
+    model: 'gemini-flash-latest',
+    messages: [
+      {
+        role: 'user',
+        content: 'Hello',
+      },
+    ],
+  });
+
+  assert.equal(calledUrl, 'https://ai-gateway.example.run.app/v1/providers/gemini/chat/respond');
+  assert.equal(calledHeaders.authorization, 'Bearer test-ai-gateway-token-000000000000000000');
+  assert.ok(calledPayload);
+  assert.equal(calledPayload.model, 'gemini-flash-latest');
+  assert.deepEqual(calledPayload.messages, [{ role: 'user', content: 'Hello' }]);
+  assert.equal(result.text, 'Gateway Gemini response');
+  assert.equal(result.upstreamRequestId, 'req_gateway_gemini');
+  assert.equal(result.raw.gateway, true);
+  assert.equal(result.raw.gatewayProvider, 'gemini');
+});
+
 test('GeminiProviderAdapter classifies retryable Google AI rate limit errors', async () => {
   const adapter = new GeminiProviderAdapter();
+
+  env.AI_GATEWAY_URL = undefined;
+  env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
 
   globalThis.fetch = async () =>
     new Response(

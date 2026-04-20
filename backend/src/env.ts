@@ -9,6 +9,11 @@ const placeholderSecret =
   'replace-this-placeholder-secret-before-production-use-0000000000000000';
 const placeholderToken = 'replace-me';
 const placeholderDatabaseUrl = 'postgresql://user:password@localhost:5432/iishka_service';
+const optionalUrl = z.preprocess((value) => (value === '' ? undefined : value), z.string().url().optional());
+const optionalSecret = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().min(32).optional(),
+);
 
 const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -28,10 +33,13 @@ const envSchema = z.object({
     .string()
     .default('true')
     .transform((value) => value === 'true'),
+  AI_GATEWAY_URL: optionalUrl,
+  AI_GATEWAY_INTERNAL_TOKEN: optionalSecret,
+  AI_GATEWAY_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
   OPENAI_API_KEY: z.string().min(1).default(placeholderToken),
   OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
-  OPENAI_GATEWAY_URL: z.string().url().optional(),
-  OPENAI_GATEWAY_INTERNAL_TOKEN: z.string().min(32).optional(),
+  OPENAI_GATEWAY_URL: optionalUrl,
+  OPENAI_GATEWAY_INTERNAL_TOKEN: optionalSecret,
   OPENAI_MODEL: z.string().min(1).default('gpt-4.1-mini'),
   ANTHROPIC_API_KEY: z.string().min(1).default(placeholderToken),
   ANTHROPIC_MODEL: z.string().min(1).default('claude-3-5-sonnet-latest'),
@@ -79,6 +87,10 @@ if (env.UPLOAD_STORAGE_DRIVER === 'supabase') {
       `Missing Supabase storage configuration: ${missing.map(([key]) => key).join(', ')}`,
     );
   }
+}
+
+if (env.AI_GATEWAY_URL && !env.AI_GATEWAY_INTERNAL_TOKEN) {
+  throw new Error('AI_GATEWAY_INTERNAL_TOKEN is required when AI_GATEWAY_URL is set');
 }
 
 if (env.OPENAI_GATEWAY_URL && !env.OPENAI_GATEWAY_INTERNAL_TOKEN) {

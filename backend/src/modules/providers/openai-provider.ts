@@ -2,6 +2,7 @@ import { ProviderKey } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { env } from '../../env';
 import { getLogContext } from '../../lib/request-context';
+import { generateGatewayChatResponse, isAiGatewayConfigured } from './gateway-client';
 import type {
   AiProviderAdapter,
   ProviderAsyncJobInput,
@@ -141,6 +142,10 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
           'PROVIDER_REGION_UNAVAILABLE',
         ),
       );
+    }
+
+    if (isAiGatewayConfigured()) {
+      return generateGatewayChatResponse(input);
     }
 
     if (env.OPENAI_GATEWAY_URL) {
@@ -361,6 +366,8 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
     const result = await this.generateResponse({
       providerKey: input.providerKey,
       model: input.model,
+      chatId: input.chatId,
+      userId: input.userId,
       messages: [
         {
           role: 'user',

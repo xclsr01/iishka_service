@@ -1,6 +1,7 @@
 import { ProviderKey } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { env } from '../../env';
+import { generateGatewayChatResponse, isAiGatewayConfigured } from './gateway-client';
 import type {
   AiProviderAdapter,
   ProviderAsyncJobInput,
@@ -83,6 +84,10 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
   }
 
   async generateResponse(input: ProviderGenerateInput): Promise<ProviderGenerateResult> {
+    if (isAiGatewayConfigured()) {
+      return generateGatewayChatResponse(input);
+    }
+
     const system = input.messages.find((message) => message.role === 'system')?.content;
     const messages = input.messages
       .filter((message) => message.role !== 'system')
@@ -183,6 +188,8 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
     const result = await this.generateResponse({
       providerKey: input.providerKey,
       model: input.model,
+      chatId: input.chatId,
+      userId: input.userId,
       messages: [
         {
           role: 'user',

@@ -28,6 +28,8 @@ export type ProviderGenerateInput = {
   providerKey: ProviderKey;
   model: string;
   messages: ProviderChatMessage[];
+  chatId?: string;
+  userId?: string;
 };
 
 export type ProviderGenerateResult = {
