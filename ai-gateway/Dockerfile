@@ -2,7 +2,7 @@ FROM node:22-slim AS build
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json tsconfig.base.json ./
 COPY ai-gateway/package.json ai-gateway/package.json
 RUN npm ci --workspace ai-gateway
 
