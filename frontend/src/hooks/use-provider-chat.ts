@@ -110,6 +110,11 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
         if (cachedChatId) {
           try {
             const cachedResponse = await apiClient.getChat(cachedChatId);
+            if (cachedResponse.chat.providerId !== provider.id) {
+              writeCachedProviderChat(provider.id, null);
+              throw new Error('Cached chat provider mismatch');
+            }
+
             if (!cancelled) {
               setState((current) => ({
                 ...current,
