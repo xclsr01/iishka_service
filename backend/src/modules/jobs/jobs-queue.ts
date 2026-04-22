@@ -45,9 +45,9 @@ class InlineGenerationJobQueue implements GenerationJobQueue {
       return;
     }
 
-    queueMicrotask(() => {
-      void createTask();
-    });
+    // Cloud Run does not provide Worker-style waitUntil, and request-scoped CPU can be
+    // throttled after the response. Run inline until a real queue worker is introduced.
+    await createTask();
   }
 }
 
