@@ -3,8 +3,8 @@ import type { ProviderAdapterError, ProviderCapabilitySet } from '../providers/p
 
 const INTERACTIVE_FALLBACK_ORDER: Record<ProviderKey, ProviderKey[]> = {
   [ProviderKey.OPENAI]: [ProviderKey.ANTHROPIC, ProviderKey.GEMINI],
-  [ProviderKey.ANTHROPIC]: [ProviderKey.GEMINI, ProviderKey.OPENAI],
-  [ProviderKey.GEMINI]: [ProviderKey.ANTHROPIC, ProviderKey.OPENAI],
+  [ProviderKey.ANTHROPIC]: [ProviderKey.GEMINI],
+  [ProviderKey.GEMINI]: [ProviderKey.ANTHROPIC],
   [ProviderKey.NANO_BANANA]: [],
 };
 
