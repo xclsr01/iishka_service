@@ -31,7 +31,7 @@ function imageToDataUrl(image: GeneratedImage) {
 
 type ImageHistoryItem = {
   job: GenerationJob;
-  image: GeneratedImage;
+  images: GeneratedImage[];
   text: string | null;
 };
 
@@ -52,17 +52,17 @@ export function ImageJobPage({
 }) {
   const { t } = useLocale();
   const [prompt, setPrompt] = useState('');
-  const { job, jobs, isLoadingHistory, isSubmitting, isPolling, error, createImageJob, resetJob } = useImageJob(provider.id);
+  const { job, jobs, isLoadingHistory, isSubmitting, error, createImageJob, resetJob } = useImageJob(provider.id);
   const syncedJobIdRef = useRef<string | null>(null);
-  const isBusy = isSubmitting || isPolling;
+  const isBusy = isSubmitting;
   const imageHistory = useMemo<ImageHistoryItem[]>(() => {
-    return jobs.flatMap((historyJob) => {
+    return jobs.map((historyJob) => {
       const payload = isImageJobResult(historyJob.resultPayload) ? historyJob.resultPayload : null;
-      return (payload?.images ?? []).map((image) => ({
+      return {
         job: historyJob,
-        image,
+        images: payload?.images ?? [],
         text: payload?.text ?? null,
-      }));
+      };
     });
   }, [jobs]);
 
@@ -182,7 +182,7 @@ export function ImageJobPage({
             )}
           </Button>
           {job && (
-            <Button type="button" variant="ghost" className="min-h-11" disabled={isBusy} onClick={resetJob}>
+            <Button type="button" variant="ghost" className="min-h-11" disabled={isSubmitting} onClick={resetJob}>
               {t('newImage')}
             </Button>
           )}
@@ -232,37 +232,67 @@ export function ImageJobPage({
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             {imageHistory.map((item) => {
-              const dataUrl = imageToDataUrl(item.image);
               return (
                 <Card
-                  key={`${item.job.id}-${item.image.filename}-${item.image.index}`}
+                  key={item.job.id}
                   className="overflow-hidden border-primary/20 bg-background/70 p-0"
                 >
-                  <img
-                    src={dataUrl}
-                    alt={item.job.prompt || provider.name}
-                    className="aspect-square w-full object-cover"
-                  />
+                  {item.images.length > 0 ? (
+                    <div className="grid gap-px bg-border/40">
+                      {item.images.map((image) => {
+                        const dataUrl = imageToDataUrl(image);
+                        return (
+                          <img
+                            key={`${image.filename}-${image.index}`}
+                            src={dataUrl}
+                            alt={item.job.prompt || provider.name}
+                            className="aspect-square w-full object-cover"
+                          />
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex aspect-square items-center justify-center bg-muted/35 px-4 text-center text-sm text-muted-foreground">
+                      {item.job.status === 'FAILED'
+                        ? item.job.failureMessage || t('imageGenerationFailed')
+                        : t(`jobStatus${item.job.status}`)}
+                    </div>
+                  )}
                   <div className="space-y-1 border-b border-border/60 px-3 py-2">
-                    <p className="line-clamp-2 text-sm font-semibold text-white">{item.job.prompt}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="line-clamp-3 text-sm font-semibold text-white">{item.job.prompt}</p>
+                      <Badge
+                        className={cn(
+                          'shrink-0 border-primary/30 bg-primary/10 text-primary',
+                          item.job.status === 'FAILED' && 'border-destructive/30 bg-destructive/10 text-destructive',
+                        )}
+                      >
+                        {item.job.status}
+                      </Badge>
+                    </div>
                     {item.text && (
                       <p className="line-clamp-2 text-xs leading-5 text-muted-foreground">{item.text}</p>
                     )}
                   </div>
-                  <div className="flex flex-col gap-2 p-3 sm:flex-row">
-                    <Button asChild className="flex-1">
-                      <a href={dataUrl} download={item.image.filename}>
-                        <Download className="mr-2 h-4 w-4" />
-                        {t('downloadImage')}
-                      </a>
-                    </Button>
-                    <Button asChild variant="ghost" className="flex-1">
-                      <a href={dataUrl} target="_blank" rel="noreferrer">
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        {t('openImage')}
-                      </a>
-                    </Button>
-                  </div>
+                  {item.images.map((image) => {
+                    const dataUrl = imageToDataUrl(image);
+                    return (
+                      <div key={`${image.filename}-${image.index}-actions`} className="flex flex-col gap-2 p-3 sm:flex-row">
+                        <Button asChild className="flex-1">
+                          <a href={dataUrl} download={image.filename}>
+                            <Download className="mr-2 h-4 w-4" />
+                            {t('downloadImage')}
+                          </a>
+                        </Button>
+                        <Button asChild variant="ghost" className="flex-1">
+                          <a href={dataUrl} target="_blank" rel="noreferrer">
+                            <ExternalLink className="mr-2 h-4 w-4" />
+                            {t('openImage')}
+                          </a>
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </Card>
               );
             })}
