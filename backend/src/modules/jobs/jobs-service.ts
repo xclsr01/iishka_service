@@ -150,7 +150,17 @@ export async function createGenerationJob(
 
   await generationJobQueue.enqueue(buildQueueInput(job, provider), enqueueOptions);
 
-  return presentGenerationJob(job);
+  const resolvedJob = await withOperationTimeout(
+    'jobs.findAfterEnqueue',
+    prisma.generationJob.findUnique({
+      where: { id: job.id },
+      include: {
+        provider: true,
+      },
+    }),
+  );
+
+  return presentGenerationJob(assertPresent(resolvedJob, 'Generation job not found'));
 }
 
 export async function listGenerationJobs(input: ListGenerationJobsInput) {

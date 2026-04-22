@@ -24,14 +24,6 @@ export const jobsRoutes = new Hono<{ Variables: AppVariables }>();
 
 jobsRoutes.use('*', authMiddleware);
 
-function getExecutionCtx(c: { executionCtx?: { waitUntil?: (task: Promise<unknown>) => void } }) {
-  try {
-    return c.executionCtx && typeof c.executionCtx.waitUntil === 'function' ? c.executionCtx : null;
-  } catch {
-    return null;
-  }
-}
-
 jobsRoutes.get('/', async (c) => {
   const session = c.get('authSession');
   const query = listGenerationJobsSchema.parse({
@@ -53,7 +45,6 @@ jobsRoutes.get('/', async (c) => {
 jobsRoutes.post('/', async (c) => {
   const session = c.get('authSession');
   const payload = createGenerationJobSchema.parse(await c.req.json());
-  const executionCtx = getExecutionCtx(c);
 
   const job = await createGenerationJob({
     userId: session.userId,
@@ -62,8 +53,6 @@ jobsRoutes.post('/', async (c) => {
     prompt: payload.prompt,
     chatId: payload.chatId,
     metadata: payload.metadata,
-  }, {
-    schedule: executionCtx?.waitUntil ? (task) => executionCtx.waitUntil!(task) : undefined,
   });
 
   return c.json({ job }, 201);
