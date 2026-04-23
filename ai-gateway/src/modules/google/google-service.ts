@@ -31,6 +31,14 @@ type GoogleGenerateContentResponse = {
   };
 };
 
+const GOOGLE_SEARCH_GROUNDING_INSTRUCTION = [
+  'System instructions:',
+  'Google Search grounding is enabled for this Gemini request.',
+  'For questions about current, latest, recent, today, now, live data, prices, exchange rates, weather, news, sports, dates, or market data, use Google Search grounding before answering.',
+  'Never answer time-sensitive questions from model memory alone.',
+  'When grounding metadata is available, include concise source names or links in the answer.',
+].join('\n');
+
 function trimTrailingSlashes(value: string) {
   return value.replace(/\/+$/, '');
 }
@@ -69,9 +77,10 @@ export async function respondWithGemini(
 ): Promise<GatewayChatRespondResponse> {
   const provider = 'gemini';
   const model = input.model || env.GOOGLE_AI_DEFAULT_MODEL;
-  const prompt = input.messages
-    .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
-    .join('\n\n');
+  const prompt = [
+    GOOGLE_SEARCH_GROUNDING_INSTRUCTION,
+    ...input.messages.map((message) => `${message.role.toUpperCase()}: ${message.content}`),
+  ].join('\n\n');
 
   logger.info('provider_gateway_request_started', {
     route: '/v1/providers/gemini/chat/respond',
@@ -119,6 +128,27 @@ export async function respondWithGemini(
   const upstreamRequestId = response.headers.get('x-request-id') ?? response.headers.get('request-id');
   const data = (await response.json()) as GoogleGenerateContentResponse;
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+  const groundingMetadata = data.candidates?.[0]?.groundingMetadata ?? null;
+
+  logger.info('provider_grounding_completed', {
+    route: '/v1/providers/gemini/chat/respond',
+    requestId: routeRequestId,
+    provider,
+    model,
+    userId: input.userId ?? null,
+    chatId: input.chatId ?? null,
+    googleSearchEnabled: true,
+    groundingReturned: Boolean(groundingMetadata),
+    groundingChunkCount: Array.isArray(groundingMetadata?.groundingChunks)
+      ? groundingMetadata.groundingChunks.length
+      : 0,
+    groundingSupportCount: Array.isArray(groundingMetadata?.groundingSupports)
+      ? groundingMetadata.groundingSupports.length
+      : 0,
+    webSearchQueryCount: Array.isArray(groundingMetadata?.webSearchQueries)
+      ? groundingMetadata.webSearchQueries.length
+      : 0,
+  });
 
   if (!text) {
     throw createEmptyResponseError(provider);
@@ -132,7 +162,7 @@ export async function respondWithGemini(
     usage: usageFromGoogle(data),
     raw: {
       usage: data.usageMetadata ?? null,
-      groundingMetadata: data.candidates?.[0]?.groundingMetadata ?? null,
+      groundingMetadata,
     },
   };
 }

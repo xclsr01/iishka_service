@@ -21,6 +21,14 @@ import {
   isProviderTimeoutError,
 } from './provider-error-mapping';
 
+const GOOGLE_SEARCH_GROUNDING_INSTRUCTION = [
+  'System instructions:',
+  'Google Search grounding is enabled for this Gemini request.',
+  'For questions about current, latest, recent, today, now, live data, prices, exchange rates, weather, news, sports, dates, or market data, use Google Search grounding before answering.',
+  'Never answer time-sensitive questions from model memory alone.',
+  'When grounding metadata is available, include concise source names or links in the answer.',
+].join('\n');
+
 export class GeminiProviderAdapter implements AiProviderAdapter {
   readonly metadata = {
     key: ProviderKey.GEMINI,
@@ -88,9 +96,10 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
       return generateGatewayChatResponse(input);
     }
 
-    const prompt = input.messages
-      .map((message) => `${message.role.toUpperCase()}: ${message.content}`)
-      .join('\n\n');
+    const prompt = [
+      GOOGLE_SEARCH_GROUNDING_INSTRUCTION,
+      ...input.messages.map((message) => `${message.role.toUpperCase()}: ${message.content}`),
+    ].join('\n\n');
     const model = input.model || env.GOOGLE_AI_MODEL;
 
     let response: Response;
@@ -151,6 +160,7 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
     };
 
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const groundingMetadata = data.candidates?.[0]?.groundingMetadata ?? null;
     if (!text) {
       throw this.classifyError(
         createProviderEmptyResponseError({
@@ -164,7 +174,7 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
       text,
       raw: {
         usage: data.usageMetadata ?? null,
-        groundingMetadata: data.candidates?.[0]?.groundingMetadata ?? null,
+        groundingMetadata,
       },
       usage: data.usageMetadata
         ? {
