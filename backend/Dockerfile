@@ -2,6 +2,9 @@ FROM node:22-slim AS build
 
 WORKDIR /app
 
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY backend/package.json backend/package.json
 COPY frontend/package.json frontend/package.json
@@ -17,6 +20,14 @@ RUN npm run db:generate --workspace backend
 
 COPY backend/src backend/src
 RUN npm run build --workspace backend
+RUN find backend/dist -type f -name '*.js' -exec sed -i -E \
+  -e "s/from '(\.{1,2}\/[^']*)'/from '\1.js'/g" \
+  -e 's/from "(\.{1,2}\/[^"]*)"/from "\1.js"/g' \
+  -e "s/import\('(\.{1,2}\/[^']*)'\)/import('\1.js')/g" \
+  -e 's/import\("(\.{1,2}\/[^"]*)"\)/import("\1.js")/g' \
+  -e "s/import '(\.{1,2}\/[^']*)'/import '\1.js'/g" \
+  -e 's/import "(\.{1,2}\/[^"]*)"/import "\1.js"/g' \
+  {} +
 
 FROM node:22-slim AS runtime
 
@@ -25,6 +36,9 @@ ENV APP_ENV=production
 ENV PORT=8080
 
 WORKDIR /app
+
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
 COPY backend/package.json backend/package.json
