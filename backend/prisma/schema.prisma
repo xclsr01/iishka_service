@@ -141,6 +141,7 @@ model Message {
   chat            Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
   user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   attachments     MessageAttachment[]
+  generationJobs  GenerationJob[]
   providerUsages  ProviderUsage[]
 
   @@index([chatId, createdAt])
@@ -197,6 +198,7 @@ model GenerationJob {
   userId            String
   providerId        String
   chatId            String?
+  messageId         String?
   kind              GenerationJobKind
   status            GenerationJobStatus @default(QUEUED)
   prompt            String
@@ -216,12 +218,14 @@ model GenerationJob {
   user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   provider          Provider            @relation(fields: [providerId], references: [id], onDelete: Restrict)
   chat              Chat?               @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  message           Message?            @relation(fields: [messageId], references: [id], onDelete: SetNull)
   providerUsages    ProviderUsage[]
 
   @@index([userId, createdAt])
   @@index([status, queuedAt])
   @@index([providerId, status])
   @@index([chatId])
+  @@index([messageId])
 }
 
 model ProviderUsage {

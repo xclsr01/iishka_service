@@ -12,6 +12,7 @@ export type CreateGenerationJobInput = {
   kind: GenerationJobKind;
   prompt: string;
   chatId?: string;
+  messageId?: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -55,6 +56,7 @@ export type PresentedGenerationJob = {
   createdAt: string;
   updatedAt: string;
   chatId: string | null;
+  messageId: string | null;
   provider: {
     id: string;
     key: ProviderKey;

@@ -1,4 +1,5 @@
 import {
+  GenerationJobKind,
   type Chat,
   FileStatus,
   type FileAsset,
@@ -8,6 +9,7 @@ import {
   MessageStatus,
   type Prisma,
   type Provider,
+  ProviderKey,
   ProviderStatus,
 } from '@prisma/client';
 import { AppError } from '../../lib/errors';
@@ -15,12 +17,16 @@ import { assertPresent } from '../../lib/http';
 import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
 import { executeInteractiveGeneration } from '../orchestration/orchestration-service';
+import { createLinkedGenerationJob } from '../jobs/jobs-service';
+import { buildAsyncMessageProviderMeta } from '../jobs/jobs-service';
+import { getRegisteredProvider } from '../providers/provider-registry';
 import { ProviderAdapterError } from '../providers/provider-types';
 import {
   TOKEN_COSTS,
   consumeSubscriptionTokens,
   presentSubscription,
   requireActiveSubscription,
+  requireSubscriptionTokenBalance,
 } from '../subscriptions/subscription-service';
 import { persistProviderUsage } from '../usage/usage-service';
 
@@ -47,6 +53,15 @@ async function withTimeout<T>(label: string, operation: Promise<T>, timeoutMs = 
 
 function buildTitle(content: string) {
   return content.trim().slice(0, 48) || 'New chat';
+}
+
+function getChatAsyncJobKind(providerKey: Provider['key']) {
+  switch (providerKey) {
+    case ProviderKey.VEO:
+      return GenerationJobKind.VIDEO;
+    default:
+      return null;
+  }
 }
 
 function attachmentsContext(files: FileAsset[]) {
@@ -325,6 +340,19 @@ export async function createMessage(input: {
     providerKey: chat.provider.key,
   });
 
+  const chatAsyncJobKind = getChatAsyncJobKind(chat.provider.key);
+  const registeredProvider = getRegisteredProvider(chat.provider.key);
+
+  const subscription = chatAsyncJobKind && registeredProvider.metadata.executionMode === 'async-job'
+    ? await withTimeout(
+        'createMessage.requireAsyncJobTokenBalance',
+        requireSubscriptionTokenBalance(
+          input.userId,
+          chatAsyncJobKind === GenerationJobKind.VIDEO ? TOKEN_COSTS.video : TOKEN_COSTS.text,
+        ),
+      )
+    : null;
+
   const files = input.fileIds?.length
     ? await withTimeout(
         'createMessage.findFiles',
@@ -379,6 +407,121 @@ export async function createMessage(input: {
     ...userMessage,
     attachments: attachmentsByMessageId.get(userMessage.id) ?? [],
   };
+
+  if (chatAsyncJobKind && registeredProvider.metadata.executionMode === 'async-job') {
+    const assistantMessage = await withTimeout(
+      'createMessage.createAsyncAssistantMessage',
+      prisma.message.create({
+        data: {
+          chatId: chat.id,
+          userId: input.userId,
+          role: 'ASSISTANT',
+          content: 'Video generation in progress.',
+          status: MessageStatus.STREAMING,
+          providerMeta: {
+            requestedProviderKey: chat.provider.key,
+            requestedModel: chat.provider.defaultModel,
+            executionMode: 'async_job',
+            mediaKind: 'video',
+            prompt: content,
+            status: 'QUEUED',
+            jobKind: chatAsyncJobKind,
+          } as Prisma.InputJsonValue,
+        },
+      }),
+    );
+
+    try {
+      const job = await withTimeout(
+        'createMessage.createAsyncGenerationJob',
+        createLinkedGenerationJob(
+          {
+            userId: input.userId,
+            providerId: chat.provider.id,
+            kind: chatAsyncJobKind,
+            prompt: content,
+            chatId: chat.id,
+            messageId: assistantMessage.id,
+          },
+          {
+            schedule: (task) => {
+              void task;
+            },
+          },
+        ),
+        5000,
+      );
+
+      const assistantProviderMeta = buildAsyncMessageProviderMeta({
+        requestedProviderKey: chat.provider.key,
+        requestedModel: chat.provider.defaultModel,
+        jobId: job.id,
+        jobKind: chatAsyncJobKind,
+        prompt: content,
+        status: job.status,
+        upstreamRequestId: job.providerRequestId,
+        externalJobId: job.externalJobId,
+        resultPayload:
+          job.resultPayload && typeof job.resultPayload === 'object' && !Array.isArray(job.resultPayload)
+            ? (job.resultPayload as Record<string, unknown>)
+            : null,
+        failureCode: job.failureCode,
+        failureMessage: job.failureMessage,
+      });
+
+      const updatedAssistantMessage = await withTimeout(
+        'createMessage.updateAsyncAssistantMessage',
+        prisma.message.update({
+          where: { id: assistantMessage.id },
+          data: {
+            providerMeta: assistantProviderMeta,
+          },
+        }),
+      );
+
+      await withTimeout(
+        'createMessage.updateChatAsync',
+        prisma.chat.update({
+          where: { id: chat.id },
+          data: {
+            title: buildTitle(content),
+            lastMessageAt: updatedAssistantMessage.createdAt,
+          },
+        }),
+      );
+
+      logger.info('create_message_async_job_created', {
+        chatId: chat.id,
+        userMessageId: userMessage.id,
+        assistantMessageId: updatedAssistantMessage.id,
+        generationJobId: job.id,
+        providerKey: chat.provider.key,
+      });
+
+      return {
+        userMessage: userMessageWithAttachments,
+        assistantMessage: {
+          ...updatedAssistantMessage,
+          attachments: [],
+        },
+        subscription: presentSubscription(assertPresent(subscription, 'Subscription not found')),
+      };
+    } catch (error) {
+      await withTimeout(
+        'createMessage.failAsyncAssistantMessage',
+        prisma.message.update({
+          where: { id: assistantMessage.id },
+          data: {
+            status: MessageStatus.FAILED,
+            content: 'Video generation failed.',
+            failureReason: error instanceof Error ? error.message : 'provider-error',
+          },
+        }),
+      ).catch(() => undefined);
+
+      throw error;
+    }
+  }
 
   const history = await withTimeout(
     'createMessage.findHistory',

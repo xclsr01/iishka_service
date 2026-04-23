@@ -124,6 +124,29 @@ async function main() {
       isFileUploadBeta: true,
     },
   });
+
+  await prisma.provider.upsert({
+    where: { key: ProviderKey.VEO },
+    update: {
+      name: 'Veo',
+      slug: 'veo',
+      summary: 'Google video model for short cinematic prompt-based generation.',
+      description:
+        'Veo uses Gemini video generation for short-form video creation through an async workflow.',
+      defaultModel: 'veo-3.1-fast-generate-preview',
+      isFileUploadBeta: true,
+    },
+    create: {
+      key: ProviderKey.VEO,
+      name: 'Veo',
+      slug: 'veo',
+      summary: 'Google video model for short cinematic prompt-based generation.',
+      description:
+        'Veo uses Gemini video generation for short-form video creation through an async workflow.',
+      defaultModel: 'veo-3.1-fast-generate-preview',
+      isFileUploadBeta: true,
+    },
+  });
 }
 
 main()
