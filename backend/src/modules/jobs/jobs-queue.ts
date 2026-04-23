@@ -17,7 +17,7 @@ class InlineGenerationJobQueue implements GenerationJobQueue {
     const createTask = () =>
       (async () => {
         try {
-          const { runGenerationJob } = await import('./jobs-runner.js');
+          const { runGenerationJob } = await import('./jobs-runner');
           await runGenerationJob(input.jobId);
         } catch (error) {
           logger.error('generation_job_enqueue_execution_failed', {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Download, ExternalLink, ImageIcon, Loader2, ShieldAlert, Sparkles } from 'lucide-react';
+import { ArrowLeft, Download, ExternalLink, ImageIcon, Loader2, RefreshCw, ShieldAlert, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
   apiClient,
@@ -108,6 +108,10 @@ type ImageHistoryItem = {
   text: string | null;
 };
 
+function canRefreshImageJob(job: GenerationJob, images: GeneratedImage[]) {
+  return images.length === 0 && ['FAILED', 'CANCELED', 'QUEUED'].includes(job.status);
+}
+
 export function ImageJobPage({
   provider,
   subscription,
@@ -126,6 +130,7 @@ export function ImageJobPage({
   const { t } = useLocale();
   const [prompt, setPrompt] = useState('');
   const [assetAction, setAssetAction] = useState<AssetActionState | null>(null);
+  const [refreshingJobId, setRefreshingJobId] = useState<string | null>(null);
   const { job, jobs, isLoadingHistory, isSubmitting, error, createImageJob, resetJob } = useImageJob(provider.id);
   const syncedJobIdRef = useRef<string | null>(null);
   const actionResetTimerRef = useRef<number | null>(null);
@@ -186,6 +191,20 @@ export function ImageJobPage({
 
     await createImageJob(normalizedPrompt);
     setPrompt('');
+  }
+
+  async function refreshImageJob(jobToRefresh: GenerationJob) {
+    if (isBusy || !subscription.hasAccess || refreshingJobId) {
+      return;
+    }
+
+    setRefreshingJobId(jobToRefresh.id);
+
+    try {
+      await createImageJob(jobToRefresh.prompt);
+    } finally {
+      setRefreshingJobId(null);
+    }
   }
 
   async function downloadGeneratedImage(jobId: string, image: GeneratedImage) {
@@ -435,10 +454,28 @@ export function ImageJobPage({
                       })}
                     </div>
                   ) : (
-                    <div className="flex aspect-square items-center justify-center bg-muted/35 px-4 text-center text-sm text-muted-foreground">
-                      {item.job.status === 'FAILED'
-                        ? item.job.failureMessage || t('imageGenerationFailed')
-                        : t(`jobStatus${item.job.status}`)}
+                    <div className="flex aspect-square flex-col items-center justify-center gap-4 bg-muted/35 px-4 text-center text-sm text-muted-foreground">
+                      <div>
+                        {item.job.status === 'FAILED'
+                          ? item.job.failureMessage || t('imageGenerationFailed')
+                          : t(`jobStatus${item.job.status}`)}
+                      </div>
+                      {canRefreshImageJob(item.job, item.images) && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="min-h-11 min-w-[160px]"
+                          disabled={isBusy || !subscription.hasAccess || Boolean(refreshingJobId)}
+                          onClick={() => void refreshImageJob(item.job)}
+                        >
+                          {refreshingJobId === item.job.id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                          )}
+                          {refreshingJobId === item.job.id ? t('refreshingImage') : t('refreshImage')}
+                        </Button>
+                      )}
                     </div>
                   )}
                   <div className="space-y-1 border-b border-border/60 px-3 py-2">

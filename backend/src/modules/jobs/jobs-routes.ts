@@ -24,7 +24,7 @@ const listGenerationJobsSchema = z.object({
   providerId: z.string().min(1).optional(),
   kind: z.nativeEnum(GenerationJobKind).optional(),
   status: z.nativeEnum(GenerationJobStatus).optional(),
-  limit: z.coerce.number().int().positive().max(20).default(10),
+  limit: z.coerce.number().int().positive().max(100).default(100),
 });
 
 const imageIndexSchema = z.coerce.number().int().min(0);

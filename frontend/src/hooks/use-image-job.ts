@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { apiClient, type GenerationJob } from '@/lib/api';
 import { useLocale } from '@/lib/i18n';
 
-const IMAGE_HISTORY_LIMIT = 20;
+const IMAGE_HISTORY_LIMIT = 100;
 
 type ImageJobState = {
   job: GenerationJob | null;
