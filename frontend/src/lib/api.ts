@@ -201,6 +201,10 @@ class ApiClient {
       );
     }
 
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
     return (await response.json()) as T;
   }
 
@@ -305,6 +309,12 @@ class ApiClient {
 
   getGenerationJob(jobId: string) {
     return this.request<{ job: GenerationJob }>(`/api/jobs/${jobId}`);
+  }
+
+  deleteGenerationJob(jobId: string) {
+    return this.request<void>(`/api/jobs/${jobId}`, {
+      method: 'DELETE',
+    });
   }
 
   getGenerationJobImageLinks(jobId: string, imageIndex: number) {
