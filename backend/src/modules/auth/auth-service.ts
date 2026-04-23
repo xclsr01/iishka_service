@@ -3,6 +3,7 @@ import { ProviderStatus } from '@prisma/client';
 import { signSession, verifyTelegramInitData } from '../../lib/auth';
 import { prisma } from '../../lib/prisma';
 import { env } from '../../env';
+import { ensureRegisteredProvidersSeeded } from '../providers/provider-catalog-sync';
 import { presentProviders } from '../providers/provider-presentation';
 import {
   ensureDefaultSubscription,
@@ -39,6 +40,7 @@ export async function bootstrapTelegramUser(initDataRaw: string) {
   });
 
   await ensureDefaultSubscription(user.id);
+  await ensureRegisteredProvidersSeeded();
   const subscription = await getCurrentSubscription(user.id);
   const providers = await prisma.provider.findMany({
     where: { status: ProviderStatus.ACTIVE },
@@ -99,6 +101,7 @@ export async function bootstrapDevUser(sharedSecret: string) {
   });
 
   await ensureDefaultSubscription(user.id);
+  await ensureRegisteredProvidersSeeded();
   const subscription = await getCurrentSubscription(user.id);
   const providers = await prisma.provider.findMany({
     where: { status: ProviderStatus.ACTIVE },

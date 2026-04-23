@@ -29,6 +29,11 @@ function getSourceUserMessageId(value: Prisma.JsonValue | null) {
   return typeof metadata?.sourceUserMessageId === 'string' ? metadata.sourceUserMessageId : null;
 }
 
+function getLinkedMessageId(value: Prisma.JsonValue | null) {
+  const metadata = toMetadataObject(value);
+  return typeof metadata?.linkedMessageId === 'string' ? metadata.linkedMessageId : null;
+}
+
 async function persistGeneratedArtifacts(
   userId: string,
   artifacts?: ProviderGeneratedFileArtifact[],
@@ -118,15 +123,16 @@ export async function runGenerationJob(jobId: string) {
     const attachedFiles = await persistGeneratedArtifacts(runningJob.userId, result.artifacts);
     const persistedResultPayload = injectPersistedFilesIntoResultPayload(result.resultPayload, attachedFiles);
     const sourceUserMessageId = getSourceUserMessageId(currentJob.metadata);
+    const linkedMessageId = getLinkedMessageId(currentJob.metadata);
 
     await completeGenerationJob({
       jobId: runningJob.id,
       resultPayload: persistedResultPayload as Prisma.InputJsonValue,
       providerRequestId: result.upstreamRequestId,
       externalJobId: result.externalJobId,
-      messageId: currentJob.messageId,
+      messageId: linkedMessageId,
       attachedFiles,
-      messageProviderMeta: currentJob.messageId
+      messageProviderMeta: linkedMessageId
         ? buildAsyncMessageProviderMeta({
             requestedProviderKey: currentJob.provider.key,
             requestedModel: runningJob.provider.defaultModel,
@@ -196,14 +202,15 @@ export async function runGenerationJob(jobId: string) {
           ? error.message
           : 'Generation job failed';
     const sourceUserMessageId = getSourceUserMessageId(currentJob.metadata);
+    const linkedMessageId = getLinkedMessageId(currentJob.metadata);
 
     await failGenerationJob({
       jobId,
       failureCode,
       failureMessage,
       providerRequestId: error instanceof ProviderAdapterError ? error.upstreamRequestId ?? null : null,
-      messageId: currentJob.messageId,
-      messageProviderMeta: currentJob.messageId
+      messageId: linkedMessageId,
+      messageProviderMeta: linkedMessageId
         ? buildAsyncMessageProviderMeta({
             requestedProviderKey: currentJob.provider.key,
             requestedModel: currentJob.provider.defaultModel,
