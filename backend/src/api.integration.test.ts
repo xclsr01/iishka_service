@@ -89,7 +89,7 @@ async function seedProviders() {
         summary: 'Fast multimodal assistant for search-heavy and product-style workflows.',
         description:
           'Google-backed assistant with strong multimodal tooling and practical speed for lightweight chat experiences.',
-        defaultModel: 'gemini-3-flash-preview',
+        defaultModel: 'gemini-2.0-flash',
         status: ProviderStatus.ACTIVE,
         isFileUploadBeta: true,
       },
