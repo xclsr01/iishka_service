@@ -507,3 +507,83 @@ test('jobs API creates and completes Nano Banana image jobs', async () => {
     ],
   });
 });
+
+test('jobs API deletes completed Nano Banana image jobs from history', async () => {
+  const app = createApp();
+  const bootstrap = await bootstrapDev(app);
+  await requestWithAuth(app, bootstrap.token, '/api/subscription/dev/activate', {
+    method: 'POST',
+  });
+  const nanoBananaProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.NANO_BANANA);
+  assert.ok(nanoBananaProvider);
+
+  mockExecuteAsyncJob(ProviderKey.NANO_BANANA, async () => ({
+    resultPayload: {
+      kind: GenerationJobKind.IMAGE,
+      text: 'Generated a deletable banana.',
+      images: [
+        {
+          index: 0,
+          mimeType: 'image/png',
+          filename: 'nano-banana-delete.png',
+          dataBase64: 'aW1hZ2U=',
+          sizeBytes: 5,
+        },
+      ],
+    },
+    usage: {
+      inputTokens: 5,
+      outputTokens: 9,
+      totalTokens: 14,
+      raw: {
+        promptTokenCount: 5,
+        candidatesTokenCount: 9,
+        totalTokenCount: 14,
+      },
+    },
+    upstreamRequestId: 'req_nano_banana_delete',
+    externalJobId: null,
+  }));
+
+  const createJobResponse = await requestWithAuth(app, bootstrap.token, '/api/jobs', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      providerId: nanoBananaProvider.id,
+      kind: GenerationJobKind.IMAGE,
+      prompt: 'Generate a removable banana card',
+    }),
+  });
+  const createJobBody = (await createJobResponse.json()) as {
+    job: {
+      id: string;
+    };
+  };
+
+  assert.equal(createJobResponse.status, 201);
+
+  const completedJob = await waitForJobCompletion(app, bootstrap.token, createJobBody.job.id);
+  assert.equal(completedJob.status, 'COMPLETED');
+
+  const deleteJobResponse = await requestWithAuth(app, bootstrap.token, `/api/jobs/${createJobBody.job.id}`, {
+    method: 'DELETE',
+  });
+  const deleteJobBody = (await deleteJobResponse.json()) as {
+    deleted: boolean;
+  };
+
+  assert.equal(deleteJobResponse.status, 200);
+  assert.deepEqual(deleteJobBody, {
+    deleted: true,
+  });
+
+  const jobsResponse = await requestWithAuth(app, bootstrap.token, '/api/jobs');
+  const jobsBody = (await jobsResponse.json()) as {
+    jobs: Array<{ id: string }>;
+  };
+
+  assert.equal(jobsResponse.status, 200);
+  assert.ok(!jobsBody.jobs.some((job) => job.id === createJobBody.job.id));
+});
