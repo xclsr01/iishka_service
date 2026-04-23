@@ -3,6 +3,9 @@ substitutions:
   _SERVICE: ai-gateway
   _REPO: ai-gateway
 
+options:
+  logging: CLOUD_LOGGING_ONLY
+
 steps:
   - name: gcr.io/cloud-builders/docker
     args:
