@@ -6,10 +6,18 @@ import {
   createProviderNetworkError,
   createProviderTimeoutError,
 } from './provider-error-mapping';
-import { ProviderAdapterError, type ProviderAsyncJobResult, type ProviderGenerateResult } from './provider-types';
-import type { ProviderChatMessage, ProviderUsage } from './provider-types';
+import {
+  ProviderAdapterError,
+  type ProviderAsyncJobResult,
+  type ProviderGenerateResult,
+} from './provider-types';
+import type {
+  ProviderChatMessage,
+  ProviderGeneratedFileArtifact,
+  ProviderUsage,
+} from './provider-types';
 
-type GatewayProviderSlug = 'openai' | 'anthropic' | 'gemini' | 'nano-banana';
+type GatewayProviderSlug = 'openai' | 'anthropic' | 'gemini' | 'nano-banana' | 'veo';
 
 type GatewayErrorResponse = {
   error?: {
@@ -40,6 +48,15 @@ type GatewayAsyncJobResponse = {
   provider?: GatewayProviderSlug;
   model?: string;
   resultPayload?: Record<string, unknown>;
+  artifacts?: Array<{
+    kind: 'file';
+    role: 'video' | 'image' | 'audio' | 'other';
+    filename: string;
+    mimeType: string;
+    dataBase64: string;
+    sizeBytes: number;
+    metadata?: Record<string, unknown> | null;
+  }>;
   upstreamRequestId?: string | null;
   externalJobId?: string | null;
   usage?: GatewayUsage | null;
@@ -82,6 +99,8 @@ function providerSlug(providerKey: ProviderKey): GatewayProviderSlug {
       return 'gemini';
     case ProviderKey.NANO_BANANA:
       return 'nano-banana';
+    case ProviderKey.VEO:
+      return 'veo';
     default:
       throw new ProviderAdapterError({
         providerKey,
@@ -104,6 +123,8 @@ function providerLabel(providerKey: ProviderKey) {
       return 'Gemini gateway';
     case ProviderKey.NANO_BANANA:
       return 'Nano Banana gateway';
+    case ProviderKey.VEO:
+      return 'Veo gateway';
     default:
       return 'AI gateway';
   }
@@ -259,6 +280,24 @@ function mapUsage(usage?: GatewayUsage | null): ProviderUsage | null {
   return mapped;
 }
 
+function mapArtifacts(
+  artifacts?: GatewayAsyncJobResponse['artifacts'],
+): ProviderGeneratedFileArtifact[] | undefined {
+  if (!artifacts || artifacts.length === 0) {
+    return undefined;
+  }
+
+  return artifacts.map((artifact) => ({
+    kind: artifact.kind,
+    role: artifact.role,
+    filename: artifact.filename,
+    mimeType: artifact.mimeType,
+    bytes: new Uint8Array(Buffer.from(artifact.dataBase64, 'base64')),
+    sizeBytes: artifact.sizeBytes,
+    metadata: artifact.metadata ?? null,
+  }));
+}
+
 export async function generateGatewayChatResponse(input: GatewayChatInput): Promise<ProviderGenerateResult> {
   const slug = providerSlug(input.providerKey);
   const data = await requestGateway<GatewayChatResponse>(
@@ -318,6 +357,7 @@ export async function executeGatewayAsyncJob(input: GatewayAsyncJobInput): Promi
 
   return {
     resultPayload: data.resultPayload,
+    artifacts: mapArtifacts(data.artifacts),
     usage: mapUsage(data.usage),
     upstreamRequestId: data.upstreamRequestId ?? null,
     externalJobId: data.externalJobId ?? null,

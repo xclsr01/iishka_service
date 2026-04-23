@@ -1,13 +1,19 @@
 import { env } from '../../env';
 import { logger } from '../../lib/logger';
-import { createEmptyResponseError, createUnsupportedOperationError } from '../gateway/provider-errors';
+import {
+  createEmptyResponseError,
+  createTimeoutError,
+  createUnsupportedOperationError,
+} from '../gateway/provider-errors';
 import { fetchProviderResponse } from '../gateway/provider-request';
 import type {
   GatewayAsyncJobRequest,
   GatewayAsyncJobResponse,
   GatewayChatRespondRequest,
   GatewayChatRespondResponse,
+  GatewayGeneratedFileArtifact,
   GatewayGeneratedImage,
+  GatewayGeneratedVideo,
 } from '../gateway/gateway-types';
 
 type GoogleGenerateContentResponse = {
@@ -31,6 +37,26 @@ type GoogleGenerateContentResponse = {
   };
 };
 
+type GoogleLongRunningOperationResponse = {
+  name?: string;
+  done?: boolean;
+  error?: {
+    code?: number;
+    message?: string;
+    status?: string;
+  };
+  response?: {
+    generateVideoResponse?: {
+      generatedSamples?: Array<{
+        video?: {
+          uri?: string;
+          mimeType?: string;
+        };
+      }>;
+    };
+  };
+};
+
 const GOOGLE_SEARCH_GROUNDING_INSTRUCTION = [
   'System instructions:',
   'Google Search grounding is enabled for this Gemini request.',
@@ -45,6 +71,14 @@ function trimTrailingSlashes(value: string) {
 
 function googleUrl(model: string) {
   return `${trimTrailingSlashes(env.GOOGLE_AI_BASE_URL)}/v1beta/models/${model}:generateContent`;
+}
+
+function googleLongRunningUrl(model: string) {
+  return `${trimTrailingSlashes(env.GOOGLE_AI_BASE_URL)}/v1beta/models/${model}:predictLongRunning`;
+}
+
+function googleOperationUrl(operationName: string) {
+  return `${trimTrailingSlashes(env.GOOGLE_AI_BASE_URL)}/v1beta/${operationName.replace(/^\/+/, '')}`;
 }
 
 function usageFromGoogle(data: GoogleGenerateContentResponse) {
@@ -69,6 +103,27 @@ function extensionFromMimeType(mimeType: string) {
     default:
       return 'bin';
   }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function normalizeVeoParameters(metadata?: Record<string, unknown>) {
+  return {
+    aspectRatio: typeof metadata?.aspectRatio === 'string' ? metadata.aspectRatio : '16:9',
+    durationSeconds:
+      typeof metadata?.durationSeconds === 'string'
+        ? metadata.durationSeconds
+        : typeof metadata?.durationSeconds === 'number'
+          ? String(metadata.durationSeconds)
+          : '6',
+    resolution: typeof metadata?.resolution === 'string' ? metadata.resolution : '720p',
+    negativePrompt: typeof metadata?.negativePrompt === 'string' ? metadata.negativePrompt : undefined,
+    personGeneration:
+      typeof metadata?.personGeneration === 'string' ? metadata.personGeneration : 'allow_all',
+    seed: typeof metadata?.seed === 'number' ? metadata.seed : undefined,
+  };
 }
 
 export async function respondWithGemini(
@@ -262,5 +317,178 @@ export async function executeNanoBananaJob(
     upstreamRequestId,
     externalJobId: null,
     usage: usageFromGoogle(data),
+  };
+}
+
+export async function executeVeoJob(
+  input: GatewayAsyncJobRequest,
+  routeRequestId: string,
+): Promise<GatewayAsyncJobResponse> {
+  const provider = 'veo';
+  const model = input.model || env.VEO_DEFAULT_MODEL;
+
+  if (input.kind !== 'VIDEO') {
+    throw createUnsupportedOperationError(provider, `${input.kind} jobs`);
+  }
+
+  const parameters = normalizeVeoParameters(input.metadata);
+
+  logger.info('provider_gateway_job_started', {
+    route: '/v1/providers/veo/jobs/execute',
+    requestId: routeRequestId,
+    provider,
+    model,
+    userId: input.userId ?? null,
+    chatId: input.chatId ?? null,
+    jobId: input.jobId ?? null,
+    kind: input.kind,
+  });
+
+  const startResponse = await fetchProviderResponse({
+    provider,
+    route: '/v1/providers/veo/jobs/execute',
+    requestId: routeRequestId,
+    model,
+    url: googleLongRunningUrl(model),
+    init: {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': env.GOOGLE_AI_API_KEY,
+      },
+      body: JSON.stringify({
+        instances: [
+          {
+            prompt: input.prompt,
+          },
+        ],
+        parameters,
+      }),
+    },
+    userId: input.userId,
+    chatId: input.chatId,
+    jobId: input.jobId,
+  });
+
+  let upstreamRequestId =
+    startResponse.headers.get('x-request-id') ?? startResponse.headers.get('request-id');
+  let operation = (await startResponse.json()) as GoogleLongRunningOperationResponse;
+  const operationName = operation.name;
+
+  if (!operationName && !operation.done) {
+    throw createEmptyResponseError(provider);
+  }
+
+  const startedAt = Date.now();
+  while (!operation.done) {
+    if (Date.now() - startedAt > 10 * 60 * 1000) {
+      throw createTimeoutError(provider);
+    }
+
+    await sleep(10_000);
+
+    const statusResponse = await fetchProviderResponse({
+      provider,
+      route: '/v1/providers/veo/jobs/execute',
+      requestId: routeRequestId,
+      model,
+      url: googleOperationUrl(operationName!),
+      init: {
+        method: 'GET',
+        headers: {
+          'x-goog-api-key': env.GOOGLE_AI_API_KEY,
+        },
+      },
+      userId: input.userId,
+      chatId: input.chatId,
+      jobId: input.jobId,
+    });
+
+    upstreamRequestId =
+      upstreamRequestId ??
+      statusResponse.headers.get('x-request-id') ??
+      statusResponse.headers.get('request-id');
+    operation = (await statusResponse.json()) as GoogleLongRunningOperationResponse;
+  }
+
+  if (operation.error?.message) {
+    throw createUnsupportedOperationError(provider, operation.error.message);
+  }
+
+  const generatedVideo = operation.response?.generateVideoResponse?.generatedSamples?.[0]?.video;
+  const videoUri = generatedVideo?.uri;
+  if (!videoUri) {
+    throw createEmptyResponseError(provider);
+  }
+
+  const downloadResponse = await fetchProviderResponse({
+    provider,
+    route: '/v1/providers/veo/jobs/execute',
+    requestId: routeRequestId,
+    model,
+    url: videoUri,
+    init: {
+      method: 'GET',
+      headers: {
+        'x-goog-api-key': env.GOOGLE_AI_API_KEY,
+      },
+    },
+    userId: input.userId,
+    chatId: input.chatId,
+    jobId: input.jobId,
+  });
+
+  upstreamRequestId =
+    upstreamRequestId ??
+    downloadResponse.headers.get('x-request-id') ??
+    downloadResponse.headers.get('request-id');
+
+  const bytes = new Uint8Array(await downloadResponse.arrayBuffer());
+  if (bytes.byteLength === 0) {
+    throw createEmptyResponseError(provider);
+  }
+
+  const mimeType = (downloadResponse.headers.get('content-type') ?? generatedVideo.mimeType ?? 'video/mp4')
+    .split(';')[0]
+    .trim();
+  const filename = `veo-${input.jobId ?? routeRequestId}-0.${extensionFromMimeType(mimeType)}`;
+  const videoMetadata = {
+    aspectRatio: parameters.aspectRatio,
+    durationSeconds: parameters.durationSeconds,
+    resolution: parameters.resolution,
+  };
+  const videos: GatewayGeneratedVideo[] = [
+    {
+      index: 0,
+      mimeType,
+      filename,
+      sizeBytes: bytes.byteLength,
+      metadata: videoMetadata,
+    },
+  ];
+  const artifacts: GatewayGeneratedFileArtifact[] = [
+    {
+      kind: 'file',
+      role: 'video',
+      filename,
+      mimeType,
+      dataBase64: Buffer.from(bytes).toString('base64'),
+      sizeBytes: bytes.byteLength,
+      metadata: videoMetadata,
+    },
+  ];
+
+  return {
+    provider,
+    model,
+    resultPayload: {
+      kind: input.kind,
+      text: null,
+      videos,
+    },
+    artifacts,
+    upstreamRequestId: upstreamRequestId ?? null,
+    externalJobId: operationName ?? null,
+    usage: null,
   };
 }

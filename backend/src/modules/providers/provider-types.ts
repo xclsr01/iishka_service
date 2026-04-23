@@ -50,8 +50,19 @@ export type ProviderAsyncJobInput = {
   metadata?: Record<string, unknown>;
 };
 
+export type ProviderGeneratedFileArtifact = {
+  kind: 'file';
+  role: 'video' | 'image' | 'audio' | 'other';
+  filename: string;
+  mimeType: string;
+  bytes: Uint8Array;
+  sizeBytes: number;
+  metadata?: Record<string, unknown> | null;
+};
+
 export type ProviderAsyncJobResult = {
   resultPayload: Record<string, unknown>;
+  artifacts?: ProviderGeneratedFileArtifact[];
   usage: ProviderUsage | null;
   upstreamRequestId: string | null;
   externalJobId: string | null;

@@ -28,6 +28,7 @@ process.env.ANTHROPIC_MODEL ??= 'claude-3-5-sonnet-latest';
 process.env.GOOGLE_AI_API_KEY ??= 'test-google-key';
 process.env.GOOGLE_AI_MODEL ??= 'gemini-2.0-flash';
 process.env.NANO_BANANA_MODEL ??= 'gemini-2.5-flash-image';
+process.env.VEO_MODEL ??= 'veo-3.1-fast-generate-preview';
 process.env.MAX_UPLOAD_BYTES ??= '10485760';
 process.env.ALLOWED_UPLOAD_MIME_TYPES ??= 'application/pdf,image/png,image/jpeg,text/plain';
 process.env.UPLOAD_STORAGE_DRIVER ??= 'local';

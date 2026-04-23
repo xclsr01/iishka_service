@@ -1,11 +1,14 @@
-import type { Prisma } from '@prisma/client';
+import { GenerationJobStatus, type FileAsset, type Prisma } from '@prisma/client';
 import { logger } from '../../lib/logger';
+import { persistGeneratedFile } from '../files/file-service';
 import { executeAsyncGenerationJob } from '../orchestration/orchestration-service';
 import { toClientSafeProviderMessage } from '../providers/provider-error-mapping';
+import type { ProviderGeneratedFileArtifact } from '../providers/provider-types';
 import { ProviderAdapterError } from '../providers/provider-types';
 import { consumeSubscriptionTokens } from '../subscriptions/subscription-service';
 import { persistProviderUsage } from '../usage/usage-service';
 import {
+  buildAsyncMessageProviderMeta,
   completeGenerationJob,
   failGenerationJob,
   getGenerationJobForExecution,
@@ -19,6 +22,55 @@ function toMetadataObject(value: Prisma.JsonValue | null): Record<string, unknow
   }
 
   return value as Record<string, unknown>;
+}
+
+function getSourceUserMessageId(value: Prisma.JsonValue | null) {
+  const metadata = toMetadataObject(value);
+  return typeof metadata?.sourceUserMessageId === 'string' ? metadata.sourceUserMessageId : null;
+}
+
+async function persistGeneratedArtifacts(
+  userId: string,
+  artifacts?: ProviderGeneratedFileArtifact[],
+): Promise<FileAsset[]> {
+  if (!artifacts || artifacts.length === 0) {
+    return [];
+  }
+
+  const files: FileAsset[] = [];
+  for (const artifact of artifacts) {
+    files.push(await persistGeneratedFile({
+      userId,
+      filename: artifact.filename,
+      mimeType: artifact.mimeType,
+      bytes: artifact.bytes,
+    }));
+  }
+
+  return files;
+}
+
+function injectPersistedFilesIntoResultPayload(
+  resultPayload: Record<string, unknown>,
+  files: FileAsset[],
+) {
+  const candidate = { ...resultPayload } as Record<string, unknown>;
+
+  if (Array.isArray(candidate.videos)) {
+    candidate.videos = candidate.videos.map((video, index) => {
+      if (!video || typeof video !== 'object') {
+        return video;
+      }
+
+      const file = files[index];
+      return {
+        ...(video as Record<string, unknown>),
+        fileId: file?.id ?? null,
+      };
+    });
+  }
+
+  return candidate;
 }
 
 export async function runGenerationJob(jobId: string) {
@@ -63,11 +115,31 @@ export async function runGenerationJob(jobId: string) {
 
     await consumeSubscriptionTokens(runningJob.userId, getGenerationJobTokenCost(runningJob.kind));
 
+    const attachedFiles = await persistGeneratedArtifacts(runningJob.userId, result.artifacts);
+    const persistedResultPayload = injectPersistedFilesIntoResultPayload(result.resultPayload, attachedFiles);
+    const sourceUserMessageId = getSourceUserMessageId(currentJob.metadata);
+
     await completeGenerationJob({
       jobId: runningJob.id,
-      resultPayload: result.resultPayload as Prisma.InputJsonValue,
+      resultPayload: persistedResultPayload as Prisma.InputJsonValue,
       providerRequestId: result.upstreamRequestId,
       externalJobId: result.externalJobId,
+      messageId: currentJob.messageId,
+      attachedFiles,
+      messageProviderMeta: currentJob.messageId
+        ? buildAsyncMessageProviderMeta({
+            requestedProviderKey: currentJob.provider.key,
+            requestedModel: runningJob.provider.defaultModel,
+            jobId: runningJob.id,
+            jobKind: runningJob.kind,
+            prompt: runningJob.prompt,
+            status: GenerationJobStatus.COMPLETED,
+            sourceUserMessageId,
+            upstreamRequestId: result.upstreamRequestId,
+            externalJobId: result.externalJobId,
+            resultPayload: persistedResultPayload,
+          })
+        : undefined,
     });
 
     await persistProviderUsage({
@@ -123,12 +195,29 @@ export async function runGenerationJob(jobId: string) {
         : error instanceof Error
           ? error.message
           : 'Generation job failed';
+    const sourceUserMessageId = getSourceUserMessageId(currentJob.metadata);
 
     await failGenerationJob({
       jobId,
       failureCode,
       failureMessage,
       providerRequestId: error instanceof ProviderAdapterError ? error.upstreamRequestId ?? null : null,
+      messageId: currentJob.messageId,
+      messageProviderMeta: currentJob.messageId
+        ? buildAsyncMessageProviderMeta({
+            requestedProviderKey: currentJob.provider.key,
+            requestedModel: currentJob.provider.defaultModel,
+            jobId,
+            jobKind: currentJob.kind,
+            prompt: currentJob.prompt,
+            status: GenerationJobStatus.FAILED,
+            sourceUserMessageId,
+            upstreamRequestId: error instanceof ProviderAdapterError ? error.upstreamRequestId ?? null : null,
+            externalJobId: null,
+            failureCode,
+            failureMessage,
+          })
+        : undefined,
     });
 
     logger.error('generation_job_run_failed', {

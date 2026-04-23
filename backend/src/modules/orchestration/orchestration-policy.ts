@@ -6,6 +6,7 @@ const INTERACTIVE_FALLBACK_ORDER: Record<ProviderKey, ProviderKey[]> = {
   [ProviderKey.ANTHROPIC]: [ProviderKey.GEMINI],
   [ProviderKey.GEMINI]: [ProviderKey.ANTHROPIC],
   [ProviderKey.NANO_BANANA]: [],
+  [ProviderKey.VEO]: [],
 };
 
 const RETRYABLE_RETRY_CATEGORIES = new Set(['timeout', 'network', 'service_unavailable']);

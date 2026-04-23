@@ -9,6 +9,7 @@ import type {
   ProviderAsyncJobResult,
   ProviderGenerateResult,
 } from './modules/providers/provider-types';
+import { ProviderAdapterError } from './modules/providers/provider-types';
 
 type BootstrapResponse = {
   token: string;
@@ -104,6 +105,17 @@ async function seedProviders() {
         status: ProviderStatus.ACTIVE,
         isFileUploadBeta: true,
       },
+      {
+        key: ProviderKey.VEO,
+        name: 'Veo',
+        slug: 'veo',
+        summary: 'Google video model for short cinematic prompt-based generation.',
+        description:
+          'Veo uses Gemini video generation for short-form video creation through an async workflow.',
+        defaultModel: 'veo-3.1-fast-generate-preview',
+        status: ProviderStatus.ACTIVE,
+        isFileUploadBeta: true,
+      },
     ],
   });
 }
@@ -188,6 +200,62 @@ async function waitForJobCompletion(
   throw new Error(`Job ${jobId} did not complete in time`);
 }
 
+async function waitForChatMessage(
+  app: ReturnType<typeof createApp>,
+  token: string,
+  chatId: string,
+  messageId: string,
+  predicate: (message: {
+    id: string;
+    status: string;
+    attachments?: Array<{
+      file: {
+        id: string;
+        mimeType: string;
+        originalName: string;
+        sizeBytes: number;
+      };
+    }>;
+    providerMeta?: Record<string, unknown>;
+    failureReason?: string | null;
+  }) => boolean,
+) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const response = await requestWithAuth(app, token, `/api/chats/${chatId}/messages`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as {
+      chat: {
+        messages: Array<{
+          id: string;
+          status: string;
+          attachments?: Array<{
+            file: {
+              id: string;
+              mimeType: string;
+              originalName: string;
+              sizeBytes: number;
+            };
+          }>;
+          providerMeta?: Record<string, unknown>;
+          failureReason?: string | null;
+        }>;
+      };
+    };
+
+    const candidate = body.chat.messages.find((message) => message.id === messageId) ?? null;
+    if (candidate && predicate(candidate)) {
+      return {
+        message: candidate,
+        messages: body.chat.messages,
+      };
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+
+  throw new Error(`Message ${messageId} did not reach expected state`);
+}
+
 beforeEach(async () => {
   await clearDatabase();
   await seedProviders();
@@ -211,7 +279,7 @@ test('dev bootstrap returns token user providers and default subscription', asyn
 
   assert.ok(result.token);
   assert.equal(result.user.telegramUserId, 'dev-user');
-  assert.equal(result.providers.length, 4);
+  assert.equal(result.providers.length, 5);
   assert.equal(result.subscription.status, 'INACTIVE');
   assert.equal(result.subscription.tokensRemaining, 0);
   assert.equal(result.subscription.hasAccess, false);
@@ -227,7 +295,7 @@ test('catalog providers endpoint exposes availability and capability metadata', 
   };
 
   assert.equal(response.status, 200);
-  assert.equal(body.providers.length, 4);
+  assert.equal(body.providers.length, 5);
   assert.ok(body.providers.every((provider) => typeof provider.isAvailable === 'boolean'));
   assert.ok(body.providers.every((provider) => typeof provider.executionMode === 'string'));
   assert.ok(body.providers.every((provider) => typeof provider.capabilities.supportsText === 'boolean'));
@@ -236,6 +304,10 @@ test('catalog providers endpoint exposes availability and capability metadata', 
   assert.equal(nanoBanana.executionMode, 'async-job');
   assert.equal(nanoBanana.capabilities.supportsImage, true);
   assert.equal(nanoBanana.capabilities.supportsAsyncJobs, true);
+  const veo = body.providers.find((provider) => provider.key === ProviderKey.VEO);
+  assert.ok(veo);
+  assert.equal(veo.executionMode, 'async-job');
+  assert.equal(veo.capabilities.supportsAsyncJobs, true);
 });
 
 test('subscription activation grants prepaid tokens and current user endpoint works', async () => {
@@ -586,4 +658,408 @@ test('jobs API deletes completed Nano Banana image jobs from history', async () 
 
   assert.equal(jobsResponse.status, 200);
   assert.ok(!jobsBody.jobs.some((job) => job.id === createJobBody.job.id));
+});
+
+test('chat flow creates linked Veo async video message and attaches generated file on completion', async () => {
+  const app = createApp();
+  const bootstrap = await bootstrapDev(app);
+  await requestWithAuth(app, bootstrap.token, '/api/subscription/dev/activate', {
+    method: 'POST',
+  });
+  const veoProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.VEO);
+  assert.ok(veoProvider);
+
+  mockExecuteAsyncJob(ProviderKey.VEO, async () => ({
+    resultPayload: {
+      kind: GenerationJobKind.VIDEO,
+      text: null,
+      videos: [
+        {
+          index: 0,
+          mimeType: 'video/mp4',
+          filename: 'veo-test.mp4',
+          sizeBytes: 11,
+          metadata: {
+            durationSeconds: '6',
+            resolution: '720p',
+          },
+        },
+      ],
+    },
+    artifacts: [
+      {
+        kind: 'file',
+        role: 'video',
+        filename: 'veo-test.mp4',
+        mimeType: 'video/mp4',
+        bytes: new Uint8Array(Buffer.from('video-bytes')),
+        sizeBytes: 11,
+        metadata: {
+          durationSeconds: '6',
+          resolution: '720p',
+        },
+      },
+    ],
+    usage: null,
+    upstreamRequestId: 'req_veo_chat',
+    externalJobId: 'operations/veo-chat-1',
+  }));
+
+  const createChatResponse = await requestWithAuth(app, bootstrap.token, '/api/chats', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      providerId: veoProvider.id,
+    }),
+  });
+  const createChatBody = (await createChatResponse.json()) as {
+    chat: {
+      id: string;
+    };
+  };
+
+  const createMessageResponse = await requestWithAuth(
+    app,
+    bootstrap.token,
+    `/api/chats/${createChatBody.chat.id}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Generate a six-second cinematic city shot',
+      }),
+    },
+  );
+  const createMessageBody = (await createMessageResponse.json()) as {
+    assistantMessage: {
+      id: string;
+      status: string;
+      content: string;
+    };
+    subscription: BootstrapResponse['subscription'];
+  };
+
+  assert.equal(createMessageResponse.status, 201);
+  assert.equal(createMessageBody.assistantMessage.status, 'STREAMING');
+  assert.equal(createMessageBody.subscription.tokensRemaining, 1000);
+
+  let completedAssistantMessage:
+    | {
+        status: string;
+        attachments?: Array<{
+          file: {
+            id: string;
+            mimeType: string;
+            originalName: string;
+            sizeBytes: number;
+          };
+        }>;
+        providerMeta?: Record<string, unknown>;
+      }
+    | null = null;
+
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const getChatResponse = await requestWithAuth(app, bootstrap.token, `/api/chats/${createChatBody.chat.id}/messages`);
+    assert.equal(getChatResponse.status, 200);
+    const getChatBody = (await getChatResponse.json()) as {
+      chat: {
+        messages: Array<{
+          id: string;
+          status: string;
+          attachments?: Array<{
+            file: {
+              id: string;
+              mimeType: string;
+              originalName: string;
+              sizeBytes: number;
+            };
+          }>;
+          providerMeta?: Record<string, unknown>;
+        }>;
+      };
+    };
+
+    const candidate = getChatBody.chat.messages.find((message) => message.id === createMessageBody.assistantMessage.id) ?? null;
+    if (candidate?.status === 'COMPLETED' && (candidate.attachments?.length ?? 0) === 1) {
+      completedAssistantMessage = candidate;
+      break;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+
+  assert.ok(completedAssistantMessage);
+  assert.equal(completedAssistantMessage.attachments?.[0]?.file.mimeType, 'video/mp4');
+  assert.equal(completedAssistantMessage.attachments?.[0]?.file.originalName, 'veo-test.mp4');
+  assert.equal(
+    (completedAssistantMessage.providerMeta?.resultPayload as { videos?: Array<{ fileId?: string | null }> }).videos?.[0]?.fileId,
+    completedAssistantMessage.attachments?.[0]?.file.id,
+  );
+
+  const fileContentResponse = await requestWithAuth(
+    app,
+    bootstrap.token,
+    `/api/files/${completedAssistantMessage.attachments?.[0]?.file.id}/content`,
+  );
+  const fileContentBytes = Buffer.from(await fileContentResponse.arrayBuffer());
+
+  assert.equal(fileContentResponse.status, 200);
+  assert.equal(fileContentResponse.headers.get('content-type'), 'video/mp4');
+  assert.equal(fileContentBytes.toString('utf8'), 'video-bytes');
+
+  const subscriptionResponse = await requestWithAuth(app, bootstrap.token, '/api/subscription');
+  const subscriptionBody = (await subscriptionResponse.json()) as {
+    subscription: BootstrapResponse['subscription'];
+  };
+
+  assert.equal(subscriptionResponse.status, 200);
+  assert.equal(subscriptionBody.subscription.tokensRemaining, 900);
+});
+
+test('chat flow retries a failed Veo async video message in place', async () => {
+  const app = createApp();
+  const bootstrap = await bootstrapDev(app);
+  await requestWithAuth(app, bootstrap.token, '/api/subscription/dev/activate', {
+    method: 'POST',
+  });
+  const veoProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.VEO);
+  assert.ok(veoProvider);
+
+  let attemptCount = 0;
+  mockExecuteAsyncJob(ProviderKey.VEO, async () => {
+    attemptCount += 1;
+
+    if (attemptCount === 1) {
+      throw new ProviderAdapterError({
+        providerKey: ProviderKey.VEO,
+        message: 'The provider request failed. Please retry.',
+        code: 'VEO_RETRYABLE',
+        category: 'upstream',
+        retryable: true,
+        upstreamRequestId: 'req_veo_failed',
+      });
+    }
+
+    return {
+      resultPayload: {
+        kind: GenerationJobKind.VIDEO,
+        videos: [
+          {
+            index: 0,
+            mimeType: 'video/mp4',
+            filename: 'veo-retried.mp4',
+            sizeBytes: 12,
+          },
+        ],
+      },
+      artifacts: [
+        {
+          kind: 'file',
+          role: 'video',
+          filename: 'veo-retried.mp4',
+          mimeType: 'video/mp4',
+          bytes: new Uint8Array(Buffer.from('video-retry')),
+          sizeBytes: 12,
+          metadata: null,
+        },
+      ],
+      usage: null,
+      upstreamRequestId: 'req_veo_retry_success',
+      externalJobId: 'operations/veo-retry-2',
+    };
+  });
+
+  const createChatResponse = await requestWithAuth(app, bootstrap.token, '/api/chats', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      providerId: veoProvider.id,
+    }),
+  });
+  const createChatBody = (await createChatResponse.json()) as {
+    chat: {
+      id: string;
+    };
+  };
+
+  const createMessageResponse = await requestWithAuth(app, bootstrap.token, `/api/chats/${createChatBody.chat.id}/messages`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      content: 'Generate a retryable Veo clip',
+    }),
+  });
+  const createMessageBody = (await createMessageResponse.json()) as {
+    assistantMessage: {
+      id: string;
+    };
+  };
+
+  const failedState = await waitForChatMessage(
+    app,
+    bootstrap.token,
+    createChatBody.chat.id,
+    createMessageBody.assistantMessage.id,
+    (message) => message.status === 'FAILED',
+  );
+
+  assert.equal(failedState.message.attachments?.length ?? 0, 0);
+
+  const retryResponse = await requestWithAuth(
+    app,
+    bootstrap.token,
+    `/api/chats/${createChatBody.chat.id}/messages/${createMessageBody.assistantMessage.id}/retry`,
+    {
+      method: 'POST',
+    },
+  );
+  const retryBody = (await retryResponse.json()) as {
+    message: {
+      id: string;
+      status: string;
+      providerMeta?: Record<string, unknown>;
+    };
+  };
+
+  assert.equal(retryResponse.status, 200);
+  assert.equal(retryBody.message.id, createMessageBody.assistantMessage.id);
+  assert.equal(retryBody.message.status, 'STREAMING');
+
+  const completedState = await waitForChatMessage(
+    app,
+    bootstrap.token,
+    createChatBody.chat.id,
+    createMessageBody.assistantMessage.id,
+    (message) => message.status === 'COMPLETED' && (message.attachments?.length ?? 0) === 1,
+  );
+
+  assert.equal(completedState.message.attachments?.[0]?.file.originalName, 'veo-retried.mp4');
+  assert.equal(
+    completedState.messages.filter((message) => message.id === createMessageBody.assistantMessage.id).length,
+    1,
+  );
+
+  const subscriptionResponse = await requestWithAuth(app, bootstrap.token, '/api/subscription');
+  const subscriptionBody = (await subscriptionResponse.json()) as {
+    subscription: BootstrapResponse['subscription'];
+  };
+
+  assert.equal(subscriptionBody.subscription.tokensRemaining, 900);
+});
+
+test('chat flow deletes a completed Veo async video message and its linked prompt', async () => {
+  const app = createApp();
+  const bootstrap = await bootstrapDev(app);
+  await requestWithAuth(app, bootstrap.token, '/api/subscription/dev/activate', {
+    method: 'POST',
+  });
+  const veoProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.VEO);
+  assert.ok(veoProvider);
+
+  mockExecuteAsyncJob(ProviderKey.VEO, async () => ({
+    resultPayload: {
+      kind: GenerationJobKind.VIDEO,
+      videos: [
+        {
+          index: 0,
+          mimeType: 'video/mp4',
+          filename: 'veo-delete.mp4',
+          sizeBytes: 12,
+        },
+      ],
+    },
+    artifacts: [
+      {
+        kind: 'file',
+        role: 'video',
+        filename: 'veo-delete.mp4',
+        mimeType: 'video/mp4',
+        bytes: new Uint8Array(Buffer.from('video-delete')),
+        sizeBytes: 12,
+        metadata: null,
+      },
+    ],
+    usage: null,
+    upstreamRequestId: 'req_veo_delete',
+    externalJobId: 'operations/veo-delete-1',
+  }));
+
+  const createChatResponse = await requestWithAuth(app, bootstrap.token, '/api/chats', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      providerId: veoProvider.id,
+    }),
+  });
+  const createChatBody = (await createChatResponse.json()) as {
+    chat: {
+      id: string;
+    };
+  };
+
+  const createMessageResponse = await requestWithAuth(app, bootstrap.token, `/api/chats/${createChatBody.chat.id}/messages`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      content: 'Generate a deletable Veo clip',
+    }),
+  });
+  const createMessageBody = (await createMessageResponse.json()) as {
+    assistantMessage: {
+      id: string;
+    };
+  };
+
+  const completedState = await waitForChatMessage(
+    app,
+    bootstrap.token,
+    createChatBody.chat.id,
+    createMessageBody.assistantMessage.id,
+    (message) => message.status === 'COMPLETED' && (message.attachments?.length ?? 0) === 1,
+  );
+
+  const deleteResponse = await requestWithAuth(
+    app,
+    bootstrap.token,
+    `/api/chats/${createChatBody.chat.id}/messages/${createMessageBody.assistantMessage.id}`,
+    {
+      method: 'DELETE',
+    },
+  );
+  const deleteBody = (await deleteResponse.json()) as {
+    deleted: boolean;
+  };
+
+  assert.equal(deleteResponse.status, 200);
+  assert.deepEqual(deleteBody, { deleted: true });
+
+  const getChatResponse = await requestWithAuth(app, bootstrap.token, `/api/chats/${createChatBody.chat.id}/messages`);
+  const getChatBody = (await getChatResponse.json()) as {
+    chat: {
+      messages: Array<{ id: string }>;
+    };
+  };
+
+  assert.equal(getChatResponse.status, 200);
+  assert.equal(getChatBody.chat.messages.length, 0);
+
+  const fileContentResponse = await requestWithAuth(
+    app,
+    bootstrap.token,
+    `/api/files/${completedState.message.attachments?.[0]?.file.id}/content`,
+  );
+
+  assert.equal(fileContentResponse.status, 404);
 });

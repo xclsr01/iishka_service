@@ -18,6 +18,8 @@ function providerLabel(provider: GatewayProviderKey) {
       return 'Gemini';
     case 'nano-banana':
       return 'Nano Banana';
+    case 'veo':
+      return 'Veo';
     default:
       return 'Provider';
   }

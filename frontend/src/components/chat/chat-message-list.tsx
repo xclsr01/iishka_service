@@ -2,13 +2,36 @@ import { useEffect, useRef } from 'react';
 import type { ChatMessage } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { AssistantMessageContent } from './assistant-message-content';
+import { VideoMessageCard } from './video-message-card';
+
+function shouldRenderVideoCard(message: ChatMessage) {
+  if (message.role !== 'ASSISTANT') {
+    return false;
+  }
+
+  if (message.attachments?.some((attachment) => attachment.file.mimeType.startsWith('video/'))) {
+    return true;
+  }
+
+  const providerMeta = message.providerMeta;
+  return Boolean(
+    providerMeta &&
+    typeof providerMeta === 'object' &&
+    !Array.isArray(providerMeta) &&
+    ('mediaKind' in providerMeta ? providerMeta.mediaKind === 'video' : false),
+  );
+}
 
 export function ChatMessageList({
   messages,
   scrollToBottomSignal,
+  onRetryAsyncMessage,
+  onDeleteAsyncMessage,
 }: {
   messages: ChatMessage[];
   scrollToBottomSignal?: number;
+  onRetryAsyncMessage?: (messageId: string) => Promise<void>;
+  onDeleteAsyncMessage?: (messageId: string) => Promise<void>;
 }) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -40,11 +63,19 @@ export function ChatMessageList({
               )}
             >
               {isAssistant ? (
-                <AssistantMessageContent content={message.content} />
+                shouldRenderVideoCard(message) ? (
+                  <VideoMessageCard
+                    message={message}
+                    onRetry={onRetryAsyncMessage}
+                    onDelete={onDeleteAsyncMessage}
+                  />
+                ) : (
+                  <AssistantMessageContent content={message.content} />
+                )
               ) : (
                 <div className="whitespace-pre-wrap">{message.content}</div>
               )}
-              {attachments.length > 0 && (
+              {attachments.length > 0 && !shouldRenderVideoCard(message) && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {attachments.map((attachment) => (
                     <div

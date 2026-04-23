@@ -29,4 +29,37 @@ export class SupabaseStorageAdapter implements StorageAdapter {
 
     return { storageKey: input.storageKey };
   }
+
+  async getObject(input: { storageKey: string }) {
+    const { data, error } = await this.client.storage
+      .from(env.SUPABASE_STORAGE_BUCKET!)
+      .download(input.storageKey);
+
+    if (error) {
+      throw new AppError(
+        `Supabase storage download failed: ${error.message}`,
+        502,
+        'UPLOAD_FAILED',
+      );
+    }
+
+    return {
+      content: new Uint8Array(await data.arrayBuffer()),
+      mimeType: data.type || null,
+    };
+  }
+
+  async deleteObject(input: { storageKey: string }) {
+    const { error } = await this.client.storage
+      .from(env.SUPABASE_STORAGE_BUCKET!)
+      .remove([input.storageKey]);
+
+    if (error) {
+      throw new AppError(
+        `Supabase storage delete failed: ${error.message}`,
+        502,
+        'UPLOAD_FAILED',
+      );
+    }
+  }
 }

@@ -1,8 +1,10 @@
 import {
   GenerationJobKind,
   GenerationJobStatus,
+  MessageStatus,
   ProviderStatus,
   type GenerationJob,
+  type FileAsset,
   type Prisma,
   type Provider,
 } from '@prisma/client';
@@ -59,6 +61,7 @@ function presentGenerationJob(job: GenerationJobRecord): PresentedGenerationJob 
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
     chatId: job.chatId ?? null,
+    messageId: job.messageId ?? null,
     provider: {
       id: job.provider.id,
       key: job.provider.key,
@@ -224,6 +227,21 @@ async function assertJobChatOwnership(userId: string, chatId: string) {
   assertPresent(chat, 'Chat not found');
 }
 
+async function assertJobMessageOwnership(userId: string, messageId: string, chatId?: string) {
+  const message = await withOperationTimeout(
+    'jobs.assertMessageOwnership',
+    prisma.message.findFirst({
+      where: {
+        id: messageId,
+        userId,
+        ...(chatId ? { chatId } : {}),
+      },
+    }),
+  );
+
+  assertPresent(message, 'Message not found');
+}
+
 export function getGenerationJobTokenCost(kind: GenerationJobKind) {
   switch (kind) {
     case GenerationJobKind.IMAGE:
@@ -281,6 +299,7 @@ export async function createGenerationJob(
         userId: input.userId,
         providerId: provider.id,
         chatId: input.chatId,
+        messageId: input.messageId,
         kind: input.kind,
         prompt: input.prompt,
         inputPayload: {
@@ -307,6 +326,23 @@ export async function createGenerationJob(
   );
 
   return presentGenerationJob(assertPresent(resolvedJob, 'Generation job not found'));
+}
+
+export async function createLinkedGenerationJob(
+  input: CreateGenerationJobInput,
+  enqueueOptions?: EnqueueGenerationJobOptions,
+) {
+  if (!input.messageId) {
+    throw new AppError('messageId is required for linked generation jobs', 400, 'INVALID_JOB_LINK');
+  }
+
+  if (input.chatId) {
+    await assertJobMessageOwnership(input.userId, input.messageId, input.chatId);
+  } else {
+    await assertJobMessageOwnership(input.userId, input.messageId);
+  }
+
+  return createGenerationJob(input, enqueueOptions);
 }
 
 export async function listGenerationJobs(input: ListGenerationJobsInput) {
@@ -414,6 +450,48 @@ export async function createGenerationJobImageLinks(
   };
 }
 
+type AsyncMessageProviderMetaInput = {
+  requestedProviderKey: Provider['key'];
+  requestedModel: string;
+  jobId: string;
+  jobKind: GenerationJobKind;
+  prompt: string;
+  status: GenerationJobStatus;
+  sourceUserMessageId?: string | null;
+  upstreamRequestId?: string | null;
+  externalJobId?: string | null;
+  resultPayload?: Record<string, unknown> | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+};
+
+function toInputJsonObject(value: Record<string, unknown> | null | undefined): Prisma.InputJsonValue | null {
+  if (!value) {
+    return null;
+  }
+
+  return value as Prisma.InputJsonValue;
+}
+
+export function buildAsyncMessageProviderMeta(input: AsyncMessageProviderMetaInput): Prisma.InputJsonValue {
+  return {
+    requestedProviderKey: input.requestedProviderKey,
+    requestedModel: input.requestedModel,
+    executionMode: 'async_job',
+    jobId: input.jobId,
+    jobKind: input.jobKind,
+    prompt: input.prompt,
+    status: input.status,
+    sourceUserMessageId: input.sourceUserMessageId ?? null,
+    mediaKind: input.jobKind === GenerationJobKind.VIDEO ? 'video' : 'async',
+    upstreamRequestId: input.upstreamRequestId ?? null,
+    externalJobId: input.externalJobId ?? null,
+    resultPayload: toInputJsonObject(input.resultPayload),
+    failureCode: input.failureCode ?? null,
+    failureMessage: input.failureMessage ?? null,
+  } satisfies Record<string, unknown>;
+}
+
 export async function getGenerationJobImageByToken(
   token: string,
   jobId: string,
@@ -474,20 +552,57 @@ export async function completeGenerationJob(input: {
   resultPayload: Prisma.InputJsonValue;
   providerRequestId?: string | null;
   externalJobId?: string | null;
+  messageId?: string | null;
+  attachedFiles?: FileAsset[];
+  messageProviderMeta?: Prisma.InputJsonValue;
 }) {
   return withOperationTimeout(
     'jobs.complete',
-    prisma.generationJob.update({
-      where: { id: input.jobId },
-      data: {
-        status: GenerationJobStatus.COMPLETED,
-        resultPayload: input.resultPayload,
-        providerRequestId: input.providerRequestId ?? null,
-        externalJobId: input.externalJobId ?? null,
-        completedAt: new Date(),
-        failureCode: null,
-        failureMessage: null,
-      },
+    prisma.$transaction(async (tx) => {
+      const completedJob = await tx.generationJob.update({
+        where: { id: input.jobId },
+        data: {
+          status: GenerationJobStatus.COMPLETED,
+          resultPayload: input.resultPayload,
+          providerRequestId: input.providerRequestId ?? null,
+          externalJobId: input.externalJobId ?? null,
+          completedAt: new Date(),
+          failureCode: null,
+          failureMessage: null,
+        },
+      });
+
+      if (input.messageId) {
+        if ((input.attachedFiles?.length ?? 0) > 0) {
+          await tx.messageAttachment.createMany({
+            data: input.attachedFiles!.map((file) => ({
+              messageId: input.messageId!,
+              fileId: file.id,
+            })),
+          });
+        }
+
+        await tx.message.update({
+          where: { id: input.messageId },
+          data: {
+            status: MessageStatus.COMPLETED,
+            content: 'Video generation completed.',
+            failureReason: null,
+            providerMeta: input.messageProviderMeta,
+          },
+        });
+      }
+
+      if (completedJob.chatId) {
+        await tx.chat.update({
+          where: { id: completedJob.chatId },
+          data: {
+            lastMessageAt: new Date(),
+          },
+        });
+      }
+
+      return completedJob;
     }),
   );
 }
@@ -498,19 +613,46 @@ export async function failGenerationJob(input: {
   failureMessage: string;
   providerRequestId?: string | null;
   externalJobId?: string | null;
+  messageId?: string | null;
+  messageProviderMeta?: Prisma.InputJsonValue;
 }) {
   return withOperationTimeout(
     'jobs.fail',
-    prisma.generationJob.update({
-      where: { id: input.jobId },
-      data: {
-        status: GenerationJobStatus.FAILED,
-        failureCode: input.failureCode,
-        failureMessage: input.failureMessage,
-        providerRequestId: input.providerRequestId ?? null,
-        externalJobId: input.externalJobId ?? null,
-        completedAt: new Date(),
-      },
+    prisma.$transaction(async (tx) => {
+      const failedJob = await tx.generationJob.update({
+        where: { id: input.jobId },
+        data: {
+          status: GenerationJobStatus.FAILED,
+          failureCode: input.failureCode,
+          failureMessage: input.failureMessage,
+          providerRequestId: input.providerRequestId ?? null,
+          externalJobId: input.externalJobId ?? null,
+          completedAt: new Date(),
+        },
+      });
+
+      if (input.messageId) {
+        await tx.message.update({
+          where: { id: input.messageId },
+          data: {
+            status: MessageStatus.FAILED,
+            content: 'Video generation failed.',
+            failureReason: input.failureMessage,
+            providerMeta: input.messageProviderMeta,
+          },
+        });
+      }
+
+      if (failedJob.chatId) {
+        await tx.chat.update({
+          where: { id: failedJob.chatId },
+          data: {
+            lastMessageAt: new Date(),
+          },
+        });
+      }
+
+      return failedJob;
     }),
   );
 }

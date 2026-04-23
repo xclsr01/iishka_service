@@ -4,7 +4,7 @@ const TOKEN_STORAGE_KEY = `iishka.token.${clientEnv.apiBaseUrl}`;
 
 export type Provider = {
   id: string;
-  key: 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'NANO_BANANA';
+  key: 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'NANO_BANANA' | 'VEO';
   name: string;
   slug: string;
   summary: string;
@@ -43,6 +43,8 @@ export type Subscription = {
   hasAccess: boolean;
 };
 
+export type ChatMessageStatus = 'COMPLETED' | 'FAILED' | 'STREAMING';
+
 export type FileAsset = {
   id: string;
   originalName: string;
@@ -51,10 +53,26 @@ export type FileAsset = {
   createdAt: string;
 };
 
+export type AsyncMessageProviderMeta = {
+  executionMode?: string;
+  mediaKind?: string;
+  prompt?: string;
+  status?: string;
+  jobId?: string;
+  jobKind?: string;
+  sourceUserMessageId?: string | null;
+  resultPayload?: unknown;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+};
+
 export type ChatMessage = {
   id: string;
   role: 'USER' | 'ASSISTANT' | 'SYSTEM';
+  status?: ChatMessageStatus;
   content: string;
+  providerMeta?: AsyncMessageProviderMeta | Record<string, unknown> | null;
+  failureReason?: string | null;
   createdAt: string;
   attachments?: Array<{
     file: FileAsset;
@@ -125,6 +143,7 @@ export type GenerationJob = {
   createdAt: string;
   updatedAt: string;
   chatId: string | null;
+  messageId: string | null;
   provider: {
     id: string;
     key: Provider['key'];
@@ -208,6 +227,29 @@ class ApiClient {
     return (await response.json()) as T;
   }
 
+  private async requestBlob(path: string, init?: RequestInit) {
+    const token = this.getToken();
+
+    if (!token) {
+      throw new Error('Auth session is not ready. Please reopen the Mini App.');
+    }
+
+    const response = await fetch(`${clientEnv.apiBaseUrl}${path}`, {
+      ...init,
+      headers: {
+        ...(init?.headers ?? {}),
+        authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      const rawText = await response.text().catch(() => '');
+      throw new Error(rawText || `Request failed with status ${response.status}`);
+    }
+
+    return response.blob();
+  }
+
   bootstrapTelegram(initDataRaw: string) {
     return this.request<BootstrapResponse>('/api/auth/telegram/bootstrap', {
       method: 'POST',
@@ -266,6 +308,18 @@ class ApiClient {
     });
   }
 
+  retryChatMessage(chatId: string, messageId: string) {
+    return this.request<{ message: ChatMessage }>(`/api/chats/${chatId}/messages/${messageId}/retry`, {
+      method: 'POST',
+    });
+  }
+
+  deleteChatMessage(chatId: string, messageId: string) {
+    return this.request<{ deleted: true }>(`/api/chats/${chatId}/messages/${messageId}`, {
+      method: 'DELETE',
+    });
+  }
+
   uploadFile(file: File) {
     const formData = new FormData();
     formData.append('file', file);
@@ -319,6 +373,10 @@ class ApiClient {
 
   getGenerationJobImageLinks(jobId: string, imageIndex: number) {
     return this.request<GenerationJobImageLinks>(`/api/jobs/${jobId}/images/${imageIndex}/links`);
+  }
+
+  getFileBlob(fileId: string) {
+    return this.requestBlob(`/api/files/${fileId}/content`);
   }
 
   getGenerationJobs(params?: {

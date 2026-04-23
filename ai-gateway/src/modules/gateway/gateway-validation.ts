@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const providerKeySchema = z.enum(['openai', 'anthropic', 'gemini', 'nano-banana']);
+export const providerKeySchema = z.enum(['openai', 'anthropic', 'gemini', 'nano-banana', 'veo']);
 
 export const gatewayMessageSchema = z.object({
   role: z.enum(['system', 'user', 'assistant']),
