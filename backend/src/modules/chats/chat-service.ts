@@ -1,5 +1,6 @@
 import {
   GenerationJobKind,
+  GenerationJobStatus,
   type Chat,
   FileStatus,
   type FileAsset,
@@ -19,6 +20,7 @@ import { prisma } from '../../lib/prisma';
 import { executeInteractiveGeneration } from '../orchestration/orchestration-service';
 import { createLinkedGenerationJob } from '../jobs/jobs-service';
 import { buildAsyncMessageProviderMeta } from '../jobs/jobs-service';
+import { deleteStoredFiles } from '../files/file-service';
 import { getRegisteredProvider } from '../providers/provider-registry';
 import { ProviderAdapterError } from '../providers/provider-types';
 import {
@@ -31,6 +33,8 @@ import {
 import { persistProviderUsage } from '../usage/usage-service';
 
 const QUERY_TIMEOUT_MS = 8000;
+const ASYNC_VIDEO_PENDING_CONTENT = 'Video generation in progress.';
+const ASYNC_VIDEO_FAILED_CONTENT = 'Video generation failed.';
 
 async function withTimeout<T>(label: string, operation: Promise<T>, timeoutMs = QUERY_TIMEOUT_MS) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -55,6 +59,31 @@ function buildTitle(content: string) {
   return content.trim().slice(0, 48) || 'New chat';
 }
 
+type AsyncChatMessageMeta = {
+  requestedProviderKey?: Provider['key'];
+  requestedModel?: string;
+  executionMode?: string;
+  mediaKind?: string;
+  prompt?: string;
+  status?: string;
+  jobId?: string;
+  jobKind?: string;
+  sourceUserMessageId?: string | null;
+  failureCode?: string | null;
+  failureMessage?: string | null;
+};
+
+type AsyncChatMessageContext = {
+  chat: Chat & {
+    provider: Provider;
+  };
+  message: Message;
+  meta: AsyncChatMessageMeta;
+  jobKind: GenerationJobKind;
+  prompt: string;
+  sourceUserMessageId: string | null;
+};
+
 function getChatAsyncJobKind(providerKey: Provider['key']) {
   switch (providerKey) {
     case ProviderKey.VEO:
@@ -62,6 +91,29 @@ function getChatAsyncJobKind(providerKey: Provider['key']) {
     default:
       return null;
   }
+}
+
+function isAsyncChatMessageMeta(value: Prisma.JsonValue | null): value is AsyncChatMessageMeta {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function buildQueuedAsyncMessageProviderMeta(input: {
+  requestedProviderKey: Provider['key'];
+  requestedModel: string;
+  prompt: string;
+  jobKind: GenerationJobKind;
+  sourceUserMessageId?: string | null;
+}) {
+  return {
+    requestedProviderKey: input.requestedProviderKey,
+    requestedModel: input.requestedModel,
+    executionMode: 'async_job',
+    mediaKind: input.jobKind === GenerationJobKind.VIDEO ? 'video' : 'async',
+    prompt: input.prompt,
+    status: 'QUEUED',
+    jobKind: input.jobKind,
+    sourceUserMessageId: input.sourceUserMessageId ?? null,
+  } as Prisma.InputJsonValue;
 }
 
 function attachmentsContext(files: FileAsset[]) {
@@ -201,6 +253,145 @@ async function resolveUsageProvider(chatProvider: Provider, executedProviderKey:
     ),
     'Provider not found',
   );
+}
+
+async function refreshChatLastMessageAtTx(tx: Prisma.TransactionClient, chatId: string) {
+  const latestMessage = await tx.message.findFirst({
+    where: {
+      chatId,
+    },
+    orderBy: {
+      createdAt: 'desc',
+    },
+  });
+
+  await tx.chat.update({
+    where: { id: chatId },
+    data: {
+      lastMessageAt: latestMessage?.createdAt ?? null,
+    },
+  });
+}
+
+async function detachMessageFilesTx(tx: Prisma.TransactionClient, messageId: string, userId: string) {
+  const attachments = await tx.messageAttachment.findMany({
+    where: {
+      messageId,
+    },
+    include: {
+      file: true,
+    },
+  });
+
+  if (attachments.length === 0) {
+    return [];
+  }
+
+  const removableFiles: Array<{ id: string; storageKey: string }> = [];
+
+  for (const attachment of attachments) {
+    if (attachment.file.userId !== userId) {
+      continue;
+    }
+
+    const attachmentCount = await tx.messageAttachment.count({
+      where: {
+        fileId: attachment.fileId,
+      },
+    });
+
+    if (attachmentCount <= 1) {
+      removableFiles.push({
+        id: attachment.fileId,
+        storageKey: attachment.file.storageKey,
+      });
+    }
+  }
+
+  await tx.messageAttachment.deleteMany({
+    where: {
+      messageId,
+    },
+  });
+
+  if (removableFiles.length > 0) {
+    await tx.fileAsset.deleteMany({
+      where: {
+        id: {
+          in: removableFiles.map((file) => file.id),
+        },
+        userId,
+      },
+    });
+  }
+
+  return removableFiles;
+}
+
+async function getAsyncChatMessageContext(
+  userId: string,
+  chatId: string,
+  messageId: string,
+): Promise<AsyncChatMessageContext> {
+  const chat = assertPresent(
+    await withTimeout(
+      'getAsyncChatMessageContext.findChat',
+      prisma.chat.findFirst({
+        where: {
+          id: chatId,
+          userId,
+        },
+        include: {
+          provider: true,
+        },
+      }),
+    ),
+    'Chat not found',
+  );
+
+  const message = assertPresent(
+    await withTimeout(
+      'getAsyncChatMessageContext.findMessage',
+      prisma.message.findFirst({
+        where: {
+          id: messageId,
+          chatId: chat.id,
+          userId,
+        },
+      }),
+    ),
+    'Message not found',
+  );
+
+  if (message.role !== 'ASSISTANT') {
+    throw new AppError('Only assistant async messages can be managed here', 400, 'INVALID_MESSAGE');
+  }
+
+  if (!isAsyncChatMessageMeta(message.providerMeta) || message.providerMeta.executionMode !== 'async_job') {
+    throw new AppError('Message does not support async actions', 400, 'INVALID_MESSAGE');
+  }
+
+  const jobKind = getChatAsyncJobKind(chat.provider.key);
+  if (!jobKind) {
+    throw new AppError('Provider does not support async chat actions', 400, 'INVALID_PROVIDER');
+  }
+
+  const prompt = typeof message.providerMeta.prompt === 'string' ? message.providerMeta.prompt.trim() : '';
+  if (!prompt) {
+    throw new AppError('Async message prompt is unavailable', 400, 'INVALID_MESSAGE');
+  }
+
+  return {
+    chat,
+    message,
+    meta: message.providerMeta,
+    jobKind,
+    prompt,
+    sourceUserMessageId:
+      typeof message.providerMeta.sourceUserMessageId === 'string'
+        ? message.providerMeta.sourceUserMessageId
+        : null,
+  };
 }
 
 export async function listChats(userId: string) {
@@ -416,17 +607,15 @@ export async function createMessage(input: {
           chatId: chat.id,
           userId: input.userId,
           role: 'ASSISTANT',
-          content: 'Video generation in progress.',
+          content: ASYNC_VIDEO_PENDING_CONTENT,
           status: MessageStatus.STREAMING,
-          providerMeta: {
+          providerMeta: buildQueuedAsyncMessageProviderMeta({
             requestedProviderKey: chat.provider.key,
             requestedModel: chat.provider.defaultModel,
-            executionMode: 'async_job',
-            mediaKind: 'video',
             prompt: content,
-            status: 'QUEUED',
             jobKind: chatAsyncJobKind,
-          } as Prisma.InputJsonValue,
+            sourceUserMessageId: userMessage.id,
+          }),
         },
       }),
     );
@@ -442,6 +631,9 @@ export async function createMessage(input: {
             prompt: content,
             chatId: chat.id,
             messageId: assistantMessage.id,
+            metadata: {
+              sourceUserMessageId: userMessage.id,
+            },
           },
           {
             schedule: (task) => {
@@ -459,6 +651,7 @@ export async function createMessage(input: {
         jobKind: chatAsyncJobKind,
         prompt: content,
         status: job.status,
+        sourceUserMessageId: userMessage.id,
         upstreamRequestId: job.providerRequestId,
         externalJobId: job.externalJobId,
         resultPayload:
@@ -513,8 +706,19 @@ export async function createMessage(input: {
           where: { id: assistantMessage.id },
           data: {
             status: MessageStatus.FAILED,
-            content: 'Video generation failed.',
+            content: ASYNC_VIDEO_FAILED_CONTENT,
             failureReason: error instanceof Error ? error.message : 'provider-error',
+            providerMeta: buildAsyncMessageProviderMeta({
+              requestedProviderKey: chat.provider.key,
+              requestedModel: chat.provider.defaultModel,
+              jobId: `create-failed-${assistantMessage.id}`,
+              jobKind: chatAsyncJobKind,
+              prompt: content,
+              status: GenerationJobStatus.FAILED,
+              sourceUserMessageId: userMessage.id,
+              failureCode: error instanceof Error && 'code' in error ? String(error.code) : 'JOB_CREATE_FAILED',
+              failureMessage: error instanceof Error ? error.message : 'provider-error',
+            }),
           },
         }),
       ).catch(() => undefined);
@@ -680,4 +884,231 @@ export async function createMessage(input: {
     },
     subscription: presentSubscription(updatedSubscription),
   };
+}
+
+export async function retryAsyncMessage(input: {
+  userId: string;
+  chatId: string;
+  messageId: string;
+}) {
+  await withTimeout(
+    'retryAsyncMessage.requireActiveSubscription',
+    requireActiveSubscription(input.userId),
+  );
+
+  const context = await getAsyncChatMessageContext(input.userId, input.chatId, input.messageId);
+  if (!(context.message.status === MessageStatus.FAILED || context.meta.status === GenerationJobStatus.CANCELED)) {
+    throw new AppError('Only failed async messages can be retried', 400, 'INVALID_MESSAGE_STATE');
+  }
+
+  await withTimeout(
+    'retryAsyncMessage.requireTokenBalance',
+    requireSubscriptionTokenBalance(input.userId, getChatAsyncJobKind(context.chat.provider.key) === GenerationJobKind.VIDEO ? TOKEN_COSTS.video : TOKEN_COSTS.text),
+  );
+
+  const removableFiles = await withTimeout(
+    'retryAsyncMessage.resetMessage',
+    prisma.$transaction(async (tx) => {
+      const detachedFiles = await detachMessageFilesTx(tx, context.message.id, input.userId);
+      await tx.message.update({
+        where: { id: context.message.id },
+        data: {
+          status: MessageStatus.STREAMING,
+          content: ASYNC_VIDEO_PENDING_CONTENT,
+          failureReason: null,
+          providerMeta: buildQueuedAsyncMessageProviderMeta({
+            requestedProviderKey: context.chat.provider.key,
+            requestedModel: context.chat.provider.defaultModel,
+            prompt: context.prompt,
+            jobKind: context.jobKind,
+            sourceUserMessageId: context.sourceUserMessageId,
+          }),
+        },
+      });
+
+      await tx.chat.update({
+        where: { id: context.chat.id },
+        data: {
+          lastMessageAt: new Date(),
+        },
+      });
+
+      return detachedFiles;
+    }),
+  );
+
+  if (removableFiles.length > 0) {
+    await deleteStoredFiles(removableFiles.map((file) => file.storageKey)).catch((error) => {
+      logger.error('async_message_retry_storage_cleanup_failed', {
+        chatId: context.chat.id,
+        messageId: context.message.id,
+        fileCount: removableFiles.length,
+        message: error instanceof Error ? error.message : 'unknown',
+      });
+    });
+  }
+
+  try {
+    const job = await withTimeout(
+      'retryAsyncMessage.createGenerationJob',
+      createLinkedGenerationJob(
+        {
+          userId: input.userId,
+          providerId: context.chat.provider.id,
+          kind: context.jobKind,
+          prompt: context.prompt,
+          chatId: context.chat.id,
+          messageId: context.message.id,
+          metadata: {
+            sourceUserMessageId: context.sourceUserMessageId,
+          },
+        },
+        {
+          schedule: (task) => {
+            void task;
+          },
+        },
+      ),
+      5000,
+    );
+
+    const updatedMessage = await withTimeout(
+      'retryAsyncMessage.updateMessageMeta',
+      prisma.message.update({
+        where: { id: context.message.id },
+        data: {
+          providerMeta: buildAsyncMessageProviderMeta({
+            requestedProviderKey: context.chat.provider.key,
+            requestedModel: context.chat.provider.defaultModel,
+            jobId: job.id,
+            jobKind: context.jobKind,
+            prompt: context.prompt,
+            status: job.status,
+            sourceUserMessageId: context.sourceUserMessageId,
+            upstreamRequestId: job.providerRequestId,
+            externalJobId: job.externalJobId,
+            resultPayload:
+              job.resultPayload && typeof job.resultPayload === 'object' && !Array.isArray(job.resultPayload)
+                ? (job.resultPayload as Record<string, unknown>)
+                : null,
+            failureCode: job.failureCode,
+            failureMessage: job.failureMessage,
+          }),
+        },
+      }),
+    );
+
+    logger.info('async_message_retry_scheduled', {
+      chatId: context.chat.id,
+      messageId: context.message.id,
+      generationJobId: job.id,
+      providerKey: context.chat.provider.key,
+    });
+
+    return {
+      message: {
+        ...updatedMessage,
+        attachments: [],
+      },
+    };
+  } catch (error) {
+    const failureCode = error instanceof Error && 'code' in error ? String(error.code) : 'JOB_EXECUTION_FAILED';
+    const failureMessage = error instanceof Error ? error.message : 'Video generation failed';
+
+    await withTimeout(
+      'retryAsyncMessage.failMessage',
+      prisma.message.update({
+        where: { id: context.message.id },
+        data: {
+          status: MessageStatus.FAILED,
+          content: ASYNC_VIDEO_FAILED_CONTENT,
+          failureReason: failureMessage,
+          providerMeta: buildAsyncMessageProviderMeta({
+            requestedProviderKey: context.chat.provider.key,
+            requestedModel: context.chat.provider.defaultModel,
+            jobId: context.meta.jobId ?? `retry-failed-${context.message.id}`,
+            jobKind: context.jobKind,
+            prompt: context.prompt,
+            status: GenerationJobStatus.FAILED,
+            sourceUserMessageId: context.sourceUserMessageId,
+            failureCode,
+            failureMessage,
+          }),
+        },
+      }),
+    ).catch(() => undefined);
+
+    throw error;
+  }
+}
+
+export async function deleteAsyncMessage(input: {
+  userId: string;
+  chatId: string;
+  messageId: string;
+}) {
+  const context = await getAsyncChatMessageContext(input.userId, input.chatId, input.messageId);
+
+  const removableFiles = await withTimeout(
+    'deleteAsyncMessage.transaction',
+    prisma.$transaction(async (tx) => {
+      const detachedFiles = await detachMessageFilesTx(tx, context.message.id, input.userId);
+
+      await tx.generationJob.deleteMany({
+        where: {
+          messageId: context.message.id,
+          userId: input.userId,
+        },
+      });
+
+      await tx.message.delete({
+        where: { id: context.message.id },
+      });
+
+      if (context.sourceUserMessageId) {
+        const sourceMessage = await tx.message.findFirst({
+          where: {
+            id: context.sourceUserMessageId,
+            userId: input.userId,
+            chatId: context.chat.id,
+            role: 'USER',
+          },
+        });
+
+        if (sourceMessage) {
+          const sourceAttachmentCount = await tx.messageAttachment.count({
+            where: {
+              messageId: sourceMessage.id,
+            },
+          });
+
+          if (sourceAttachmentCount === 0) {
+            await tx.message.delete({
+              where: { id: sourceMessage.id },
+            });
+          }
+        }
+      }
+
+      await refreshChatLastMessageAtTx(tx, context.chat.id);
+      return detachedFiles;
+    }),
+  );
+
+  if (removableFiles.length > 0) {
+    await deleteStoredFiles(removableFiles.map((file) => file.storageKey)).catch((error) => {
+      logger.error('async_message_delete_storage_cleanup_failed', {
+        chatId: context.chat.id,
+        messageId: context.message.id,
+        fileCount: removableFiles.length,
+        message: error instanceof Error ? error.message : 'unknown',
+      });
+    });
+  }
+
+  logger.info('async_message_deleted', {
+    chatId: context.chat.id,
+    messageId: context.message.id,
+    providerKey: context.chat.provider.key,
+  });
 }

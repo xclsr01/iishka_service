@@ -24,6 +24,11 @@ function toMetadataObject(value: Prisma.JsonValue | null): Record<string, unknow
   return value as Record<string, unknown>;
 }
 
+function getSourceUserMessageId(value: Prisma.JsonValue | null) {
+  const metadata = toMetadataObject(value);
+  return typeof metadata?.sourceUserMessageId === 'string' ? metadata.sourceUserMessageId : null;
+}
+
 async function persistGeneratedArtifacts(
   userId: string,
   artifacts?: ProviderGeneratedFileArtifact[],
@@ -112,6 +117,7 @@ export async function runGenerationJob(jobId: string) {
 
     const attachedFiles = await persistGeneratedArtifacts(runningJob.userId, result.artifacts);
     const persistedResultPayload = injectPersistedFilesIntoResultPayload(result.resultPayload, attachedFiles);
+    const sourceUserMessageId = getSourceUserMessageId(currentJob.metadata);
 
     await completeGenerationJob({
       jobId: runningJob.id,
@@ -128,6 +134,7 @@ export async function runGenerationJob(jobId: string) {
             jobKind: runningJob.kind,
             prompt: runningJob.prompt,
             status: GenerationJobStatus.COMPLETED,
+            sourceUserMessageId,
             upstreamRequestId: result.upstreamRequestId,
             externalJobId: result.externalJobId,
             resultPayload: persistedResultPayload,
@@ -188,6 +195,7 @@ export async function runGenerationJob(jobId: string) {
         : error instanceof Error
           ? error.message
           : 'Generation job failed';
+    const sourceUserMessageId = getSourceUserMessageId(currentJob.metadata);
 
     await failGenerationJob({
       jobId,
@@ -203,6 +211,7 @@ export async function runGenerationJob(jobId: string) {
             jobKind: currentJob.kind,
             prompt: currentJob.prompt,
             status: GenerationJobStatus.FAILED,
+            sourceUserMessageId,
             upstreamRequestId: error instanceof ProviderAdapterError ? error.upstreamRequestId ?? null : null,
             externalJobId: null,
             failureCode,

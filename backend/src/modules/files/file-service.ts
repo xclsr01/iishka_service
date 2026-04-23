@@ -107,3 +107,9 @@ export async function getOwnedFileContent(userId: string, fileId: string) {
     mimeType: object.mimeType || file.mimeType,
   };
 }
+
+export async function deleteStoredFiles(storageKeys: string[]) {
+  for (const storageKey of storageKeys) {
+    await storage.deleteObject({ storageKey });
+  }
+}

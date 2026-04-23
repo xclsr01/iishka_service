@@ -132,6 +132,17 @@ export function useProviderChat(
     pendingFiles: [],
   });
 
+  async function refreshChat(chatId: string) {
+    const response = await apiClient.getChat(chatId);
+    writeCachedProviderChat(provider.id, response.chat);
+    setState((current) => ({
+      ...current,
+      chat: response.chat,
+      error: null,
+    }));
+    return response.chat;
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -379,10 +390,49 @@ export function useProviderChat(
       pendingFiles: current.pendingFiles.filter((file) => file.id !== fileId),
     }));
   }
+
+  async function retryAsyncMessage(messageId: string) {
+    if (!state.chat?.id) {
+      throw new Error(t('loadFailed'));
+    }
+
+    try {
+      await apiClient.retryChatMessage(state.chat.id, messageId);
+      await refreshChat(state.chat.id);
+    } catch (error) {
+      const userFacingError = toUserFacingError(error, t('retryVideoFailed'));
+      setState((current) => ({
+        ...current,
+        error: userFacingError,
+      }));
+      throw new Error(userFacingError);
+    }
+  }
+
+  async function deleteAsyncMessage(messageId: string) {
+    if (!state.chat?.id) {
+      throw new Error(t('loadFailed'));
+    }
+
+    try {
+      await apiClient.deleteChatMessage(state.chat.id, messageId);
+      await refreshChat(state.chat.id);
+    } catch (error) {
+      const userFacingError = toUserFacingError(error, t('deleteVideoFailed'));
+      setState((current) => ({
+        ...current,
+        error: userFacingError,
+      }));
+      throw new Error(userFacingError);
+    }
+  }
+
   return {
     ...state,
     uploadFiles,
     sendMessage,
     removePendingFile,
+    retryAsyncMessage,
+    deleteAsyncMessage,
   };
 }

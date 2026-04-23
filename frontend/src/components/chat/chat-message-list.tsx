@@ -25,9 +25,13 @@ function shouldRenderVideoCard(message: ChatMessage) {
 export function ChatMessageList({
   messages,
   scrollToBottomSignal,
+  onRetryAsyncMessage,
+  onDeleteAsyncMessage,
 }: {
   messages: ChatMessage[];
   scrollToBottomSignal?: number;
+  onRetryAsyncMessage?: (messageId: string) => Promise<void>;
+  onDeleteAsyncMessage?: (messageId: string) => Promise<void>;
 }) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -60,7 +64,11 @@ export function ChatMessageList({
             >
               {isAssistant ? (
                 shouldRenderVideoCard(message) ? (
-                  <VideoMessageCard message={message} />
+                  <VideoMessageCard
+                    message={message}
+                    onRetry={onRetryAsyncMessage}
+                    onDelete={onDeleteAsyncMessage}
+                  />
                 ) : (
                   <AssistantMessageContent content={message.content} />
                 )

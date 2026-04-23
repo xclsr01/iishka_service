@@ -16,4 +16,7 @@ export interface StorageAdapter {
   getObject(input: {
     storageKey: string;
   }): Promise<StoredObject>;
+  deleteObject(input: {
+    storageKey: string;
+  }): Promise<void>;
 }

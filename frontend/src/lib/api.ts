@@ -60,6 +60,7 @@ export type AsyncMessageProviderMeta = {
   status?: string;
   jobId?: string;
   jobKind?: string;
+  sourceUserMessageId?: string | null;
   resultPayload?: unknown;
   failureCode?: string | null;
   failureMessage?: string | null;
@@ -304,6 +305,18 @@ class ApiClient {
         'content-type': 'application/json',
       },
       body: JSON.stringify(payload),
+    });
+  }
+
+  retryChatMessage(chatId: string, messageId: string) {
+    return this.request<{ message: ChatMessage }>(`/api/chats/${chatId}/messages/${messageId}/retry`, {
+      method: 'POST',
+    });
+  }
+
+  deleteChatMessage(chatId: string, messageId: string) {
+    return this.request<{ deleted: true }>(`/api/chats/${chatId}/messages/${messageId}`, {
+      method: 'DELETE',
     });
   }
 

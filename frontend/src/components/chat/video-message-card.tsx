@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, Download, ExternalLink, Loader2, Video } from 'lucide-react';
+import { AlertCircle, Download, ExternalLink, Loader2, RefreshCw, Trash2, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { AsyncMessageProviderMeta, ChatMessage, FileAsset } from '@/lib/api';
 import { apiClient } from '@/lib/api';
@@ -51,12 +51,44 @@ function openObjectUrl(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer') ?? window.location.assign(url);
 }
 
-export function VideoMessageCard({ message }: { message: ChatMessage }) {
+function toVideoCardErrorMessage(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+
+  const normalized = error.message.trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+
+  if (
+    normalized.includes('load failed') ||
+    normalized.includes('failed to fetch') ||
+    normalized.includes('networkerror')
+  ) {
+    return fallback;
+  }
+
+  return error.message;
+}
+
+export function VideoMessageCard({
+  message,
+  onRetry,
+  onDelete,
+}: {
+  message: ChatMessage;
+  onRetry?: (messageId: string) => Promise<void>;
+  onDelete?: (messageId: string) => Promise<void>;
+}) {
   const { t } = useLocale();
   const providerMeta = isAsyncVideoMeta(message.providerMeta) ? message.providerMeta : null;
   const prompt = providerMeta?.prompt?.trim() || null;
   const videoFile = getVideoAttachment(message);
   const [videoState, setVideoState] = useState<VideoMessageCardState>({ kind: 'idle' });
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const file = videoFile;
@@ -86,7 +118,7 @@ export function VideoMessageCard({ message }: { message: ChatMessage }) {
 
         setVideoState({
           kind: 'error',
-          message: error instanceof Error ? error.message : t('videoLoadFailed'),
+          message: toVideoCardErrorMessage(error, t('videoLoadFailed')),
         });
       });
 
@@ -98,17 +130,64 @@ export function VideoMessageCard({ message }: { message: ChatMessage }) {
     };
   }, [t, videoFile?.id]);
 
-  const normalizedStatus = providerMeta?.status || message.status || null;
+  const normalizedStatus =
+    message.status === 'FAILED'
+      ? 'FAILED'
+      : message.status === 'STREAMING'
+        ? (providerMeta?.status || 'RUNNING')
+        : (providerMeta?.status || message.status || null);
   const isPending = normalizedStatus === 'QUEUED' || normalizedStatus === 'RUNNING' || message.status === 'STREAMING';
   const isFailed = normalizedStatus === 'FAILED' || message.status === 'FAILED';
   const canShowPlayer = Boolean(videoFile) && videoState.kind === 'ready';
+  const isBusy = isRetrying || isDeleting;
 
   async function handleDownload(file: FileAsset, objectUrl: string) {
+    setActionError(null);
     triggerDownload(objectUrl, file.originalName);
   }
 
   async function handleOpen(objectUrl: string) {
+    setActionError(null);
     openObjectUrl(objectUrl);
+  }
+
+  async function handleRetry() {
+    if (!onRetry || isBusy) {
+      return;
+    }
+
+    setActionError(null);
+    setIsRetrying(true);
+
+    try {
+      await onRetry(message.id);
+    } catch (error) {
+      setActionError(toVideoCardErrorMessage(error, t('retryVideoFailed')));
+    } finally {
+      setIsRetrying(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!onDelete || isBusy) {
+      return;
+    }
+
+    const confirmed = window.confirm(t('confirmDeleteVideoBody'));
+    if (!confirmed) {
+      return;
+    }
+
+    setActionError(null);
+    setIsDeleting(true);
+
+    try {
+      await onDelete(message.id);
+    } catch (error) {
+      setActionError(toVideoCardErrorMessage(error, t('deleteVideoFailed')));
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   return (
@@ -137,6 +216,12 @@ export function VideoMessageCard({ message }: { message: ChatMessage }) {
         </div>
       </div>
 
+      {actionError && (
+        <div className="rounded-[14px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {actionError}
+        </div>
+      )}
+
       {canShowPlayer && videoFile ? (
         <div className="space-y-3">
           <video
@@ -154,6 +239,7 @@ export function VideoMessageCard({ message }: { message: ChatMessage }) {
             <Button
               type="button"
               className="gap-2 px-3 py-2 text-xs"
+              disabled={isBusy}
               onClick={() => void handleOpen(videoState.url)}
             >
               <ExternalLink className="h-4 w-4" />
@@ -163,20 +249,54 @@ export function VideoMessageCard({ message }: { message: ChatMessage }) {
               type="button"
               variant="secondary"
               className="gap-2 px-3 py-2 text-xs"
+              disabled={isBusy}
               onClick={() => void handleDownload(videoFile, videoState.url)}
             >
               <Download className="h-4 w-4" />
               {t('downloadVideo')}
             </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="gap-2 px-3 py-2 text-xs text-destructive"
+              disabled={isBusy || !onDelete}
+              onClick={() => void handleDelete()}
+            >
+              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {isDeleting ? t('deletingVideo') : t('deleteVideo')}
+            </Button>
           </div>
         </div>
       ) : isFailed ? (
-        <div className="rounded-[16px] border border-destructive/30 bg-destructive/10 px-3 py-3 text-sm text-destructive">
-          <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-              <p>{message.failureReason || providerMeta?.failureMessage || t('videoGenerationFailed')}</p>
+        <div className="space-y-3">
+          <div className="rounded-[16px] border border-destructive/30 bg-destructive/10 px-3 py-3 text-sm text-destructive">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <p>{message.failureReason || providerMeta?.failureMessage || t('videoGenerationFailed')}</p>
+              </div>
             </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              className="gap-2 px-3 py-2 text-xs"
+              disabled={isBusy || !onRetry}
+              onClick={() => void handleRetry()}
+            >
+              {isRetrying ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {isRetrying ? t('retryingVideo') : t('retryVideo')}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="gap-2 px-3 py-2 text-xs text-destructive"
+              disabled={isBusy || !onDelete}
+              onClick={() => void handleDelete()}
+            >
+              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {isDeleting ? t('deletingVideo') : t('deleteVideo')}
+            </Button>
           </div>
         </div>
       ) : (

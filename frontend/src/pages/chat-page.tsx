@@ -29,7 +29,17 @@ export function ChatPage({
   onSubscriptionChange: (subscription: Subscription) => void;
 }) {
   const { t } = useLocale();
-  const { chat, messagesLoading, error, pendingFiles, uploadFiles, sendMessage, removePendingFile } =
+  const {
+    chat,
+    messagesLoading,
+    error,
+    pendingFiles,
+    uploadFiles,
+    sendMessage,
+    removePendingFile,
+    retryAsyncMessage,
+    deleteAsyncMessage,
+  } =
     useProviderChat(provider, subscription, onSubscriptionChange);
   const [busy, setBusy] = useState(false);
   const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0);
@@ -110,7 +120,12 @@ export function ChatPage({
             {t('startFirstConversation', { providerName: provider.name })}
           </div>
         ) : (
-          <ChatMessageList messages={messages} scrollToBottomSignal={scrollToBottomSignal} />
+          <ChatMessageList
+            messages={messages}
+            scrollToBottomSignal={scrollToBottomSignal}
+            onRetryAsyncMessage={retryAsyncMessage}
+            onDeleteAsyncMessage={deleteAsyncMessage}
+          />
         )}
       </Card>
 

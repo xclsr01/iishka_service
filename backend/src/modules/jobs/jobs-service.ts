@@ -457,6 +457,7 @@ type AsyncMessageProviderMetaInput = {
   jobKind: GenerationJobKind;
   prompt: string;
   status: GenerationJobStatus;
+  sourceUserMessageId?: string | null;
   upstreamRequestId?: string | null;
   externalJobId?: string | null;
   resultPayload?: Record<string, unknown> | null;
@@ -481,6 +482,7 @@ export function buildAsyncMessageProviderMeta(input: AsyncMessageProviderMetaInp
     jobKind: input.jobKind,
     prompt: input.prompt,
     status: input.status,
+    sourceUserMessageId: input.sourceUserMessageId ?? null,
     mediaKind: input.jobKind === GenerationJobKind.VIDEO ? 'video' : 'async',
     upstreamRequestId: input.upstreamRequestId ?? null,
     externalJobId: input.externalJobId ?? null,

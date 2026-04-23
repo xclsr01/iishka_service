@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { env } from '../../../env';
 import type { StorageAdapter } from './storage-adapter';
@@ -18,5 +18,10 @@ export class LocalStorageAdapter implements StorageAdapter {
       content: new Uint8Array(content),
       mimeType: null,
     };
+  }
+
+  async deleteObject(input: { storageKey: string }) {
+    const fullPath = path.resolve(process.cwd(), env.UPLOAD_LOCAL_DIR, input.storageKey);
+    await rm(fullPath, { force: true });
   }
 }

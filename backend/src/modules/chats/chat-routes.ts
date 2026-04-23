@@ -2,7 +2,14 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { authMiddleware } from '../../middleware/auth';
 import type { AppVariables } from '../../types';
-import { createChat, createMessage, getChatWithMessages, listChats } from './chat-service';
+import {
+  createChat,
+  createMessage,
+  deleteAsyncMessage,
+  getChatWithMessages,
+  listChats,
+  retryAsyncMessage,
+} from './chat-service';
 
 const createChatSchema = z.object({
   providerId: z.string().min(1),
@@ -48,4 +55,26 @@ chatRoutes.post('/:chatId/messages', async (c) => {
   });
 
   return c.json(result, 201);
+});
+
+chatRoutes.post('/:chatId/messages/:messageId/retry', async (c) => {
+  const session = c.get('authSession');
+  const result = await retryAsyncMessage({
+    userId: session.userId,
+    chatId: c.req.param('chatId'),
+    messageId: c.req.param('messageId'),
+  });
+
+  return c.json(result, 200);
+});
+
+chatRoutes.delete('/:chatId/messages/:messageId', async (c) => {
+  const session = c.get('authSession');
+  await deleteAsyncMessage({
+    userId: session.userId,
+    chatId: c.req.param('chatId'),
+    messageId: c.req.param('messageId'),
+  });
+
+  return c.json({ deleted: true }, 200);
 });
