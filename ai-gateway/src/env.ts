@@ -13,7 +13,7 @@ const envSchema = z.object({
   AI_GATEWAY_INTERNAL_TOKEN: z.string().min(32),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
-  OPENAI_DEFAULT_MODEL: z.string().min(1).default('gpt-4.1-mini'),
+  OPENAI_DEFAULT_MODEL: z.string().min(1).default('gpt-5.4-mini'),
   ANTHROPIC_API_KEY: z.string().min(1),
   ANTHROPIC_BASE_URL: z.string().url().default('https://api.anthropic.com'),
   ANTHROPIC_DEFAULT_MODEL: z.string().min(1).default('claude-3-5-sonnet-latest'),

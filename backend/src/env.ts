@@ -40,7 +40,7 @@ const envSchema = z.object({
   OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
   OPENAI_GATEWAY_URL: optionalUrl,
   OPENAI_GATEWAY_INTERNAL_TOKEN: optionalSecret,
-  OPENAI_MODEL: z.string().min(1).default('gpt-4.1-mini'),
+  OPENAI_MODEL: z.string().min(1).default('gpt-5.4-mini'),
   ANTHROPIC_API_KEY: z.string().min(1).default(placeholderToken),
   ANTHROPIC_MODEL: z.string().min(1).default('claude-3-5-sonnet-latest'),
   GOOGLE_AI_API_KEY: z.string().min(1).default(placeholderToken),

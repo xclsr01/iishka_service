@@ -67,7 +67,7 @@ async function seedProviders() {
         summary: 'Balanced generalist for drafting, coding, and everyday problem solving.',
         description:
           'OpenAI-backed assistant focused on broad general intelligence, coding support, and multimodal product evolution.',
-        defaultModel: 'gpt-4.1-mini',
+        defaultModel: 'gpt-5.4-mini',
         status: ProviderStatus.ACTIVE,
         isFileUploadBeta: true,
       },
