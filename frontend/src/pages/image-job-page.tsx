@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Download, ExternalLink, ImageIcon, Loader2, RefreshCw, ShieldAlert, Sparkles } from 'lucide-react';
+import { ArrowLeft, Download, ExternalLink, ImageIcon, Loader2, RefreshCw, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
   apiClient,
@@ -108,6 +108,11 @@ type ImageHistoryItem = {
   text: string | null;
 };
 
+type DeleteDialogState = {
+  jobId: string;
+  prompt: string;
+};
+
 function canRefreshImageJob(job: GenerationJob, images: GeneratedImage[]) {
   return images.length === 0 && ['FAILED', 'CANCELED', 'QUEUED'].includes(job.status);
 }
@@ -131,7 +136,9 @@ export function ImageJobPage({
   const [prompt, setPrompt] = useState('');
   const [assetAction, setAssetAction] = useState<AssetActionState | null>(null);
   const [refreshingJobId, setRefreshingJobId] = useState<string | null>(null);
-  const { job, jobs, isLoadingHistory, isSubmitting, error, createImageJob, resetJob } = useImageJob(provider.id);
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
+  const { job, jobs, isLoadingHistory, isSubmitting, error, createImageJob, removeImageJob, resetJob } = useImageJob(provider.id);
   const syncedJobIdRef = useRef<string | null>(null);
   const actionResetTimerRef = useRef<number | null>(null);
   const isBusy = isSubmitting;
@@ -205,6 +212,32 @@ export function ImageJobPage({
     } finally {
       setRefreshingJobId(null);
     }
+  }
+
+  async function confirmDeleteImageJob() {
+    if (!deleteDialog || deletingJobId) {
+      return;
+    }
+
+    setDeletingJobId(deleteDialog.jobId);
+
+    try {
+      await apiClient.deleteGenerationJob(deleteDialog.jobId);
+      removeImageJob(deleteDialog.jobId);
+      setDeleteDialog(null);
+    } catch (caughtError) {
+      setStatefulDeleteError(caughtError);
+    } finally {
+      setDeletingJobId(null);
+    }
+  }
+
+  function setStatefulDeleteError(caughtError: unknown) {
+    updateAssetAction({
+      key: `delete:${deleteDialog?.jobId ?? 'unknown'}`,
+      status: 'error',
+      message: caughtError instanceof Error ? caughtError.message : t('imageOpenFailed'),
+    });
   }
 
   async function downloadGeneratedImage(jobId: string, image: GeneratedImage) {
@@ -293,6 +326,45 @@ export function ImageJobPage({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+      {deleteDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <Card className="w-full max-w-sm border-border/70 bg-[linear-gradient(180deg,rgba(12,18,34,0.96),rgba(8,13,26,0.94))] px-4 py-4">
+            <h3 className="font-display text-xl font-bold text-white">{t('confirmDeleteImageTitle')}</h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('confirmDeleteImageBody')}</p>
+            <p className="mt-3 line-clamp-3 text-sm font-semibold text-white">{deleteDialog.prompt}</p>
+            <div className="mt-4 flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className="flex-1"
+                disabled={Boolean(deletingJobId)}
+                onClick={() => setDeleteDialog(null)}
+              >
+                {t('cancel')}
+              </Button>
+              <Button
+                type="button"
+                className="flex-1"
+                disabled={Boolean(deletingJobId)}
+                onClick={() => void confirmDeleteImageJob()}
+              >
+                {deletingJobId ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t('deletingImage')}
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {t('confirm')}
+                  </>
+                )}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
       <div className="sticky top-0 z-20 -mx-1 rounded-b-[24px] bg-background/90 px-1 pb-2 pt-1 backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <Button asChild variant="ghost" className="px-0 py-0.5 text-base text-white">
@@ -461,20 +533,32 @@ export function ImageJobPage({
                           : t(`jobStatus${item.job.status}`)}
                       </div>
                       {canRefreshImageJob(item.job, item.images) && (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="min-h-11 min-w-[160px]"
-                          disabled={isBusy || !subscription.hasAccess || Boolean(refreshingJobId)}
-                          onClick={() => void refreshImageJob(item.job)}
-                        >
-                          {refreshingJobId === item.job.id ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                          )}
-                          {refreshingJobId === item.job.id ? t('refreshingImage') : t('refreshImage')}
-                        </Button>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="min-h-11 min-w-[160px]"
+                            disabled={isBusy || !subscription.hasAccess || Boolean(refreshingJobId) || Boolean(deletingJobId)}
+                            onClick={() => void refreshImageJob(item.job)}
+                          >
+                            {refreshingJobId === item.job.id ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                            )}
+                            {refreshingJobId === item.job.id ? t('refreshingImage') : t('refreshImage')}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="min-h-11 min-w-[160px]"
+                            disabled={Boolean(refreshingJobId) || Boolean(deletingJobId)}
+                            onClick={() => setDeleteDialog({ jobId: item.job.id, prompt: item.job.prompt })}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            {t('deleteImage')}
+                          </Button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -520,7 +604,7 @@ export function ImageJobPage({
                             type="button"
                             variant="ghost"
                             className="flex-1"
-                            disabled={isActionLoading}
+                            disabled={isActionLoading || Boolean(deletingJobId)}
                             onClick={() => void openGeneratedImage(item.job.id, image)}
                           >
                             {isOpenLoading ? (
@@ -531,6 +615,16 @@ export function ImageJobPage({
                             {isOpenLoading ? t('openingImage') : t('openImage')}
                           </Button>
                         </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="w-full"
+                          disabled={isActionLoading || Boolean(deletingJobId)}
+                          onClick={() => setDeleteDialog({ jobId: item.job.id, prompt: item.job.prompt })}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          {t('deleteImage')}
+                        </Button>
                         {activeAction && (
                           <p
                             className={cn(
