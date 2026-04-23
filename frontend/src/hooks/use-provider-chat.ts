@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { apiClient, type Chat, type FileAsset, type Provider, type Subscription } from '@/lib/api';
 import { clientEnv } from '@/lib/env';
 import { useLocale } from '@/lib/i18n';
@@ -63,6 +63,27 @@ function buildOptimisticAssistantMessage(content: string) {
   };
 }
 
+function isPendingAsyncMessage(chat: Chat | null) {
+  if (!chat?.messages?.length) {
+    return false;
+  }
+
+  return chat.messages.some((message) => {
+    if (message.status === 'STREAMING') {
+      return true;
+    }
+
+    const providerMeta = message.providerMeta;
+    if (!providerMeta || typeof providerMeta !== 'object' || Array.isArray(providerMeta)) {
+      return false;
+    }
+
+    return providerMeta.executionMode === 'async_job' && (
+      providerMeta.status === 'QUEUED' || providerMeta.status === 'RUNNING'
+    );
+  });
+}
+
 function getProviderChatCacheKey(providerId: string) {
   return `iishka.provider-chat.${clientEnv.apiBaseUrl}.${providerId}`;
 }
@@ -95,9 +116,14 @@ function writeCachedProviderChat(providerId: string, chat: Chat | null) {
   }
 }
 
-export function useProviderChat(provider: Provider, subscription: Subscription) {
+export function useProviderChat(
+  provider: Provider,
+  subscription: Subscription,
+  onSubscriptionChange: (subscription: Subscription) => void,
+) {
   const { t } = useLocale();
   const cachedChat = readCachedProviderChat(provider.id);
+  const pendingAsyncMessageRef = useRef(isPendingAsyncMessage(cachedChat));
   const [state, setState] = useState<ProviderChatState>({
     chat: cachedChat,
     chatsLoaded: Boolean(cachedChat),
@@ -181,6 +207,53 @@ export function useProviderChat(provider: Provider, subscription: Subscription) 
       cancelled = true;
     };
   }, [provider.id, subscription.hasAccess]);
+
+  useEffect(() => {
+    const hasPendingAsyncMessage = isPendingAsyncMessage(state.chat);
+    const hadPendingAsyncMessage = pendingAsyncMessageRef.current;
+    pendingAsyncMessageRef.current = hasPendingAsyncMessage;
+
+    if (!state.chat?.id || !hasPendingAsyncMessage) {
+      if (hadPendingAsyncMessage && provider.executionMode === 'async-job') {
+        apiClient.getSubscription()
+          .then((response) => onSubscriptionChange(response.subscription))
+          .catch(() => undefined);
+      }
+      return;
+    }
+
+    let cancelled = false;
+    const intervalId = window.setInterval(() => {
+      apiClient.getChat(state.chat!.id)
+        .then((response) => {
+          if (cancelled) {
+            return;
+          }
+
+          writeCachedProviderChat(provider.id, response.chat);
+          setState((current) => ({
+            ...current,
+            chat: response.chat,
+            error: null,
+          }));
+        })
+        .catch((error) => {
+          if (cancelled) {
+            return;
+          }
+
+          setState((current) => ({
+            ...current,
+            error: toUserFacingError(error, t('loadFailed')),
+          }));
+        });
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [onSubscriptionChange, provider.executionMode, provider.id, state.chat, t]);
 
   async function uploadFiles(files: FileList | null) {
     if (!files || files.length === 0) {

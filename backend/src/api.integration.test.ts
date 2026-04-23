@@ -743,6 +743,17 @@ test('chat flow creates linked Veo async video message and attaches generated fi
     completedAssistantMessage.attachments?.[0]?.file.id,
   );
 
+  const fileContentResponse = await requestWithAuth(
+    app,
+    bootstrap.token,
+    `/api/files/${completedAssistantMessage.attachments?.[0]?.file.id}/content`,
+  );
+  const fileContentBytes = Buffer.from(await fileContentResponse.arrayBuffer());
+
+  assert.equal(fileContentResponse.status, 200);
+  assert.equal(fileContentResponse.headers.get('content-type'), 'video/mp4');
+  assert.equal(fileContentBytes.toString('utf8'), 'video-bytes');
+
   const subscriptionResponse = await requestWithAuth(app, bootstrap.token, '/api/subscription');
   const subscriptionBody = (await subscriptionResponse.json()) as {
     subscription: BootstrapResponse['subscription'];

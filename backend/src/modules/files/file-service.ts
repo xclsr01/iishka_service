@@ -83,3 +83,27 @@ export async function persistGeneratedFile(input: {
     bytes: input.bytes,
   });
 }
+
+export async function getOwnedFileContent(userId: string, fileId: string) {
+  const file = await prisma.fileAsset.findFirst({
+    where: {
+      id: fileId,
+      userId,
+      status: 'READY',
+    },
+  });
+
+  if (!file) {
+    throw new AppError('File not found', 404, 'FILE_NOT_FOUND');
+  }
+
+  const object = await storage.getObject({
+    storageKey: file.storageKey,
+  });
+
+  return {
+    file,
+    content: object.content,
+    mimeType: object.mimeType || file.mimeType,
+  };
+}

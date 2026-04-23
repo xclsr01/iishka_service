@@ -30,7 +30,7 @@ export function ChatPage({
 }) {
   const { t } = useLocale();
   const { chat, messagesLoading, error, pendingFiles, uploadFiles, sendMessage, removePendingFile } =
-    useProviderChat(provider, subscription);
+    useProviderChat(provider, subscription, onSubscriptionChange);
   const [busy, setBusy] = useState(false);
   const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0);
   const messages = chat?.messages ?? [];
