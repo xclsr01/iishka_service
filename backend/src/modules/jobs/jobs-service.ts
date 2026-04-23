@@ -44,6 +44,19 @@ type ImageJobResultPayload = {
   images: GeneratedImagePayload[];
 };
 
+function toMetadataObject(value: Prisma.JsonValue | null): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function getLinkedMessageId(value: Prisma.JsonValue | null) {
+  const metadata = toMetadataObject(value);
+  return typeof metadata?.linkedMessageId === 'string' ? metadata.linkedMessageId : null;
+}
+
 function presentGenerationJob(job: GenerationJobRecord): PresentedGenerationJob {
   return {
     id: job.id,
@@ -61,7 +74,7 @@ function presentGenerationJob(job: GenerationJobRecord): PresentedGenerationJob 
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
     chatId: job.chatId ?? null,
-    messageId: job.messageId ?? null,
+    messageId: getLinkedMessageId(job.metadata),
     provider: {
       id: job.provider.id,
       key: job.provider.key,
@@ -299,13 +312,15 @@ export async function createGenerationJob(
         userId: input.userId,
         providerId: provider.id,
         chatId: input.chatId,
-        messageId: input.messageId,
         kind: input.kind,
         prompt: input.prompt,
         inputPayload: {
           prompt: input.prompt,
         } as Prisma.InputJsonValue,
-        metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
+        metadata: {
+          ...(input.metadata ?? {}),
+          ...(input.messageId ? { linkedMessageId: input.messageId } : {}),
+        } as Prisma.InputJsonValue,
       },
       include: {
         provider: true,

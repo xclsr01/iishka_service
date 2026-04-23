@@ -1056,8 +1056,11 @@ export async function deleteAsyncMessage(input: {
 
       await tx.generationJob.deleteMany({
         where: {
-          messageId: context.message.id,
           userId: input.userId,
+          metadata: {
+            path: ['linkedMessageId'],
+            equals: context.message.id,
+          },
         },
       });
 
