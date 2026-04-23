@@ -41,6 +41,22 @@ function triggerDownload(url: string, filename: string) {
   anchor.remove();
 }
 
+async function downloadViaBlob(url: string, filename: string) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Download failed with status ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+
+  try {
+    triggerDownload(objectUrl, filename);
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+  }
+}
+
 function openInNewWindow(url: string, openedWindow: Window | null) {
   if (openedWindow) {
     openedWindow.location.href = url;
@@ -115,7 +131,7 @@ export function ImageJobPage({
 
     try {
       const links = await apiClient.getGenerationJobImageLinks(jobId, image.index);
-      triggerDownload(links.downloadUrl, image.filename || `iishka-image-${image.index}.png`);
+      await downloadViaBlob(links.downloadUrl, image.filename || `iishka-image-${image.index}.png`);
     } catch (caughtError) {
       setAssetActionError(caughtError instanceof Error ? caughtError.message : 'Download failed');
     }
