@@ -117,6 +117,27 @@ function canRefreshImageJob(job: GenerationJob, images: GeneratedImage[]) {
   return images.length === 0 && ['FAILED', 'CANCELED', 'QUEUED'].includes(job.status);
 }
 
+function toDeleteErrorMessage(error: unknown, fallback: string) {
+  if (!(error instanceof Error)) {
+    return fallback;
+  }
+
+  const normalized = error.message.trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+
+  if (
+    normalized.includes('load failed') ||
+    normalized.includes('failed to fetch') ||
+    normalized.includes('networkerror')
+  ) {
+    return fallback;
+  }
+
+  return error.message;
+}
+
 export function ImageJobPage({
   provider,
   subscription,
@@ -228,7 +249,7 @@ export function ImageJobPage({
       removeImageJob(deleteDialog.jobId);
       setDeleteDialog(null);
     } catch (caughtError) {
-      setDeleteError(caughtError instanceof Error ? caughtError.message : t('imageGenerationFailed'));
+      setDeleteError(toDeleteErrorMessage(caughtError, t('deleteImageFailed')));
     } finally {
       setDeletingJobId(null);
     }
