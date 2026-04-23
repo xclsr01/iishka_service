@@ -78,10 +78,8 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
   assert.equal(calledHeaders['content-type'], 'application/json');
   assert.equal(calledHeaders['x-goog-api-key'], process.env.GOOGLE_AI_API_KEY);
   assert.ok(calledPayload);
-  assert.equal(
-    calledPayload.contents[0]?.parts[0]?.text,
-    'USER: Explain how AI works in a few words',
-  );
+  assert.match(calledPayload.contents[0]?.parts[0]?.text ?? '', /Google Search grounding is enabled/);
+  assert.match(calledPayload.contents[0]?.parts[0]?.text ?? '', /USER: Explain how AI works in a few words/);
   assert.deepEqual(calledPayload.tools, [{ google_search: {} }]);
   assert.equal(result.text, 'AI finds patterns and predicts useful outputs.');
   assert.equal(result.upstreamRequestId, 'req_gemini_test');
