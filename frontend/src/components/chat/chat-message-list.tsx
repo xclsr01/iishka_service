@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { ChatMessage } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { AssistantMessageContent } from './assistant-message-content';
 
 export function ChatMessageList({
   messages,
@@ -38,7 +39,11 @@ export function ChatMessageList({
                   : 'border-primary/35 bg-primary text-primary-foreground',
               )}
             >
-              <div className="whitespace-pre-wrap">{message.content}</div>
+              {isAssistant ? (
+                <AssistantMessageContent content={message.content} />
+              ) : (
+                <div className="whitespace-pre-wrap">{message.content}</div>
+              )}
               {attachments.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {attachments.map((attachment) => (
