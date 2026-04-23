@@ -111,6 +111,11 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
               ],
             },
           ],
+          tools: [
+            {
+              google_search: {},
+            },
+          ],
         }),
         signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
       });
@@ -135,6 +140,7 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
         content?: {
           parts?: Array<{ text?: string }>;
         };
+        groundingMetadata?: Record<string, unknown>;
       }>;
       usageMetadata?: {
         promptTokenCount?: number;
@@ -158,6 +164,7 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
       text,
       raw: {
         usage: data.usageMetadata ?? null,
+        groundingMetadata: data.candidates?.[0]?.groundingMetadata ?? null,
       },
       usage: data.usageMetadata
         ? {

@@ -10,7 +10,7 @@
     "ENABLE_DEV_AUTH": "false",
     "ENABLE_DEV_SUBSCRIPTION_OVERRIDE": "true",
     "FRONTEND_URL": "https://iishka-service.pages.dev",
-    "GOOGLE_AI_MODEL": "gemini-flash-latest",
+    "GOOGLE_AI_MODEL": "gemini-3-flash-preview",
     "NANO_BANANA_MODEL": "gemini-2.5-flash-image",
     "OPENAI_MODEL": "gpt-5.4-mini",
     "SUPABASE_STORAGE_BUCKET": "chat-uploads",
