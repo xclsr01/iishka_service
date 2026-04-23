@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { AppError } from '../../lib/errors';
 import { env } from '../../env';
 import { logger } from '../../lib/logger';
+import { sha256Hex } from '../../lib/crypto';
 import { handleTelegramWebhook } from './telegram-service';
 
 export const telegramRoutes = new Hono();
@@ -13,6 +14,9 @@ telegramRoutes.get('/status', (c) => {
     botUsername: env.TELEGRAM_BOT_USERNAME,
     expectedWebhookUrl: `${env.API_BASE_URL.replace(/\/+$/, '')}/api/telegram/webhook`,
     miniAppUrlConfigured: env.TELEGRAM_MINI_APP_URL.startsWith('https://'),
+    webhookSecretConfigured: Boolean(env.TELEGRAM_WEBHOOK_SECRET),
+    webhookSecretLength: env.TELEGRAM_WEBHOOK_SECRET.length,
+    webhookSecretFingerprint: sha256Hex(env.TELEGRAM_WEBHOOK_SECRET).slice(0, 12),
   });
 });
 
