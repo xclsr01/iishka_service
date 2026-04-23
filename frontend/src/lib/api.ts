@@ -88,6 +88,12 @@ export type ImageJobResultPayload = {
   images?: GeneratedImage[];
 };
 
+export type GenerationJobImageLinks = {
+  openUrl: string;
+  downloadUrl: string;
+  expiresAt: string;
+};
+
 export type GenerationJob = {
   id: string;
   kind: GenerationJobKind;
@@ -284,6 +290,10 @@ class ApiClient {
 
   getGenerationJob(jobId: string) {
     return this.request<{ job: GenerationJob }>(`/api/jobs/${jobId}`);
+  }
+
+  getGenerationJobImageLinks(jobId: string, imageIndex: number) {
+    return this.request<GenerationJobImageLinks>(`/api/jobs/${jobId}/images/${imageIndex}/links`);
   }
 
   getGenerationJobs(params?: {

@@ -65,6 +65,12 @@ export type PresentedGenerationJob = {
   resultPayload: unknown;
 };
 
+export type PresentedGenerationJobImageLinks = {
+  openUrl: string;
+  downloadUrl: string;
+  expiresAt: string;
+};
+
 export type GenerationJobRecord = GenerationJob & {
   provider: Provider;
 };
