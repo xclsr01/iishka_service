@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { apiClient, type GenerationJob } from '@/lib/api';
 import { useLocale } from '@/lib/i18n';
 
+const IMAGE_HISTORY_LIMIT = 20;
+
 type ImageJobState = {
   job: GenerationJob | null;
   jobs: GenerationJob[];
@@ -43,21 +45,22 @@ export function useImageJob(providerId: string) {
         const response = await apiClient.getGenerationJobs({
           providerId,
           kind: 'IMAGE',
-          limit: 5,
+          limit: IMAGE_HISTORY_LIMIT,
         });
         if (cancelled) {
           return;
         }
 
         const imageJobs = response.jobs.filter((job) => job.kind === 'IMAGE' && job.provider.id === providerId);
-        activeJobIdRef.current = null;
+        const activeJob = imageJobs.find((historyJob) => !isTerminalStatus(historyJob)) ?? null;
+        activeJobIdRef.current = activeJob?.id ?? null;
 
         setState((current) => ({
           ...current,
-          job: null,
+          job: activeJob,
           jobs: imageJobs,
           isLoadingHistory: false,
-          isPolling: false,
+          isPolling: Boolean(activeJob),
           error: null,
         }));
       } catch (error) {

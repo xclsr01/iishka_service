@@ -1,5 +1,6 @@
 import { env } from '../../env';
 import { AppError } from '../../lib/errors';
+import { logger } from '../../lib/logger';
 
 type TelegramUpdate = {
   message?: {
@@ -24,12 +25,22 @@ async function callTelegram(method: string, payload: Record<string, unknown>) {
 
   if (!response.ok) {
     const body = await response.text().catch(() => '');
+    logger.error('telegram_api_request_failed', {
+      method,
+      status: response.status,
+      body: body.slice(0, 500),
+    });
     throw new AppError(
       `Telegram API request failed with status ${response.status}${body ? `: ${body}` : ''}`,
       502,
       'TELEGRAM_API_FAILED',
     );
   }
+
+  logger.info('telegram_api_request_completed', {
+    method,
+    status: response.status,
+  });
 }
 
 function hasUsablePublicMiniAppUrl(candidate: string) {
@@ -64,6 +75,11 @@ async function sendWelcomeMessage(chatId: number, firstName?: string) {
   const miniAppUrl = resolveMiniAppUrl();
 
   if (!canSendTelegramWebAppButton()) {
+    logger.error('telegram_welcome_without_web_app_button', {
+      reason: 'invalid_mini_app_url',
+      miniAppUrlConfigured: Boolean(env.TELEGRAM_MINI_APP_URL),
+      frontendUrlConfigured: Boolean(env.FRONTEND_URL),
+    });
     await callTelegram('sendMessage', {
       chat_id: chatId,
       text:
@@ -75,6 +91,10 @@ async function sendWelcomeMessage(chatId: number, firstName?: string) {
     return;
   }
 
+  logger.info('telegram_welcome_sending', {
+    hasFirstName: Boolean(firstName),
+    miniAppUrlHost: new URL(miniAppUrl).hostname,
+  });
   await callTelegram('sendMessage', {
     chat_id: chatId,
     text: `${intro} Open the Mini App to browse providers, manage subscription state, and continue your chats.`,
@@ -103,13 +123,20 @@ async function sendHelpMessage(chatId: number) {
 export async function handleTelegramWebhook(update: TelegramUpdate) {
   const message = update.message;
   if (!message?.text) {
+    logger.info('telegram_update_ignored', {
+      reason: 'missing_text_message',
+    });
     return;
   }
 
   if (message.text.startsWith('/start')) {
+    logger.info('telegram_start_received', {
+      hasFirstName: Boolean(message.from?.first_name),
+    });
     await sendWelcomeMessage(message.chat.id, message.from?.first_name);
     return;
   }
 
+  logger.info('telegram_help_received');
   await sendHelpMessage(message.chat.id);
 }
