@@ -3,6 +3,9 @@ substitutions:
   _SERVICE: iishka-service
   _REPO: iishka-service
 
+options:
+  logging: CLOUD_LOGGING_ONLY
+
 steps:
   - name: gcr.io/cloud-builders/docker
     args:
