@@ -13,6 +13,7 @@ enum ProviderKey {
   ANTHROPIC
   GEMINI
   NANO_BANANA
+  VEO
 }
 
 enum ProviderStatus {

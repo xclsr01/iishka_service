@@ -22,6 +22,7 @@ const envSchema = z.object({
   GOOGLE_AI_BASE_URL: z.string().url().default('https://generativelanguage.googleapis.com'),
   GOOGLE_AI_DEFAULT_MODEL: z.string().min(1).default('gemini-2.0-flash'),
   NANO_BANANA_DEFAULT_MODEL: z.string().min(1).default('gemini-2.5-flash-image'),
+  VEO_DEFAULT_MODEL: z.string().min(1).default('veo-3.1-fast-generate-preview'),
   PROVIDER_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
   PROVIDER_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
   PROVIDER_RETRY_BASE_DELAY_MS: z.coerce.number().int().positive().default(300),

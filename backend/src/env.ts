@@ -46,6 +46,7 @@ const envSchema = z.object({
   GOOGLE_AI_API_KEY: z.string().min(1).default(placeholderToken),
   GOOGLE_AI_MODEL: z.string().min(1).default('gemini-2.0-flash'),
   NANO_BANANA_MODEL: z.string().min(1).default('gemini-2.5-flash-image'),
+  VEO_MODEL: z.string().min(1).default('veo-3.1-fast-generate-preview'),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
   ALLOWED_UPLOAD_MIME_TYPES: z
     .string()

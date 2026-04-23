@@ -36,6 +36,24 @@ export type GatewayGeneratedImage = {
   sizeBytes: number;
 };
 
+export type GatewayGeneratedVideo = {
+  index: number;
+  mimeType: string;
+  filename: string;
+  sizeBytes: number;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type GatewayGeneratedFileArtifact = {
+  kind: 'file';
+  role: 'video' | 'image' | 'audio' | 'other';
+  filename: string;
+  mimeType: string;
+  dataBase64: string;
+  sizeBytes: number;
+  metadata?: Record<string, unknown> | null;
+};
+
 export type GatewayAsyncJobResponse = {
   provider: GatewayProviderKey;
   model: string;
@@ -43,8 +61,10 @@ export type GatewayAsyncJobResponse = {
     kind: GatewayAsyncJobRequest['kind'];
     text?: string | null;
     images?: GatewayGeneratedImage[];
+    videos?: GatewayGeneratedVideo[];
     raw?: Record<string, unknown> | null;
   };
+  artifacts?: GatewayGeneratedFileArtifact[];
   upstreamRequestId: string | null;
   externalJobId: string | null;
   usage: GatewayUsage | null;

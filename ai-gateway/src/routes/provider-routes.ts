@@ -6,7 +6,7 @@ import { authMiddleware } from '../middleware/auth';
 import { respondWithAnthropic } from '../modules/anthropic/anthropic-service';
 import { createUnsupportedOperationError } from '../modules/gateway/provider-errors';
 import { asyncJobRequestSchema, chatRespondRequestSchema, providerKeySchema } from '../modules/gateway/gateway-validation';
-import { executeNanoBananaJob, respondWithGemini } from '../modules/google/google-service';
+import { executeNanoBananaJob, executeVeoJob, respondWithGemini } from '../modules/google/google-service';
 import { respondWithOpenAi } from '../modules/openai/openai-service';
 
 export const providerRoutes = new Hono<{ Variables: GatewayVariables }>();
@@ -60,6 +60,8 @@ providerRoutes.post('/providers/:provider/jobs/execute', async (c) => {
   switch (provider) {
     case 'nano-banana':
       return c.json(await executeNanoBananaJob(payload, requestId));
+    case 'veo':
+      return c.json(await executeVeoJob(payload, requestId));
     default:
       throw createUnsupportedOperationError(provider, 'gateway async job execution');
   }
