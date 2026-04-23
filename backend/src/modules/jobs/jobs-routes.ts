@@ -106,7 +106,7 @@ jobsRoutes.get('/:jobId', async (c) => {
 jobsRoutes.delete('/:jobId', async (c) => {
   const session = c.get('authSession');
   await deleteGenerationJob(session.userId, c.req.param('jobId'));
-  return c.body(null, 204);
+  return c.json({ deleted: true });
 });
 
 jobsRoutes.get('/:jobId/images/:imageIndex/links', async (c) => {

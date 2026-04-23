@@ -312,7 +312,7 @@ class ApiClient {
   }
 
   deleteGenerationJob(jobId: string) {
-    return this.request<void>(`/api/jobs/${jobId}`, {
+    return this.request<{ deleted: true }>(`/api/jobs/${jobId}`, {
       method: 'DELETE',
     });
   }

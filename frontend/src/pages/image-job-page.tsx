@@ -137,6 +137,7 @@ export function ImageJobPage({
   const [assetAction, setAssetAction] = useState<AssetActionState | null>(null);
   const [refreshingJobId, setRefreshingJobId] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
   const { job, jobs, isLoadingHistory, isSubmitting, error, createImageJob, removeImageJob, resetJob } = useImageJob(provider.id);
   const syncedJobIdRef = useRef<string | null>(null);
@@ -219,6 +220,7 @@ export function ImageJobPage({
       return;
     }
 
+    setDeleteError(null);
     setDeletingJobId(deleteDialog.jobId);
 
     try {
@@ -226,18 +228,10 @@ export function ImageJobPage({
       removeImageJob(deleteDialog.jobId);
       setDeleteDialog(null);
     } catch (caughtError) {
-      setStatefulDeleteError(caughtError);
+      setDeleteError(caughtError instanceof Error ? caughtError.message : t('imageGenerationFailed'));
     } finally {
       setDeletingJobId(null);
     }
-  }
-
-  function setStatefulDeleteError(caughtError: unknown) {
-    updateAssetAction({
-      key: `delete:${deleteDialog?.jobId ?? 'unknown'}`,
-      status: 'error',
-      message: caughtError instanceof Error ? caughtError.message : t('imageOpenFailed'),
-    });
   }
 
   async function downloadGeneratedImage(jobId: string, image: GeneratedImage) {
@@ -332,13 +326,19 @@ export function ImageJobPage({
             <h3 className="font-display text-xl font-bold text-white">{t('confirmDeleteImageTitle')}</h3>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('confirmDeleteImageBody')}</p>
             <p className="mt-3 line-clamp-3 text-sm font-semibold text-white">{deleteDialog.prompt}</p>
+            {deleteError && (
+              <p className="mt-3 text-sm text-destructive">{deleteError}</p>
+            )}
             <div className="mt-4 flex gap-2">
               <Button
                 type="button"
                 variant="ghost"
                 className="flex-1"
                 disabled={Boolean(deletingJobId)}
-                onClick={() => setDeleteDialog(null)}
+                onClick={() => {
+                  setDeleteDialog(null);
+                  setDeleteError(null);
+                }}
               >
                 {t('cancel')}
               </Button>
@@ -553,7 +553,10 @@ export function ImageJobPage({
                             variant="ghost"
                             className="min-h-11 min-w-[160px]"
                             disabled={Boolean(refreshingJobId) || Boolean(deletingJobId)}
-                            onClick={() => setDeleteDialog({ jobId: item.job.id, prompt: item.job.prompt })}
+                            onClick={() => {
+                              setDeleteError(null);
+                              setDeleteDialog({ jobId: item.job.id, prompt: item.job.prompt });
+                            }}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             {t('deleteImage')}
@@ -620,7 +623,10 @@ export function ImageJobPage({
                           variant="ghost"
                           className="w-full"
                           disabled={isActionLoading || Boolean(deletingJobId)}
-                          onClick={() => setDeleteDialog({ jobId: item.job.id, prompt: item.job.prompt })}
+                          onClick={() => {
+                            setDeleteError(null);
+                            setDeleteDialog({ jobId: item.job.id, prompt: item.job.prompt });
+                          }}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
                           {t('deleteImage')}
