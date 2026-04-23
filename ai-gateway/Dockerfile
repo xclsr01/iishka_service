@@ -9,6 +9,14 @@ RUN npm ci --workspace ai-gateway
 COPY ai-gateway/tsconfig.json ai-gateway/tsconfig.json
 COPY ai-gateway/src ai-gateway/src
 RUN npm run build --workspace ai-gateway
+RUN find ai-gateway/dist -type f -name '*.js' -exec sed -i -E \
+  -e "s/from '(\.{1,2}\/[^']*)'/from '\1.js'/g" \
+  -e 's/from "(\.{1,2}\/[^"]*)"/from "\1.js"/g' \
+  -e "s/import\('(\.{1,2}\/[^']*)'\)/import('\1.js')/g" \
+  -e 's/import\("(\.{1,2}\/[^"]*)"\)/import("\1.js")/g' \
+  -e "s/import '(\.{1,2}\/[^']*)'/import '\1.js'/g" \
+  -e 's/import "(\.{1,2}\/[^"]*)"/import "\1.js"/g' \
+  {} +
 
 FROM node:22-slim AS runtime
 
