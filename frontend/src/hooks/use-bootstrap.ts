@@ -11,7 +11,7 @@ type BootstrapState = {
 
 const STANDALONE_BROWSER_ERROR =
   'This Mini App is live, but Telegram session data is only available when you open it from the bot.';
-const BOOTSTRAP_CACHE_KEY = 'iishka.bootstrap-cache.v1';
+const BOOTSTRAP_CACHE_KEY = `iishka.bootstrap-cache.v1.${clientEnv.apiBaseUrl}`;
 
 type CachedBootstrap = {
   data: BootstrapResponse;
