@@ -55,6 +55,14 @@ function writeCachedBootstrap(data: BootstrapResponse) {
   }
 }
 
+async function refreshProviders(data: BootstrapResponse) {
+  const response = await apiClient.getProviders();
+  return {
+    ...data,
+    providers: response.providers,
+  } satisfies BootstrapResponse;
+}
+
 export function useBootstrap() {
   const [state, setState] = useState<BootstrapState>(() => {
     const cachedData = readCachedBootstrap();
@@ -88,16 +96,34 @@ export function useBootstrap() {
         }
 
         apiClient.setToken(response.token);
-        writeCachedBootstrap(response);
+        const hydratedResponse = await refreshProviders(response);
+        writeCachedBootstrap(hydratedResponse);
 
         if (!cancelled) {
           setState({
-            data: response,
+            data: hydratedResponse,
             error: null,
             isLoading: false,
           });
         }
       } catch (error) {
+        if (state.data) {
+          try {
+            const hydratedCachedData = await refreshProviders(state.data);
+            writeCachedBootstrap(hydratedCachedData);
+            if (!cancelled) {
+              setState({
+                data: hydratedCachedData,
+                error: null,
+                isLoading: false,
+              });
+            }
+            return;
+          } catch {
+            // Fall through to the standard cached-data behavior below.
+          }
+        }
+
         if (!cancelled) {
           setState((current) => ({
             data: current.data,
