@@ -62,7 +62,7 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
 
   const result = await adapter.generateResponse({
     providerKey: ProviderKey.GEMINI,
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-2.0-flash',
     messages: [
       {
         role: 'user',
@@ -73,7 +73,7 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
 
   assert.equal(
     calledUrl,
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
   );
   assert.equal(calledHeaders['content-type'], 'application/json');
   assert.equal(calledHeaders['x-goog-api-key'], process.env.GOOGLE_AI_API_KEY);
@@ -115,7 +115,7 @@ test('GeminiProviderAdapter calls configured AI gateway when available', async (
     return new Response(
       JSON.stringify({
         provider: 'gemini',
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash',
         text: 'Gateway Gemini response',
         upstreamRequestId: 'req_gateway_gemini',
         usage: {
@@ -138,7 +138,7 @@ test('GeminiProviderAdapter calls configured AI gateway when available', async (
 
   const result = await adapter.generateResponse({
     providerKey: ProviderKey.GEMINI,
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-2.0-flash',
     messages: [
       {
         role: 'user',
@@ -150,7 +150,7 @@ test('GeminiProviderAdapter calls configured AI gateway when available', async (
   assert.equal(calledUrl, 'https://ai-gateway.example.run.app/v1/providers/gemini/chat/respond');
   assert.equal(calledHeaders.authorization, 'Bearer test-ai-gateway-token-000000000000000000');
   assert.ok(calledPayload);
-  assert.equal(calledPayload.model, 'gemini-3-flash-preview');
+  assert.equal(calledPayload.model, 'gemini-2.0-flash');
   assert.deepEqual(calledPayload.messages, [{ role: 'user', content: 'Hello' }]);
   assert.equal(result.text, 'Gateway Gemini response');
   assert.equal(result.upstreamRequestId, 'req_gateway_gemini');
@@ -180,7 +180,7 @@ test('GeminiProviderAdapter classifies retryable Google AI rate limit errors', a
     () =>
       adapter.generateResponse({
         providerKey: ProviderKey.GEMINI,
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-2.0-flash',
         messages: [
           {
             role: 'user',

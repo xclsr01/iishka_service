@@ -69,7 +69,7 @@ Unauthenticated gateway provider requests must fail:
 ```bash
 curl -X POST https://<ai-gateway-url>/v1/providers/gemini/chat/respond \
   -H "Content-Type: application/json" \
-  -d '{"model":"gemini-3-flash-preview","messages":[{"role":"user","content":"ping"}]}'
+  -d '{"model":"gemini-2.0-flash","messages":[{"role":"user","content":"ping"}]}'
 ```
 
 Expected:
@@ -86,7 +86,7 @@ curl -X POST https://<ai-gateway-url>/v1/providers/gemini/chat/respond \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${AI_GATEWAY_INTERNAL_TOKEN}" \
   -d '{
-    "model": "gemini-3-flash-preview",
+    "model": "gemini-2.0-flash",
     "messages": [
       { "role": "user", "content": "Reply with the word pong." }
     ],
