@@ -12,7 +12,7 @@
     "FRONTEND_URL": "https://iishka-service.pages.dev",
     "GOOGLE_AI_MODEL": "gemini-flash-latest",
     "NANO_BANANA_MODEL": "gemini-2.5-flash-image",
-    "OPENAI_MODEL": "gpt-4.1-mini",
+    "OPENAI_MODEL": "gpt-5.4-mini",
     "SUPABASE_STORAGE_BUCKET": "chat-uploads",
     "SUPABASE_URL": "https://pehujciaiihjuzduysln.supabase.co",
     "TELEGRAM_BOT_USERNAME": "iishkaApp",

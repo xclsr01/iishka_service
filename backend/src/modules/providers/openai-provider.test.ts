@@ -54,10 +54,10 @@ test('OpenAiProviderAdapter calls configured internal gateway instead of direct 
           },
         },
         provider: 'openai',
-        model: 'gpt-4.1-mini',
+        model: 'gpt-5.4-mini',
         raw: {
           id: 'resp_gateway',
-          model: 'gpt-4.1-mini',
+          model: 'gpt-5.4-mini',
           responseStatus: 'completed',
         },
       }),
@@ -70,7 +70,7 @@ test('OpenAiProviderAdapter calls configured internal gateway instead of direct 
   const result = await runWithLogContext({ requestId: 'req_local_test' }, () =>
     adapter.generateResponse({
       providerKey: ProviderKey.OPENAI,
-      model: 'gpt-4.1-mini',
+      model: 'gpt-5.4-mini',
       messages: [
         {
           role: 'user',
@@ -87,7 +87,7 @@ test('OpenAiProviderAdapter calls configured internal gateway instead of direct 
   assert.ok(calledPayload);
   assert.equal(calledPayload.requestId, 'req_local_test');
   assert.deepEqual(calledPayload.messages, [{ role: 'user', content: 'Hello' }]);
-  assert.equal(calledPayload.model, 'gpt-4.1-mini');
+  assert.equal(calledPayload.model, 'gpt-5.4-mini');
   assert.equal(result.text, 'Gateway response');
   assert.equal(result.upstreamRequestId, 'req_gateway_openai');
   assert.deepEqual(result.usage, {
@@ -102,6 +102,6 @@ test('OpenAiProviderAdapter calls configured internal gateway instead of direct 
   });
   assert.equal(result.raw.gateway, true);
   assert.equal(result.raw.gatewayProvider, 'openai');
-  assert.equal(result.raw.gatewayModel, 'gpt-4.1-mini');
+  assert.equal(result.raw.gatewayModel, 'gpt-5.4-mini');
   assert.equal(result.raw.id, 'resp_gateway');
 });
