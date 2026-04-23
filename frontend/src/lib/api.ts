@@ -1,6 +1,6 @@
 import { clientEnv } from './env';
 
-const TOKEN_STORAGE_KEY = 'iishka.token';
+const TOKEN_STORAGE_KEY = `iishka.token.${clientEnv.apiBaseUrl}`;
 
 export type Provider = {
   id: string;

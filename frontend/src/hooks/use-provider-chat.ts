@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiClient, type Chat, type FileAsset, type Provider, type Subscription } from '@/lib/api';
+import { clientEnv } from '@/lib/env';
 import { useLocale } from '@/lib/i18n';
 
 type ProviderChatState = {
@@ -27,6 +28,10 @@ function toUserFacingError(error: unknown, fallback: string) {
     'the provider request timed out',
     'temporarily unavailable',
     'unavailable from this deployment region',
+    'auth session is not ready',
+    'failed to fetch',
+    'networkerror',
+    'load failed',
     'out of tokens',
     'active subscription required',
   ];
@@ -59,7 +64,7 @@ function buildOptimisticAssistantMessage(content: string) {
 }
 
 function getProviderChatCacheKey(providerId: string) {
-  return `iishka.provider-chat.${providerId}`;
+  return `iishka.provider-chat.${clientEnv.apiBaseUrl}.${providerId}`;
 }
 
 function readCachedProviderChat(providerId: string): Chat | null {
