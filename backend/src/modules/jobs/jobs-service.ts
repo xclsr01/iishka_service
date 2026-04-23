@@ -359,7 +359,7 @@ export async function createGenerationJobImageLinks(
     }),
   );
 
-  getImageFromJob(assertPresent(job, 'Generation job not found'), imageIndex);
+  const image = getImageFromJob(assertPresent(job, 'Generation job not found'), imageIndex);
 
   const expiresAtSeconds = Math.floor(Date.now() / 1000) + IMAGE_LINK_TTL_SECONDS;
   const token = signJobImageToken({
@@ -368,10 +368,27 @@ export async function createGenerationJobImageLinks(
     imageIndex,
     expiresAtSeconds,
   });
+  const openUrl = buildImageUrl(jobId, imageIndex, token, 'inline');
+  const downloadUrl = buildImageUrl(jobId, imageIndex, token, 'attachment');
 
   return {
-    openUrl: buildImageUrl(jobId, imageIndex, token, 'inline'),
-    downloadUrl: buildImageUrl(jobId, imageIndex, token, 'attachment'),
+    openUrl,
+    downloadUrl,
+    filename: image.filename,
+    mimeType: image.mimeType,
+    disposition: 'inline',
+    open: {
+      url: openUrl,
+      filename: image.filename,
+      mimeType: image.mimeType,
+      disposition: 'inline',
+    },
+    download: {
+      url: downloadUrl,
+      filename: image.filename,
+      mimeType: image.mimeType,
+      disposition: 'attachment',
+    },
     expiresAt: new Date(expiresAtSeconds * 1000).toISOString(),
   };
 }

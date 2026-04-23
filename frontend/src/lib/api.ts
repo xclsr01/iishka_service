@@ -91,6 +91,21 @@ export type ImageJobResultPayload = {
 export type GenerationJobImageLinks = {
   openUrl: string;
   downloadUrl: string;
+  filename: string;
+  mimeType: string;
+  disposition: 'inline';
+  open?: {
+    url: string;
+    filename: string;
+    mimeType: string;
+    disposition: 'inline';
+  };
+  download?: {
+    url: string;
+    filename: string;
+    mimeType: string;
+    disposition: 'attachment';
+  };
   expiresAt: string;
 };
 

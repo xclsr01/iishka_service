@@ -15,6 +15,7 @@ import { Card } from '@/components/ui/card';
 import { useImageJob } from '@/hooks/use-image-job';
 import { useLocale } from '@/lib/i18n';
 import { cn } from '@/lib/cn';
+import { getTelegramWebApp } from '@/lib/telegram';
 
 function isImageJobResult(value: unknown): value is ImageJobResultPayload {
   if (!value || typeof value !== 'object') {
@@ -57,6 +58,10 @@ async function downloadViaBlob(url: string, filename: string) {
   }
 }
 
+function isLikelyMobileBrowser() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
 function openInNewWindow(url: string, openedWindow: Window | null) {
   if (openedWindow) {
     openedWindow.location.href = url;
@@ -64,6 +69,38 @@ function openInNewWindow(url: string, openedWindow: Window | null) {
     window.open(url, '_blank', 'noopener,noreferrer') ?? window.location.assign(url);
   }
 }
+
+function openImageUrl(url: string, openedWindow: Window | null = null) {
+  const webApp = getTelegramWebApp();
+  if (webApp?.openLink) {
+    openedWindow?.close();
+    webApp.openLink(url);
+    return;
+  }
+
+  openInNewWindow(url, openedWindow);
+}
+
+function shouldPreferImageViewer() {
+  return Boolean(getTelegramWebApp()) || isLikelyMobileBrowser();
+}
+
+function actionKey(jobId: string, imageIndex: number, kind: AssetActionKind) {
+  return `${jobId}:${imageIndex}:${kind}`;
+}
+
+function imageActionPrefix(jobId: string, imageIndex: number) {
+  return `${jobId}:${imageIndex}:`;
+}
+
+type AssetActionKind = 'download' | 'open';
+type AssetActionStatus = 'loading' | 'success' | 'error';
+
+type AssetActionState = {
+  key: string;
+  status: AssetActionStatus;
+  message: string;
+};
 
 type ImageHistoryItem = {
   job: GenerationJob;
@@ -88,9 +125,10 @@ export function ImageJobPage({
 }) {
   const { t } = useLocale();
   const [prompt, setPrompt] = useState('');
-  const [assetActionError, setAssetActionError] = useState<string | null>(null);
+  const [assetAction, setAssetAction] = useState<AssetActionState | null>(null);
   const { job, jobs, isLoadingHistory, isSubmitting, error, createImageJob, resetJob } = useImageJob(provider.id);
   const syncedJobIdRef = useRef<string | null>(null);
+  const actionResetTimerRef = useRef<number | null>(null);
   const isBusy = isSubmitting;
   const imageHistory = useMemo<ImageHistoryItem[]>(() => {
     return jobs.map((historyJob) => {
@@ -116,6 +154,30 @@ export function ImageJobPage({
       });
   }, [job?.id, job?.status, onSubscriptionChange]);
 
+  useEffect(() => {
+    return () => {
+      if (actionResetTimerRef.current) {
+        window.clearTimeout(actionResetTimerRef.current);
+      }
+    };
+  }, []);
+
+  function updateAssetAction(nextAction: AssetActionState | null) {
+    if (actionResetTimerRef.current) {
+      window.clearTimeout(actionResetTimerRef.current);
+      actionResetTimerRef.current = null;
+    }
+
+    setAssetAction(nextAction);
+
+    if (nextAction?.status === 'success') {
+      actionResetTimerRef.current = window.setTimeout(() => {
+        setAssetAction(null);
+        actionResetTimerRef.current = null;
+      }, 5000);
+    }
+  }
+
   async function submit() {
     const normalizedPrompt = prompt.trim();
     if (!normalizedPrompt || isBusy || !subscription.hasAccess) {
@@ -127,26 +189,86 @@ export function ImageJobPage({
   }
 
   async function downloadGeneratedImage(jobId: string, image: GeneratedImage) {
-    setAssetActionError(null);
+    const currentActionKey = actionKey(jobId, image.index, 'download');
+    if (assetAction?.status === 'loading') {
+      return;
+    }
+
+    updateAssetAction({
+      key: currentActionKey,
+      status: 'loading',
+      message: t('preparingDownload'),
+    });
 
     try {
       const links = await apiClient.getGenerationJobImageLinks(jobId, image.index);
-      await downloadViaBlob(links.downloadUrl, image.filename || `iishka-image-${image.index}.png`);
+      const filename = links.download?.filename || links.filename || image.filename || `iishka-image-${image.index}.png`;
+      const downloadUrl = links.download?.url || links.downloadUrl;
+      const openUrl = links.open?.url || links.openUrl;
+
+      if (shouldPreferImageViewer()) {
+        openImageUrl(openUrl);
+        updateAssetAction({
+          key: currentActionKey,
+          status: 'success',
+          message: t('imageOpenedForSaving'),
+        });
+        return;
+      }
+
+      try {
+        await downloadViaBlob(downloadUrl, filename);
+        updateAssetAction({
+          key: currentActionKey,
+          status: 'success',
+          message: t('imageDownloadStarted'),
+        });
+      } catch {
+        openImageUrl(openUrl);
+        updateAssetAction({
+          key: currentActionKey,
+          status: 'success',
+          message: t('imageOpenedForSaving'),
+        });
+      }
     } catch (caughtError) {
-      setAssetActionError(caughtError instanceof Error ? caughtError.message : 'Download failed');
+      updateAssetAction({
+        key: currentActionKey,
+        status: 'error',
+        message: caughtError instanceof Error ? caughtError.message : t('imageDownloadFailed'),
+      });
     }
   }
 
   async function openGeneratedImage(jobId: string, image: GeneratedImage) {
-    setAssetActionError(null);
-    const openedWindow = window.open('', '_blank', 'noopener,noreferrer');
+    const currentActionKey = actionKey(jobId, image.index, 'open');
+    if (assetAction?.status === 'loading') {
+      return;
+    }
+
+    updateAssetAction({
+      key: currentActionKey,
+      status: 'loading',
+      message: t('openingImage'),
+    });
+
+    const openedWindow = getTelegramWebApp()?.openLink ? null : window.open('', '_blank', 'noopener,noreferrer');
 
     try {
       const links = await apiClient.getGenerationJobImageLinks(jobId, image.index);
-      openInNewWindow(links.openUrl, openedWindow);
+      openImageUrl(links.open?.url || links.openUrl, openedWindow);
+      updateAssetAction({
+        key: currentActionKey,
+        status: 'success',
+        message: t('imageOpened'),
+      });
     } catch (caughtError) {
       openedWindow?.close();
-      setAssetActionError(caughtError instanceof Error ? caughtError.message : 'Open failed');
+      updateAssetAction({
+        key: currentActionKey,
+        status: 'error',
+        message: caughtError instanceof Error ? caughtError.message : t('imageOpenFailed'),
+      });
     }
   }
 
@@ -278,12 +400,6 @@ export function ImageJobPage({
         </Card>
       )}
 
-      {assetActionError && (
-        <Card className="border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          {assetActionError}
-        </Card>
-      )}
-
       {isLoadingHistory && (
         <Card className="flex items-center gap-2 border-border/70 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -342,16 +458,53 @@ export function ImageJobPage({
                     )}
                   </div>
                   {item.images.map((image) => {
+                    const actionPrefix = imageActionPrefix(item.job.id, image.index);
+                    const activeAction = assetAction?.key.startsWith(actionPrefix) ? assetAction : null;
+                    const isActionLoading = activeAction?.status === 'loading';
+                    const isDownloadLoading = assetAction?.key === actionKey(item.job.id, image.index, 'download') && isActionLoading;
+                    const isOpenLoading = assetAction?.key === actionKey(item.job.id, image.index, 'open') && isActionLoading;
                     return (
-                      <div key={`${image.filename}-${image.index}-actions`} className="flex flex-col gap-2 p-3 sm:flex-row">
-                        <Button type="button" className="flex-1" onClick={() => void downloadGeneratedImage(item.job.id, image)}>
-                          <Download className="mr-2 h-4 w-4" />
-                          {t('downloadImage')}
-                        </Button>
-                        <Button type="button" variant="ghost" className="flex-1" onClick={() => void openGeneratedImage(item.job.id, image)}>
-                          <ExternalLink className="mr-2 h-4 w-4" />
-                          {t('openImage')}
-                        </Button>
+                      <div key={`${image.filename}-${image.index}-actions`} className="space-y-2 p-3">
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Button
+                            type="button"
+                            className="flex-1"
+                            disabled={isActionLoading}
+                            onClick={() => void downloadGeneratedImage(item.job.id, image)}
+                          >
+                            {isDownloadLoading ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Download className="mr-2 h-4 w-4" />
+                            )}
+                            {isDownloadLoading ? t('preparingDownload') : t('downloadImage')}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="flex-1"
+                            disabled={isActionLoading}
+                            onClick={() => void openGeneratedImage(item.job.id, image)}
+                          >
+                            {isOpenLoading ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <ExternalLink className="mr-2 h-4 w-4" />
+                            )}
+                            {isOpenLoading ? t('openingImage') : t('openImage')}
+                          </Button>
+                        </div>
+                        {activeAction && (
+                          <p
+                            className={cn(
+                              'text-xs leading-5',
+                              activeAction.status === 'error' ? 'text-destructive' : 'text-muted-foreground',
+                              activeAction.status === 'success' && 'text-primary',
+                            )}
+                          >
+                            {activeAction.message}
+                          </p>
+                        )}
                       </div>
                     );
                   })}

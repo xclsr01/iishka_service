@@ -11,6 +11,7 @@ type TelegramWebApp = {
   initData: string;
   ready: () => void;
   expand: () => void;
+  openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
   colorScheme?: 'light' | 'dark';
