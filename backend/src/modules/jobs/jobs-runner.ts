@@ -52,6 +52,15 @@ export async function runGenerationJob(jobId: string) {
       metadata: toMetadataObject(runningJob.metadata),
     });
 
+    const currentJob = await getGenerationJobForExecution(jobId);
+    if (!currentJob) {
+      logger.info('generation_job_run_aborted', {
+        jobId,
+        reason: 'deleted_after_execution',
+      });
+      return;
+    }
+
     await consumeSubscriptionTokens(runningJob.userId, getGenerationJobTokenCost(runningJob.kind));
 
     await completeGenerationJob({
@@ -97,6 +106,15 @@ export async function runGenerationJob(jobId: string) {
     });
   } catch (error) {
     const currentJob = await getGenerationJobForExecution(jobId);
+    if (!currentJob) {
+      logger.info('generation_job_run_aborted', {
+        jobId,
+        reason: 'deleted',
+        message: error instanceof Error ? error.message : 'unknown',
+      });
+      return;
+    }
+
     const registeredProviderKey = currentJob.provider.key;
     const failureCode = error instanceof Error && 'code' in error ? String(error.code) : 'JOB_EXECUTION_FAILED';
     const failureMessage =

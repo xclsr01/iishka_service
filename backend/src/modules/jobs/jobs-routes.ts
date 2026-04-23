@@ -6,6 +6,7 @@ import { authMiddleware } from '../../middleware/auth';
 import type { AppVariables } from '../../types';
 import {
   createGenerationJob,
+  deleteGenerationJob,
   createGenerationJobImageLinks,
   getGenerationJob,
   getGenerationJobImageByToken,
@@ -100,6 +101,12 @@ jobsRoutes.get('/:jobId', async (c) => {
   const session = c.get('authSession');
   const job = await getGenerationJob(session.userId, c.req.param('jobId'));
   return c.json({ job });
+});
+
+jobsRoutes.delete('/:jobId', async (c) => {
+  const session = c.get('authSession');
+  await deleteGenerationJob(session.userId, c.req.param('jobId'));
+  return c.body(null, 204);
 });
 
 jobsRoutes.get('/:jobId/images/:imageIndex/links', async (c) => {

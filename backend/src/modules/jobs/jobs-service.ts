@@ -344,6 +344,27 @@ export async function getGenerationJob(userId: string, jobId: string) {
   return presentGenerationJob(assertPresent(job, 'Generation job not found'));
 }
 
+export async function deleteGenerationJob(userId: string, jobId: string) {
+  const job = await withOperationTimeout(
+    'jobs.delete.get',
+    prisma.generationJob.findFirst({
+      where: {
+        id: jobId,
+        userId,
+      },
+    }),
+  );
+
+  assertPresent(job, 'Generation job not found');
+
+  await withOperationTimeout(
+    'jobs.delete',
+    prisma.generationJob.delete({
+      where: { id: jobId },
+    }),
+  );
+}
+
 export async function createGenerationJobImageLinks(
   userId: string,
   jobId: string,
@@ -495,7 +516,7 @@ export async function failGenerationJob(input: {
 }
 
 export async function getGenerationJobForExecution(jobId: string) {
-  const job = await withOperationTimeout(
+  return withOperationTimeout(
     'jobs.getForExecution',
     prisma.generationJob.findUnique({
       where: { id: jobId },
@@ -504,6 +525,4 @@ export async function getGenerationJobForExecution(jobId: string) {
       },
     }),
   );
-
-  return assertPresent(job, 'Generation job not found');
 }

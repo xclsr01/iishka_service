@@ -166,6 +166,24 @@ export function useImageJob(providerId: string) {
     }
   }
 
+  function removeImageJob(jobId: string) {
+    activeJobIdRef.current = activeJobIdRef.current === jobId ? null : activeJobIdRef.current;
+    setState((current) => {
+      const nextJobs = current.jobs.filter((job) => job.id !== jobId);
+      const nextActiveJob = current.job?.id === jobId
+        ? nextJobs.find((job) => !isTerminalStatus(job)) ?? null
+        : current.job;
+
+      return {
+        ...current,
+        job: nextActiveJob,
+        jobs: nextJobs,
+        isPolling: Boolean(nextActiveJob && !isTerminalStatus(nextActiveJob)),
+        error: current.job?.id === jobId ? null : current.error,
+      };
+    });
+  }
+
   function resetJob() {
     activeJobIdRef.current = null;
     setState((current) => ({
@@ -181,6 +199,7 @@ export function useImageJob(providerId: string) {
   return {
     ...state,
     createImageJob,
+    removeImageJob,
     resetJob,
   };
 }
