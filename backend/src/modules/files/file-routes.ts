@@ -25,7 +25,7 @@ fileRoutes.get('/:fileId/content', async (c) => {
   const session = c.get('authSession');
   const resolved = await getOwnedFileContent(session.userId, c.req.param('fileId'));
 
-  return new Response(resolved.content, {
+  return new Response(Buffer.from(resolved.content), {
     status: 200,
     headers: {
       'content-type': resolved.mimeType,
