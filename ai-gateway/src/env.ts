@@ -20,7 +20,7 @@ const envSchema = z.object({
   ANTHROPIC_VERSION: z.string().min(1).default('2023-06-01'),
   GOOGLE_AI_API_KEY: z.string().min(1),
   GOOGLE_AI_BASE_URL: z.string().url().default('https://generativelanguage.googleapis.com'),
-  GOOGLE_AI_DEFAULT_MODEL: z.string().min(1).default('gemini-flash-latest'),
+  GOOGLE_AI_DEFAULT_MODEL: z.string().min(1).default('gemini-3-flash-preview'),
   NANO_BANANA_DEFAULT_MODEL: z.string().min(1).default('gemini-2.5-flash-image'),
   PROVIDER_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
   PROVIDER_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),

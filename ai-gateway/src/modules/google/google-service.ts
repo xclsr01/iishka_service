@@ -21,6 +21,7 @@ type GoogleGenerateContentResponse = {
         };
       }>;
     };
+    groundingMetadata?: Record<string, unknown>;
   }>;
   usageMetadata?: {
     promptTokenCount?: number;
@@ -104,6 +105,11 @@ export async function respondWithGemini(
             ],
           },
         ],
+        tools: [
+          {
+            google_search: {},
+          },
+        ],
       }),
     },
     userId: input.userId,
@@ -126,6 +132,7 @@ export async function respondWithGemini(
     usage: usageFromGoogle(data),
     raw: {
       usage: data.usageMetadata ?? null,
+      groundingMetadata: data.candidates?.[0]?.groundingMetadata ?? null,
     },
   };
 }
