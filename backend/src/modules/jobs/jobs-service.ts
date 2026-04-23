@@ -6,6 +6,9 @@ import {
   type Prisma,
   type Provider,
 } from '@prisma/client';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import { env } from '../../env';
+import { AppError } from '../../lib/errors';
 import { assertPresent } from '../../lib/http';
 import { prisma } from '../../lib/prisma';
 import { withOperationTimeout } from '../../lib/timeout';
@@ -19,8 +22,25 @@ import type {
   EnqueueGenerationJobInput,
   GenerationJobRecord,
   ListGenerationJobsInput,
+  PresentedGenerationJobImageLinks,
   PresentedGenerationJob,
 } from './jobs-types';
+
+const IMAGE_LINK_TTL_SECONDS = 5 * 60;
+
+type GeneratedImagePayload = {
+  index: number;
+  mimeType: string;
+  filename: string;
+  dataBase64: string;
+  sizeBytes: number;
+};
+
+type ImageJobResultPayload = {
+  kind: 'IMAGE';
+  text?: string | null;
+  images: GeneratedImagePayload[];
+};
 
 function presentGenerationJob(job: GenerationJobRecord): PresentedGenerationJob {
   return {
@@ -48,6 +68,132 @@ function presentGenerationJob(job: GenerationJobRecord): PresentedGenerationJob 
     },
     resultPayload: job.resultPayload ?? null,
   };
+}
+
+function base64UrlEncode(input: string) {
+  return Buffer.from(input).toString('base64url');
+}
+
+function base64UrlDecode(input: string) {
+  return Buffer.from(input, 'base64url').toString('utf8');
+}
+
+function signImageTokenPayload(encodedPayload: string) {
+  return createHmac('sha256', `${env.JWT_SECRET}:job-image`)
+    .update(encodedPayload)
+    .digest('base64url');
+}
+
+function timingSafeStringEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function signJobImageToken(input: {
+  userId: string;
+  jobId: string;
+  imageIndex: number;
+  expiresAtSeconds: number;
+}) {
+  const encodedPayload = base64UrlEncode(JSON.stringify({
+    sub: input.userId,
+    jobId: input.jobId,
+    imageIndex: input.imageIndex,
+    exp: input.expiresAtSeconds,
+  }));
+  const signature = signImageTokenPayload(encodedPayload);
+  return `${encodedPayload}.${signature}`;
+}
+
+function verifyJobImageToken(token: string, jobId: string, imageIndex: number) {
+  const [encodedPayload, signature] = token.split('.');
+
+  if (!encodedPayload || !signature) {
+    throw new AppError('Invalid image link', 401, 'UNAUTHORIZED');
+  }
+
+  const expectedSignature = signImageTokenPayload(encodedPayload);
+  if (!timingSafeStringEqual(signature, expectedSignature)) {
+    throw new AppError('Invalid image link', 401, 'UNAUTHORIZED');
+  }
+
+  let payload: {
+    sub?: unknown;
+    jobId?: unknown;
+    imageIndex?: unknown;
+    exp?: unknown;
+  };
+
+  try {
+    payload = JSON.parse(base64UrlDecode(encodedPayload)) as typeof payload;
+  } catch {
+    throw new AppError('Invalid image link', 401, 'UNAUTHORIZED');
+  }
+
+  if (
+    typeof payload.sub !== 'string' ||
+    payload.jobId !== jobId ||
+    payload.imageIndex !== imageIndex ||
+    typeof payload.exp !== 'number' ||
+    payload.exp <= Math.floor(Date.now() / 1000)
+  ) {
+    throw new AppError('Image link expired or invalid', 401, 'UNAUTHORIZED');
+  }
+
+  return payload.sub;
+}
+
+function isGeneratedImagePayload(value: unknown): value is GeneratedImagePayload {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<GeneratedImagePayload>;
+  return (
+    typeof candidate.index === 'number' &&
+    typeof candidate.mimeType === 'string' &&
+    typeof candidate.filename === 'string' &&
+    typeof candidate.dataBase64 === 'string' &&
+    typeof candidate.sizeBytes === 'number'
+  );
+}
+
+function isImageJobResultPayload(value: unknown): value is ImageJobResultPayload {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as { kind?: unknown; images?: unknown };
+  return candidate.kind === 'IMAGE' && Array.isArray(candidate.images);
+}
+
+function getImageFromJob(job: GenerationJob, imageIndex: number) {
+  if (job.kind !== GenerationJobKind.IMAGE || job.status !== GenerationJobStatus.COMPLETED) {
+    throw new AppError('Image is not ready', 404, 'IMAGE_NOT_READY');
+  }
+
+  if (!isImageJobResultPayload(job.resultPayload)) {
+    throw new AppError('Image result is unavailable', 404, 'IMAGE_NOT_FOUND');
+  }
+
+  const image = job.resultPayload.images.find((candidate) => (
+    isGeneratedImagePayload(candidate) && candidate.index === imageIndex
+  ));
+
+  if (!image) {
+    throw new AppError('Image not found', 404, 'IMAGE_NOT_FOUND');
+  }
+
+  return image;
+}
+
+function buildImageUrl(jobId: string, imageIndex: number, token: string, disposition: 'inline' | 'attachment') {
+  const url = new URL(`/api/jobs/${jobId}/images/${imageIndex}`, env.API_BASE_URL);
+  url.searchParams.set('token', token);
+  url.searchParams.set('disposition', disposition);
+  return url.toString();
 }
 
 async function resolveJobProvider(providerId: string) {
@@ -196,6 +342,57 @@ export async function getGenerationJob(userId: string, jobId: string) {
   );
 
   return presentGenerationJob(assertPresent(job, 'Generation job not found'));
+}
+
+export async function createGenerationJobImageLinks(
+  userId: string,
+  jobId: string,
+  imageIndex: number,
+): Promise<PresentedGenerationJobImageLinks> {
+  const job = await withOperationTimeout(
+    'jobs.imageLinks.get',
+    prisma.generationJob.findFirst({
+      where: {
+        id: jobId,
+        userId,
+      },
+    }),
+  );
+
+  getImageFromJob(assertPresent(job, 'Generation job not found'), imageIndex);
+
+  const expiresAtSeconds = Math.floor(Date.now() / 1000) + IMAGE_LINK_TTL_SECONDS;
+  const token = signJobImageToken({
+    userId,
+    jobId,
+    imageIndex,
+    expiresAtSeconds,
+  });
+
+  return {
+    openUrl: buildImageUrl(jobId, imageIndex, token, 'inline'),
+    downloadUrl: buildImageUrl(jobId, imageIndex, token, 'attachment'),
+    expiresAt: new Date(expiresAtSeconds * 1000).toISOString(),
+  };
+}
+
+export async function getGenerationJobImageByToken(
+  token: string,
+  jobId: string,
+  imageIndex: number,
+) {
+  const userId = verifyJobImageToken(token, jobId, imageIndex);
+  const job = await withOperationTimeout(
+    'jobs.imageByToken.get',
+    prisma.generationJob.findFirst({
+      where: {
+        id: jobId,
+        userId,
+      },
+    }),
+  );
+
+  return getImageFromJob(assertPresent(job, 'Generation job not found'), imageIndex);
 }
 
 export async function markGenerationJobRunning(jobId: string) {

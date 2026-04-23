@@ -29,46 +29,24 @@ function imageToDataUrl(image: GeneratedImage) {
   return `data:${image.mimeType};base64,${image.dataBase64}`;
 }
 
-function imageToBlob(image: GeneratedImage) {
-  const binary = window.atob(image.dataBase64);
-  const bytes = new Uint8Array(binary.length);
-
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-
-  return new Blob([bytes], { type: image.mimeType });
-}
-
-function revokeObjectUrl(url: string, delayMs = 30_000) {
-  window.setTimeout(() => URL.revokeObjectURL(url), delayMs);
-}
-
-function downloadGeneratedImage(image: GeneratedImage) {
-  const objectUrl = URL.createObjectURL(imageToBlob(image));
+function triggerDownload(url: string, filename: string) {
   const anchor = document.createElement('a');
 
-  anchor.href = objectUrl;
-  anchor.download = image.filename || `iishka-image-${image.index}.png`;
+  anchor.href = url;
+  anchor.download = filename;
   anchor.rel = 'noopener noreferrer';
   anchor.style.display = 'none';
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
-  revokeObjectUrl(objectUrl);
 }
 
-function openGeneratedImage(image: GeneratedImage) {
-  const objectUrl = URL.createObjectURL(imageToBlob(image));
-  const openedWindow = window.open(objectUrl, '_blank', 'noopener,noreferrer');
-
-  if (!openedWindow) {
-    window.location.assign(objectUrl);
-    return;
+function openInNewWindow(url: string, openedWindow: Window | null) {
+  if (openedWindow) {
+    openedWindow.location.href = url;
+  } else {
+    window.open(url, '_blank', 'noopener,noreferrer') ?? window.location.assign(url);
   }
-
-  openedWindow.opener = null;
-  revokeObjectUrl(objectUrl, 120_000);
 }
 
 type ImageHistoryItem = {
@@ -94,6 +72,7 @@ export function ImageJobPage({
 }) {
   const { t } = useLocale();
   const [prompt, setPrompt] = useState('');
+  const [assetActionError, setAssetActionError] = useState<string | null>(null);
   const { job, jobs, isLoadingHistory, isSubmitting, error, createImageJob, resetJob } = useImageJob(provider.id);
   const syncedJobIdRef = useRef<string | null>(null);
   const isBusy = isSubmitting;
@@ -129,6 +108,30 @@ export function ImageJobPage({
 
     await createImageJob(normalizedPrompt);
     setPrompt('');
+  }
+
+  async function downloadGeneratedImage(jobId: string, image: GeneratedImage) {
+    setAssetActionError(null);
+
+    try {
+      const links = await apiClient.getGenerationJobImageLinks(jobId, image.index);
+      triggerDownload(links.downloadUrl, image.filename || `iishka-image-${image.index}.png`);
+    } catch (caughtError) {
+      setAssetActionError(caughtError instanceof Error ? caughtError.message : 'Download failed');
+    }
+  }
+
+  async function openGeneratedImage(jobId: string, image: GeneratedImage) {
+    setAssetActionError(null);
+    const openedWindow = window.open('', '_blank', 'noopener,noreferrer');
+
+    try {
+      const links = await apiClient.getGenerationJobImageLinks(jobId, image.index);
+      openInNewWindow(links.openUrl, openedWindow);
+    } catch (caughtError) {
+      openedWindow?.close();
+      setAssetActionError(caughtError instanceof Error ? caughtError.message : 'Open failed');
+    }
   }
 
   return (
@@ -259,6 +262,12 @@ export function ImageJobPage({
         </Card>
       )}
 
+      {assetActionError && (
+        <Card className="border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          {assetActionError}
+        </Card>
+      )}
+
       {isLoadingHistory && (
         <Card className="flex items-center gap-2 border-border/70 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -319,11 +328,11 @@ export function ImageJobPage({
                   {item.images.map((image) => {
                     return (
                       <div key={`${image.filename}-${image.index}-actions`} className="flex flex-col gap-2 p-3 sm:flex-row">
-                        <Button type="button" className="flex-1" onClick={() => downloadGeneratedImage(image)}>
+                        <Button type="button" className="flex-1" onClick={() => void downloadGeneratedImage(item.job.id, image)}>
                           <Download className="mr-2 h-4 w-4" />
                           {t('downloadImage')}
                         </Button>
-                        <Button type="button" variant="ghost" className="flex-1" onClick={() => openGeneratedImage(image)}>
+                        <Button type="button" variant="ghost" className="flex-1" onClick={() => void openGeneratedImage(item.job.id, image)}>
                           <ExternalLink className="mr-2 h-4 w-4" />
                           {t('openImage')}
                         </Button>
