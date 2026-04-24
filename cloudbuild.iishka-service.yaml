@@ -29,8 +29,8 @@ steps:
       - -lc
       - |
         npm ci --workspace backend
-        export DATABASE_URL="${DIRECT_URL}"
-        export MIGRATION_DATABASE_URL="${DIRECT_URL}"
+        export DATABASE_URL="$$DIRECT_URL"
+        export MIGRATION_DATABASE_URL="$$DIRECT_URL"
         npm run db:deploy --workspace backend
 
   - name: gcr.io/cloud-builders/gcloud
