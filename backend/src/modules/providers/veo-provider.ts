@@ -47,7 +47,7 @@ type VeoOperationResponse = {
 
 type VeoGenerationMetadata = {
   aspectRatio?: string;
-  durationSeconds?: string;
+  durationSeconds?: number;
   resolution?: string;
   negativePrompt?: string;
   personGeneration?: string;
@@ -71,14 +71,24 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function normalizeDurationSeconds(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return Math.round(value);
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.round(parsed);
+    }
+  }
+
+  return 4;
+}
+
 function normalizeMetadata(metadata?: Record<string, unknown>): VeoGenerationMetadata {
   const aspectRatio = typeof metadata?.aspectRatio === 'string' ? metadata.aspectRatio : '16:9';
-  const durationSeconds =
-    typeof metadata?.durationSeconds === 'string'
-      ? metadata.durationSeconds
-      : typeof metadata?.durationSeconds === 'number'
-        ? String(metadata.durationSeconds)
-        : '6';
+  const durationSeconds = normalizeDurationSeconds(metadata?.durationSeconds);
   const resolution = typeof metadata?.resolution === 'string' ? metadata.resolution : '720p';
   const negativePrompt = typeof metadata?.negativePrompt === 'string' ? metadata.negativePrompt : undefined;
   const personGeneration =

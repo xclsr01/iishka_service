@@ -100,7 +100,7 @@ test('VeoProviderAdapter starts polls and downloads videos through the Gemini AP
     ],
     parameters: {
       aspectRatio: '16:9',
-      durationSeconds: '6',
+      durationSeconds: 4,
       resolution: '720p',
       personGeneration: 'allow_all',
     },
@@ -124,7 +124,7 @@ test('VeoProviderAdapter starts polls and downloads videos through the Gemini AP
         sizeBytes: 11,
         metadata: {
           aspectRatio: '16:9',
-          durationSeconds: '6',
+          durationSeconds: 4,
           resolution: '720p',
         },
       },
@@ -171,7 +171,7 @@ test('VeoProviderAdapter executes video jobs through configured AI gateway', asy
               sizeBytes: 11,
               metadata: {
                 aspectRatio: '16:9',
-                durationSeconds: '6',
+                durationSeconds: 4,
                 resolution: '720p',
               },
             },
@@ -187,7 +187,7 @@ test('VeoProviderAdapter executes video jobs through configured AI gateway', asy
             sizeBytes: 11,
             metadata: {
               aspectRatio: '16:9',
-              durationSeconds: '6',
+              durationSeconds: 4,
               resolution: '720p',
             },
           },
