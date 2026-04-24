@@ -77,6 +77,46 @@ export const allowedUploadMimeTypes = env.ALLOWED_UPLOAD_MIME_TYPES.split(',')
   .map((value) => value.trim())
   .filter(Boolean);
 
+function parseJwtPayload(token: string) {
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  try {
+    const normalized = parts[1]!.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+    return JSON.parse(Buffer.from(padded, 'base64').toString('utf8')) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function assertSupabaseElevatedKey(key: string) {
+  if (key.startsWith('sb_secret_')) {
+    return;
+  }
+
+  if (key.startsWith('sb_publishable_')) {
+    throw new Error(
+      'SUPABASE_SERVICE_ROLE_KEY is using a publishable key. Use a Supabase secret key or legacy service_role key for backend storage access.',
+    );
+  }
+
+  const payload = parseJwtPayload(key);
+  if (!payload) {
+    throw new Error(
+      'SUPABASE_SERVICE_ROLE_KEY is not a valid Supabase elevated key. Use a Supabase secret key or legacy service_role key.',
+    );
+  }
+
+  if (payload.role !== 'service_role') {
+    throw new Error(
+      `SUPABASE_SERVICE_ROLE_KEY must have role "service_role", got ${JSON.stringify(payload.role ?? null)}.`,
+    );
+  }
+}
+
 if (env.UPLOAD_STORAGE_DRIVER === 'supabase') {
   const missing = [
     ['SUPABASE_URL', env.SUPABASE_URL],
@@ -89,6 +129,8 @@ if (env.UPLOAD_STORAGE_DRIVER === 'supabase') {
       `Missing Supabase storage configuration: ${missing.map(([key]) => key).join(', ')}`,
     );
   }
+
+  assertSupabaseElevatedKey(env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
 if (env.AI_GATEWAY_URL && !env.AI_GATEWAY_INTERNAL_TOKEN) {

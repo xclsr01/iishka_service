@@ -26,8 +26,11 @@ export class SupabaseStorageAdapter implements StorageAdapter {
       });
 
     if (error) {
+      const guidance = error.message.includes('row-level security policy')
+        ? ' Supabase elevated backend key is likely misconfigured. Verify SUPABASE_SERVICE_ROLE_KEY uses a secret/service_role key for the same project.'
+        : '';
       throw new AppError(
-        `Supabase storage upload failed: ${error.message}`,
+        `Supabase storage upload failed: ${error.message}${guidance}`,
         502,
         'UPLOAD_FAILED',
       );
