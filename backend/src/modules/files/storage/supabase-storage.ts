@@ -9,6 +9,12 @@ export class SupabaseStorageAdapter implements StorageAdapter {
       autoRefreshToken: false,
       persistSession: false,
     },
+    global: {
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY!,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY!}`,
+      },
+    },
   });
 
   async putObject(input: { storageKey: string; content: Uint8Array; mimeType: string }) {

@@ -46,6 +46,12 @@ type GoogleLongRunningOperationResponse = {
     status?: string;
   };
   response?: {
+    generatedVideos?: Array<{
+      video?: {
+        uri?: string;
+        mimeType?: string;
+      };
+    }>;
     generateVideoResponse?: {
       generatedSamples?: Array<{
         video?: {
@@ -134,6 +140,20 @@ function normalizeVeoParameters(metadata?: Record<string, unknown>) {
       typeof metadata?.personGeneration === 'string' ? metadata.personGeneration : 'allow_all',
     seed: typeof metadata?.seed === 'number' ? metadata.seed : undefined,
   };
+}
+
+function extractGeneratedVideo(operation: GoogleLongRunningOperationResponse) {
+  const modernVideo = operation.response?.generatedVideos?.[0]?.video;
+  if (modernVideo?.uri) {
+    return modernVideo;
+  }
+
+  const legacyVideo = operation.response?.generateVideoResponse?.generatedSamples?.[0]?.video;
+  if (legacyVideo?.uri) {
+    return legacyVideo;
+  }
+
+  return null;
 }
 
 export async function respondWithGemini(
@@ -425,7 +445,7 @@ export async function executeVeoJob(
     throw createUnsupportedOperationError(provider, operation.error.message);
   }
 
-  const generatedVideo = operation.response?.generateVideoResponse?.generatedSamples?.[0]?.video;
+  const generatedVideo = extractGeneratedVideo(operation);
   const videoUri = generatedVideo?.uri;
   if (!videoUri) {
     throw createEmptyResponseError(provider);
