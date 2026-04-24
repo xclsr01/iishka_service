@@ -36,6 +36,7 @@ const envSchema = z.object({
   AI_GATEWAY_URL: optionalUrl,
   AI_GATEWAY_INTERNAL_TOKEN: optionalSecret,
   AI_GATEWAY_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+  AI_GATEWAY_ASYNC_JOB_TIMEOUT_MS: z.coerce.number().int().positive().default(11 * 60 * 1000),
   OPENAI_API_KEY: z.string().min(1).default(placeholderToken),
   OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
   OPENAI_GATEWAY_URL: optionalUrl,

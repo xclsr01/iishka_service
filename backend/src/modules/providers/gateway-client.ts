@@ -209,6 +209,9 @@ async function requestGateway<T>(providerKey: ProviderKey, path: string, body: R
 
   const requestId = getLogContext().requestId;
   let response: Response;
+  const timeoutMs = path.includes('/jobs/')
+    ? env.AI_GATEWAY_ASYNC_JOB_TIMEOUT_MS
+    : env.AI_GATEWAY_TIMEOUT_MS;
 
   try {
     response = await fetch(`${trimTrailingSlashes(env.AI_GATEWAY_URL)}${path}`, {
@@ -222,7 +225,7 @@ async function requestGateway<T>(providerKey: ProviderKey, path: string, body: R
         ...body,
         requestId,
       }),
-      signal: AbortSignal.timeout(env.AI_GATEWAY_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
