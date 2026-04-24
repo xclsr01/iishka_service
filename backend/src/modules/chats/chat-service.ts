@@ -84,6 +84,16 @@ type AsyncChatMessageContext = {
   sourceUserMessageId: string | null;
 };
 
+function buildAsyncGenerationJobMetadata(
+  providerKey: Provider['key'],
+  sourceUserMessageId: string | null,
+) {
+  return {
+    ...(sourceUserMessageId ? { sourceUserMessageId } : {}),
+    ...(providerKey === ProviderKey.VEO ? { durationSeconds: 4 } : {}),
+  };
+}
+
 function getChatAsyncJobKind(providerKey: Provider['key']) {
   switch (providerKey) {
     case ProviderKey.VEO:
@@ -631,9 +641,7 @@ export async function createMessage(input: {
             prompt: content,
             chatId: chat.id,
             messageId: assistantMessage.id,
-            metadata: {
-              sourceUserMessageId: userMessage.id,
-            },
+            metadata: buildAsyncGenerationJobMetadata(chat.provider.key, userMessage.id),
           },
           {
             schedule: (task) => {
@@ -959,9 +967,10 @@ export async function retryAsyncMessage(input: {
           prompt: context.prompt,
           chatId: context.chat.id,
           messageId: context.message.id,
-          metadata: {
-            sourceUserMessageId: context.sourceUserMessageId,
-          },
+          metadata: buildAsyncGenerationJobMetadata(
+            context.chat.provider.key,
+            context.sourceUserMessageId,
+          ),
         },
         {
           schedule: (task) => {

@@ -6,6 +6,7 @@ import { prisma } from './lib/prisma';
 import { env } from './env';
 import { getRegisteredProvider } from './modules/providers/provider-registry';
 import type {
+  ProviderAsyncJobInput,
   ProviderAsyncJobResult,
   ProviderGenerateResult,
 } from './modules/providers/provider-types';
@@ -164,7 +165,7 @@ function mockGenerateResponse(
 
 function mockExecuteAsyncJob(
   providerKey: ProviderKey,
-  implementation: () => Promise<ProviderAsyncJobResult>,
+  implementation: (input: ProviderAsyncJobInput) => Promise<ProviderAsyncJobResult>,
 ) {
   const registered = getRegisteredProvider(providerKey);
   const original = registered.adapter.executeAsyncJob?.bind(registered.adapter);
@@ -668,8 +669,12 @@ test('chat flow creates linked Veo async video message and attaches generated fi
   });
   const veoProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.VEO);
   assert.ok(veoProvider);
+  let seenDurationSeconds: unknown = null;
 
-  mockExecuteAsyncJob(ProviderKey.VEO, async () => ({
+  mockExecuteAsyncJob(ProviderKey.VEO, async (input) => {
+    seenDurationSeconds = input.metadata?.durationSeconds;
+
+    return {
     resultPayload: {
       kind: GenerationJobKind.VIDEO,
       text: null,
@@ -680,7 +685,7 @@ test('chat flow creates linked Veo async video message and attaches generated fi
           filename: 'veo-test.mp4',
           sizeBytes: 11,
           metadata: {
-            durationSeconds: '6',
+            durationSeconds: 4,
             resolution: '720p',
           },
         },
@@ -695,7 +700,7 @@ test('chat flow creates linked Veo async video message and attaches generated fi
         bytes: new Uint8Array(Buffer.from('video-bytes')),
         sizeBytes: 11,
         metadata: {
-          durationSeconds: '6',
+          durationSeconds: 4,
           resolution: '720p',
         },
       },
@@ -703,7 +708,8 @@ test('chat flow creates linked Veo async video message and attaches generated fi
     usage: null,
     upstreamRequestId: 'req_veo_chat',
     externalJobId: 'operations/veo-chat-1',
-  }));
+    };
+  });
 
   const createChatResponse = await requestWithAuth(app, bootstrap.token, '/api/chats', {
     method: 'POST',
@@ -734,6 +740,7 @@ test('chat flow creates linked Veo async video message and attaches generated fi
       }),
     },
   );
+  assert.equal(seenDurationSeconds, 4);
   const createMessageBody = (await createMessageResponse.json()) as {
     assistantMessage: {
       id: string;
