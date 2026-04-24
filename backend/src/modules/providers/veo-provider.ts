@@ -34,6 +34,12 @@ type VeoOperationResponse = {
     status?: string;
   };
   response?: {
+    generatedVideos?: Array<{
+      video?: {
+        uri?: string;
+        mimeType?: string;
+      };
+    }>;
     generateVideoResponse?: {
       generatedSamples?: Array<{
         video?: {
@@ -107,6 +113,20 @@ function normalizeMetadata(metadata?: Record<string, unknown>): VeoGenerationMet
 
 function operationUrl(operationName: string) {
   return `${GOOGLE_API_BASE_URL}/${operationName.replace(/^\/+/, '')}`;
+}
+
+function extractGeneratedVideo(operation: VeoOperationResponse) {
+  const modernVideo = operation.response?.generatedVideos?.[0]?.video;
+  if (modernVideo?.uri) {
+    return modernVideo;
+  }
+
+  const legacyVideo = operation.response?.generateVideoResponse?.generatedSamples?.[0]?.video;
+  if (legacyVideo?.uri) {
+    return legacyVideo;
+  }
+
+  return null;
 }
 
 export class VeoProviderAdapter implements AiProviderAdapter {
@@ -310,7 +330,7 @@ export class VeoProviderAdapter implements AiProviderAdapter {
       );
     }
 
-    const generatedVideo = operation.response?.generateVideoResponse?.generatedSamples?.[0]?.video;
+    const generatedVideo = extractGeneratedVideo(operation);
     const videoUri = generatedVideo?.uri;
 
     if (!videoUri) {

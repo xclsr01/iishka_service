@@ -220,6 +220,70 @@ test('VeoProviderAdapter executes video jobs through configured AI gateway', asy
   assert.equal(result.artifacts?.[0]?.sizeBytes, 11);
 });
 
+test('VeoProviderAdapter accepts generatedVideos response shape from Gemini API', async () => {
+  const adapter = new VeoProviderAdapter();
+
+  env.AI_GATEWAY_URL = undefined;
+  env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+
+    if (url.endsWith(':predictLongRunning')) {
+      return new Response(
+        JSON.stringify({
+          name: 'operations/veo-operation-modern',
+          done: false,
+        }),
+        { status: 200 },
+      );
+    }
+
+    if (url.endsWith('/operations/veo-operation-modern')) {
+      return new Response(
+        JSON.stringify({
+          name: 'operations/veo-operation-modern',
+          done: true,
+          response: {
+            generatedVideos: [
+              {
+                video: {
+                  uri: 'https://video-download.example.com/veo-modern.mp4',
+                  mimeType: 'video/mp4',
+                },
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
+    }
+
+    if (url === 'https://video-download.example.com/veo-modern.mp4') {
+      return new Response(Buffer.from('video-bytes'), {
+        status: 200,
+        headers: {
+          'content-type': 'video/mp4',
+        },
+      });
+    }
+
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+
+  const result = await adapter.executeAsyncJob({
+    providerKey: ProviderKey.VEO,
+    jobId: 'job_veo_modern',
+    kind: GenerationJobKind.VIDEO,
+    model: 'veo-3.1-fast-generate-preview',
+    prompt: 'A modern Veo response payload test.',
+  });
+
+  assert.equal(result.externalJobId, 'operations/veo-operation-modern');
+  assert.equal(result.artifacts?.[0]?.filename, 'veo-job_veo_modern-0.mp4');
+  assert.equal(result.artifacts?.[0]?.mimeType, 'video/mp4');
+});
+
 test('VeoProviderAdapter rejects non-video job kinds', async () => {
   const adapter = new VeoProviderAdapter();
 
