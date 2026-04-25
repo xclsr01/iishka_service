@@ -115,14 +115,14 @@ AI_GATEWAY_URL=https://<ai-gateway-url>
 AI_GATEWAY_INTERNAL_TOKEN=<same gateway token>
 UPLOAD_STORAGE_DRIVER=supabase
 SUPABASE_URL=https://<project-ref>.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<Supabase secret/service_role key for the same project>
+SUPABASE_SERVICE_ROLE_KEY=<Supabase sb_secret_... key or legacy service_role JWT for the same project>
 SUPABASE_STORAGE_BUCKET=chat-uploads
 ENABLE_DEV_AUTH=false
 ENABLE_DEV_SUBSCRIPTION_OVERRIDE=false
 ```
 
 Do not use the Supabase anon key for `SUPABASE_SERVICE_ROLE_KEY`. With Supabase Storage RLS enabled,
-the backend needs the server-only service role key to persist generated files and uploads.
+the backend needs a server-only elevated key to persist generated files and uploads.
 
 Verify:
 

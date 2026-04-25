@@ -57,14 +57,18 @@ export function validateSupabaseServiceRoleKey(input: {
   key: string;
   supabaseUrl: string;
 }): string | null {
+  if (input.key.startsWith('sb_secret_')) {
+    return null;
+  }
+
   const inspection = inspectSupabaseJwtKey(input.key);
   if (!inspection.valid) {
-    return `SUPABASE_SERVICE_ROLE_KEY is invalid: ${inspection.reason}`;
+    return `SUPABASE_SERVICE_ROLE_KEY must be a Supabase secret key or legacy service_role JWT: ${inspection.reason}`;
   }
 
   if (inspection.role !== 'service_role') {
     const role = inspection.role ?? 'missing';
-    return `SUPABASE_SERVICE_ROLE_KEY must be a secret/service_role key, but received role "${role}"`;
+    return `SUPABASE_SERVICE_ROLE_KEY must be a Supabase secret key or legacy service_role JWT, but received JWT role "${role}"`;
   }
 
   const projectRef = getSupabaseProjectRef(input.supabaseUrl);

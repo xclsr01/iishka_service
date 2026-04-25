@@ -27,7 +27,17 @@ describe('supabase key validation', () => {
         key: anonKey,
         supabaseUrl: 'https://pehujciaiihjuzduysln.supabase.co',
       }) ?? '',
-      /must be a secret\/service_role key/,
+      /must be a Supabase secret key or legacy service_role JWT/,
+    );
+  });
+
+  it('accepts a new Supabase secret key', () => {
+    assert.equal(
+      validateSupabaseServiceRoleKey({
+        key: 'sb_secret_example_secret_key_value',
+        supabaseUrl: 'https://pehujciaiihjuzduysln.supabase.co',
+      }),
+      null,
     );
   });
 
