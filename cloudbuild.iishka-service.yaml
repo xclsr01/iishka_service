@@ -35,6 +35,8 @@ steps:
       - --allow-unauthenticated
       - --port
       - "8080"
+      - --update-secrets
+      - SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest
 
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${COMMIT_SHA}

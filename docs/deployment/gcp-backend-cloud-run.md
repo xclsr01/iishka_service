@@ -50,7 +50,7 @@ gcloud services enable \
 Create an Artifact Registry repository once:
 
 ```bash
-gcloud artifacts repositories create iishka-backend \
+gcloud artifacts repositories create iishka-service \
   --repository-format=docker \
   --location=asia-southeast1 \
   --description="Iishka backend containers"
@@ -60,7 +60,7 @@ Build and push from the repo root:
 
 ```bash
 export PROJECT_ID=<PROJECT_ID>
-export IMAGE="asia-southeast1-docker.pkg.dev/${PROJECT_ID}/iishka-backend/iishka-backend:latest"
+export IMAGE="asia-southeast1-docker.pkg.dev/${PROJECT_ID}/iishka-service/iishka-service:latest"
 
 gcloud auth configure-docker asia-southeast1-docker.pkg.dev
 docker build -f backend/Dockerfile -t "$IMAGE" .
@@ -112,7 +112,7 @@ For runtime Cloud Run traffic, prefer the Supabase pooler URL in `DATABASE_URL`.
 ## Deploy Cloud Run
 
 ```bash
-gcloud run deploy iishka-backend \
+gcloud run deploy iishka-service \
   --image "$IMAGE" \
   --region asia-southeast1 \
   --port 8080 \
@@ -122,6 +122,9 @@ gcloud run deploy iishka-backend \
 ```
 
 `--allow-unauthenticated` is required for the frontend and Telegram webhook to reach the backend. Application auth still protects user APIs, and the Telegram webhook route validates the configured webhook secret.
+
+The repo Cloud Build file, `cloudbuild.iishka-service.yaml`, deploys the same Cloud Run service name:
+`iishka-service`.
 
 ## Database Migrations
 
