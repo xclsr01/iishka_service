@@ -83,6 +83,10 @@ printf "%s" "<AI_GATEWAY_INTERNAL_TOKEN>" | gcloud secrets create AI_GATEWAY_INT
 printf "%s" "<SUPABASE_SERVICE_ROLE_KEY>" | gcloud secrets create SUPABASE_SERVICE_ROLE_KEY --data-file=-
 ```
 
+`SUPABASE_SERVICE_ROLE_KEY` must be the Supabase **secret/service_role** key for the same project as
+`SUPABASE_URL`, not the public anon key. The backend validates this at startup when
+`UPLOAD_STORAGE_DRIVER=supabase`; an anon key will fail storage writes with Supabase RLS errors.
+
 Recommended Supabase connection split:
 
 ```text

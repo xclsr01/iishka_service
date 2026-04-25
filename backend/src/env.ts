@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { validateSupabaseServiceRoleKey } from './lib/supabase-key';
 
 if (!process.env.DEV_AUTH_SHARED_SECRET && process.env.VITE_DEV_AUTH_SHARED_SECRET) {
   process.env.DEV_AUTH_SHARED_SECRET = process.env.VITE_DEV_AUTH_SHARED_SECRET;
@@ -88,6 +89,15 @@ if (env.UPLOAD_STORAGE_DRIVER === 'supabase') {
     throw new Error(
       `Missing Supabase storage configuration: ${missing.map(([key]) => key).join(', ')}`,
     );
+  }
+
+  const serviceRoleKeyError = validateSupabaseServiceRoleKey({
+    key: env.SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseUrl: env.SUPABASE_URL!,
+  });
+
+  if (serviceRoleKeyError) {
+    throw new Error(serviceRoleKeyError);
   }
 }
 
