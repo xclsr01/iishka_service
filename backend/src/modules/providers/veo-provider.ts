@@ -93,7 +93,7 @@ function normalizeDurationSeconds(value: unknown) {
 }
 
 function normalizeMetadata(metadata?: Record<string, unknown>): VeoGenerationMetadata {
-  const aspectRatio = typeof metadata?.aspectRatio === 'string' ? metadata.aspectRatio : '16:9';
+  const aspectRatio = typeof metadata?.aspectRatio === 'string' ? metadata.aspectRatio : '9:16';
   const durationSeconds = normalizeDurationSeconds(metadata?.durationSeconds);
   const resolution = typeof metadata?.resolution === 'string' ? metadata.resolution : '720p';
   const negativePrompt = typeof metadata?.negativePrompt === 'string' ? metadata.negativePrompt : undefined;

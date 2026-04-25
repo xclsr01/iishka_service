@@ -2,9 +2,55 @@ import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import type { AppVariables } from '../../types';
 import { AppError } from '../../lib/errors';
-import { getOwnedFileContent, persistUploadedFile } from './file-service';
+import {
+  createOwnedFileLinks,
+  getFileContentByToken,
+  getOwnedFileContent,
+  persistUploadedFile,
+} from './file-service';
 
 export const fileRoutes = new Hono<{ Variables: AppVariables }>();
+
+function contentDisposition(disposition: 'inline' | 'attachment', filename: string) {
+  const safeFilename = filename.replace(/["\\\r\n]/g, '_') || 'iishka-file';
+  return `${disposition}; filename="${safeFilename}"`;
+}
+
+function fileContentResponse(input: {
+  content: Uint8Array;
+  mimeType: string;
+  filename: string;
+  disposition: 'inline' | 'attachment';
+}) {
+  return new Response(Buffer.from(input.content), {
+    status: 200,
+    headers: {
+      'content-type': input.mimeType,
+      'content-length': String(input.content.byteLength),
+      'content-disposition': contentDisposition(input.disposition, input.filename),
+      'cache-control': 'private, max-age=300',
+      'x-content-type-options': 'nosniff',
+      'access-control-allow-origin': 'https://web.telegram.org',
+    },
+  });
+}
+
+fileRoutes.get('/:fileId/public-content', async (c) => {
+  const token = c.req.query('token');
+  if (!token) {
+    throw new AppError('Missing file link token', 401, 'UNAUTHORIZED');
+  }
+
+  const disposition = c.req.query('disposition') === 'attachment' ? 'attachment' : 'inline';
+  const resolved = await getFileContentByToken(token, c.req.param('fileId'));
+
+  return fileContentResponse({
+    content: resolved.content,
+    mimeType: resolved.mimeType,
+    filename: resolved.file.originalName,
+    disposition,
+  });
+});
 
 fileRoutes.use('*', authMiddleware);
 
@@ -24,13 +70,18 @@ fileRoutes.post('/', async (c) => {
 fileRoutes.get('/:fileId/content', async (c) => {
   const session = c.get('authSession');
   const resolved = await getOwnedFileContent(session.userId, c.req.param('fileId'));
+  const disposition = c.req.query('disposition') === 'attachment' ? 'attachment' : 'inline';
 
-  return new Response(Buffer.from(resolved.content), {
-    status: 200,
-    headers: {
-      'content-type': resolved.mimeType,
-      'content-length': String(resolved.content.byteLength),
-      'content-disposition': `inline; filename="${resolved.file.originalName}"`,
-    },
+  return fileContentResponse({
+    content: resolved.content,
+    mimeType: resolved.mimeType,
+    filename: resolved.file.originalName,
+    disposition,
   });
+});
+
+fileRoutes.get('/:fileId/links', async (c) => {
+  const session = c.get('authSession');
+  const links = await createOwnedFileLinks(session.userId, c.req.param('fileId'));
+  return c.json(links);
 });

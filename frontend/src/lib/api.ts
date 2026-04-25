@@ -127,6 +127,27 @@ export type GenerationJobImageLinks = {
   expiresAt: string;
 };
 
+export type FileAssetLinks = {
+  openUrl: string;
+  downloadUrl: string;
+  filename: string;
+  mimeType: string;
+  disposition: 'inline';
+  open: {
+    url: string;
+    filename: string;
+    mimeType: string;
+    disposition: 'inline';
+  };
+  download: {
+    url: string;
+    filename: string;
+    mimeType: string;
+    disposition: 'attachment';
+  };
+  expiresAt: string;
+};
+
 export type GenerationJob = {
   id: string;
   kind: GenerationJobKind;
@@ -377,6 +398,10 @@ class ApiClient {
 
   getFileBlob(fileId: string) {
     return this.requestBlob(`/api/files/${fileId}/content`);
+  }
+
+  getFileLinks(fileId: string) {
+    return this.request<FileAssetLinks>(`/api/files/${fileId}/links`);
   }
 
   getGenerationJobs(params?: {
