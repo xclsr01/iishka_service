@@ -56,7 +56,7 @@ export function ChatMessageList({
           >
             <div
               className={cn(
-                'max-w-[86%] rounded-[22px] border px-4 py-3 text-sm leading-6 shadow-soft',
+                'ui-safe-text max-w-[86%] rounded-[22px] border px-4 py-3 text-sm leading-6 shadow-soft',
                 isAssistant
                   ? 'border-border/70 bg-muted/70 text-foreground'
                   : 'border-primary/35 bg-primary text-primary-foreground',

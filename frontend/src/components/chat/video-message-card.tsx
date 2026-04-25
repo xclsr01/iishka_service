@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import type { AsyncMessageProviderMeta, ChatMessage, FileAsset, FileAssetLinks } from '@/lib/api';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { toFriendlyErrorMessage } from '@/lib/errors';
 import { useLocale } from '@/lib/i18n';
 import { getTelegramWebApp } from '@/lib/telegram';
 
@@ -84,25 +85,8 @@ function downloadWithTelegram(url: string, filename: string) {
   return true;
 }
 
-function toVideoCardErrorMessage(error: unknown, fallback: string) {
-  if (!(error instanceof Error)) {
-    return fallback;
-  }
-
-  const normalized = error.message.trim().toLowerCase();
-  if (!normalized) {
-    return fallback;
-  }
-
-  if (
-    normalized.includes('load failed') ||
-    normalized.includes('failed to fetch') ||
-    normalized.includes('networkerror')
-  ) {
-    return fallback;
-  }
-
-  return error.message;
+function toVideoCardErrorMessage(error: unknown, translate: (key: string) => string, fallback: string) {
+  return toFriendlyErrorMessage(error, translate, fallback);
 }
 
 export function VideoMessageCard({
@@ -154,7 +138,7 @@ export function VideoMessageCard({
 
         setVideoState({
           kind: 'error',
-          message: toVideoCardErrorMessage(error, t('videoLoadFailed')),
+          message: toVideoCardErrorMessage(error, t, t('videoLoadFailed')),
         });
       });
 
@@ -191,7 +175,7 @@ export function VideoMessageCard({
 
       triggerDownload(links.download.url, links.download.filename || file.originalName);
     } catch (error) {
-      setActionError(toVideoCardErrorMessage(error, t('imageDownloadFailed')));
+      setActionError(toVideoCardErrorMessage(error, t, t('imageDownloadFailed')));
     } finally {
       setIsPreparingDownload(false);
     }
@@ -205,7 +189,7 @@ export function VideoMessageCard({
       const links = await apiClient.getFileLinks(file.id);
       openExternalUrl(links.open.url);
     } catch (error) {
-      setActionError(toVideoCardErrorMessage(error, t('imageOpenFailed')));
+      setActionError(toVideoCardErrorMessage(error, t, t('imageOpenFailed')));
     } finally {
       setIsOpeningVideo(false);
     }
@@ -245,7 +229,7 @@ export function VideoMessageCard({
     try {
       await onRetry(message.id);
     } catch (error) {
-      setActionError(toVideoCardErrorMessage(error, t('retryVideoFailed')));
+      setActionError(toVideoCardErrorMessage(error, t, t('retryVideoFailed')));
     } finally {
       setIsRetrying(false);
     }
@@ -267,7 +251,7 @@ export function VideoMessageCard({
     try {
       await onDelete(message.id);
     } catch (error) {
-      setActionError(toVideoCardErrorMessage(error, t('deleteVideoFailed')));
+      setActionError(toVideoCardErrorMessage(error, t, t('deleteVideoFailed')));
     } finally {
       setIsDeleting(false);
     }

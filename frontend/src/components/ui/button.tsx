@@ -15,7 +15,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <Comp
         ref={ref}
         className={cn(
-          'inline-flex items-center justify-center rounded-full border px-4 py-2.5 text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:opacity-60',
+          'inline-flex min-w-0 items-center justify-center rounded-full border px-4 py-2.5 text-center text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:opacity-60 [&>span]:min-w-0',
           variant === 'default' &&
             'border-primary/40 bg-primary text-primary-foreground shadow-soft hover:brightness-110',
           variant === 'secondary' &&

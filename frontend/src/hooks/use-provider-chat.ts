@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiClient, type Chat, type FileAsset, type Provider, type Subscription } from '@/lib/api';
 import { clientEnv } from '@/lib/env';
+import { toFriendlyErrorMessage } from '@/lib/errors';
 import { useLocale } from '@/lib/i18n';
 
 type ProviderChatState = {
@@ -16,31 +17,8 @@ type CachedProviderChat = {
   cachedAt: number;
 };
 
-function toUserFacingError(error: unknown, fallback: string) {
-  if (!(error instanceof Error)) {
-    return fallback;
-  }
-
-  const normalized = error.message.toLowerCase();
-  const safeBackendMessages = [
-    'the provider request failed',
-    'the provider is currently busy',
-    'the provider request timed out',
-    'temporarily unavailable',
-    'unavailable from this deployment region',
-    'auth session is not ready',
-    'failed to fetch',
-    'networkerror',
-    'load failed',
-    'out of tokens',
-    'active subscription required',
-  ];
-
-  if (safeBackendMessages.some((hint) => normalized.includes(hint))) {
-    return error.message;
-  }
-
-  return fallback;
+function toUserFacingError(error: unknown, translate: (key: string) => string, fallback: string) {
+  return toFriendlyErrorMessage(error, translate, fallback);
 }
 
 function buildOptimisticUserMessage(content: string, pendingFiles: FileAsset[]) {
@@ -205,7 +183,7 @@ export function useProviderChat(
         if (!cancelled) {
           setState((current) => ({
             ...current,
-            error: toUserFacingError(error, t('loadFailed')),
+            error: toUserFacingError(error, t, t('loadFailed')),
             chatsLoaded: true,
             messagesLoading: false,
           }));
@@ -255,7 +233,7 @@ export function useProviderChat(
 
           setState((current) => ({
             ...current,
-            error: toUserFacingError(error, t('loadFailed')),
+            error: toUserFacingError(error, t, t('loadFailed')),
           }));
         });
     }, 2500);
@@ -284,7 +262,7 @@ export function useProviderChat(
     } catch (error) {
       setState((current) => ({
         ...current,
-        error: toUserFacingError(error, t('fileUploadFailed')),
+        error: toUserFacingError(error, t, t('fileUploadFailed')),
       }));
     }
   }
@@ -370,7 +348,7 @@ export function useProviderChat(
             ...current,
             chat: refreshedChat,
             pendingFiles: [],
-            error: toUserFacingError(error, t('messageFailed')),
+            error: toUserFacingError(error, t, t('messageFailed')),
           }));
           throw error;
         }
@@ -378,7 +356,7 @@ export function useProviderChat(
 
       setState((current) => ({
         ...current,
-        error: toUserFacingError(error, t('messageFailed')),
+        error: toUserFacingError(error, t, t('messageFailed')),
       }));
       throw error;
     }
@@ -400,7 +378,7 @@ export function useProviderChat(
       await apiClient.retryChatMessage(state.chat.id, messageId);
       await refreshChat(state.chat.id);
     } catch (error) {
-      const userFacingError = toUserFacingError(error, t('retryVideoFailed'));
+      const userFacingError = toUserFacingError(error, t, t('retryVideoFailed'));
       setState((current) => ({
         ...current,
         error: userFacingError,
@@ -418,7 +396,7 @@ export function useProviderChat(
       await apiClient.deleteChatMessage(state.chat.id, messageId);
       await refreshChat(state.chat.id);
     } catch (error) {
-      const userFacingError = toUserFacingError(error, t('deleteVideoFailed'));
+      const userFacingError = toUserFacingError(error, t, t('deleteVideoFailed'));
       setState((current) => ({
         ...current,
         error: userFacingError,
