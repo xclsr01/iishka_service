@@ -36,6 +36,12 @@ const QUERY_TIMEOUT_MS = 8000;
 const ASYNC_VIDEO_PENDING_CONTENT = 'Video generation in progress.';
 const ASYNC_VIDEO_FAILED_CONTENT = 'Video generation failed.';
 
+function scheduleBackgroundGenerationTask(task: () => Promise<unknown>) {
+  setImmediate(() => {
+    void task();
+  });
+}
+
 async function withTimeout<T>(label: string, operation: Promise<T>, timeoutMs = QUERY_TIMEOUT_MS) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
@@ -644,9 +650,7 @@ export async function createMessage(input: {
             metadata: buildAsyncGenerationJobMetadata(chat.provider.key, userMessage.id),
           },
           {
-            schedule: (task) => {
-              void task;
-            },
+            schedule: scheduleBackgroundGenerationTask,
           },
         ),
         5000,
@@ -973,9 +977,7 @@ export async function retryAsyncMessage(input: {
           ),
         },
         {
-          schedule: (task) => {
-            void task;
-          },
+          schedule: scheduleBackgroundGenerationTask,
         },
       ),
       5000,
