@@ -8,11 +8,13 @@ import { ProviderAdapterError } from './provider-types';
 const originalFetch = globalThis.fetch;
 const originalAiGatewayUrl = env.AI_GATEWAY_URL;
 const originalAiGatewayToken = env.AI_GATEWAY_INTERNAL_TOKEN;
+const originalGoogleAiModel = env.GOOGLE_AI_MODEL;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   env.AI_GATEWAY_URL = originalAiGatewayUrl;
   env.AI_GATEWAY_INTERNAL_TOKEN = originalAiGatewayToken;
+  env.GOOGLE_AI_MODEL = originalGoogleAiModel;
 });
 
 test('GeminiProviderAdapter calls Google AI Studio generateContent with header auth', async () => {
@@ -153,6 +155,62 @@ test('GeminiProviderAdapter retries without search grounding when Gemini rejects
   assert.deepEqual(calledPayloads[0]?.tools, [{ google_search: {} }]);
   assert.equal(calledPayloads[1]?.tools, undefined);
   assert.equal(result.text, 'Fallback Gemini response');
+});
+
+test('GeminiProviderAdapter normalizes model names and falls back to default on model 404', async () => {
+  const adapter = new GeminiProviderAdapter();
+  const calledUrls: string[] = [];
+
+  env.AI_GATEWAY_URL = undefined;
+  env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+  env.GOOGLE_AI_MODEL = 'gemini-2.0-flash';
+
+  globalThis.fetch = async (input) => {
+    calledUrls.push(String(input));
+
+    if (calledUrls.length === 1) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: 404,
+            message: 'Model not found',
+            status: 'NOT_FOUND',
+          },
+        }),
+        { status: 404 },
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'Fallback model response' }],
+            },
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  };
+
+  const result = await adapter.generateResponse({
+    providerKey: ProviderKey.GEMINI,
+    model: 'models/gemini-retired-chat-model',
+    messages: [
+      {
+        role: 'user',
+        content: 'Hello',
+      },
+    ],
+  });
+
+  assert.deepEqual(calledUrls, [
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-retired-chat-model:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+  ]);
+  assert.equal(result.text, 'Fallback model response');
 });
 
 test('GeminiProviderAdapter calls configured AI gateway when available', async () => {
