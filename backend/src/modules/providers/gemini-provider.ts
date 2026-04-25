@@ -29,6 +29,37 @@ const GOOGLE_SEARCH_GROUNDING_INSTRUCTION = [
   'When grounding metadata is available, include concise source names or links in the answer.',
 ].join('\n');
 
+function buildGeminiPrompt(input: ProviderGenerateInput) {
+  return [
+    GOOGLE_SEARCH_GROUNDING_INSTRUCTION,
+    ...input.messages.map((message) => `${message.role.toUpperCase()}: ${message.content}`),
+  ].join('\n\n');
+}
+
+function buildGeminiRequestBody(input: ProviderGenerateInput, prompt: string, includeSearchGrounding: boolean) {
+  return {
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          {
+            text: prompt,
+          },
+        ],
+      },
+    ],
+    ...(includeSearchGrounding
+      ? {
+          tools: [
+            {
+              google_search: {},
+            },
+          ],
+        }
+      : {}),
+  };
+}
+
 export class GeminiProviderAdapter implements AiProviderAdapter {
   readonly metadata = {
     key: ProviderKey.GEMINI,
@@ -96,38 +127,33 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
       return generateGatewayChatResponse(input);
     }
 
-    const prompt = [
-      GOOGLE_SEARCH_GROUNDING_INSTRUCTION,
-      ...input.messages.map((message) => `${message.role.toUpperCase()}: ${message.content}`),
-    ].join('\n\n');
+    const prompt = buildGeminiPrompt(input);
     const model = input.model || env.GOOGLE_AI_MODEL;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
     let response: Response;
     try {
-      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      response = await fetch(url, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           'x-goog-api-key': env.GOOGLE_AI_API_KEY,
         },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: prompt,
-                },
-              ],
-            },
-          ],
-          tools: [
-            {
-              google_search: {},
-            },
-          ],
-        }),
+        body: JSON.stringify(buildGeminiRequestBody(input, prompt, true)),
         signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
       });
+
+      if (response.status === 400) {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-goog-api-key': env.GOOGLE_AI_API_KEY,
+          },
+          body: JSON.stringify(buildGeminiRequestBody(input, prompt, false)),
+          signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
+        });
+      }
     } catch (error) {
       throw this.classifyError(error);
     }

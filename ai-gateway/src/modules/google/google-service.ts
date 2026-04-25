@@ -1,4 +1,5 @@
 import { env } from '../../env';
+import { AppError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
 import {
   createEmptyResponseError,
@@ -156,16 +157,62 @@ function extractGeneratedVideo(operation: GoogleLongRunningOperationResponse) {
   return null;
 }
 
+function buildGeminiChatPrompt(input: GatewayChatRespondRequest) {
+  return [
+    GOOGLE_SEARCH_GROUNDING_INSTRUCTION,
+    ...input.messages.map((message) => `${message.role.toUpperCase()}: ${message.content}`),
+  ].join('\n\n');
+}
+
+function buildGeminiChatBody(input: GatewayChatRespondRequest, prompt: string, includeSearchGrounding: boolean) {
+  const generationConfig: Record<string, number> = {};
+  if (typeof input.temperature === 'number') {
+    generationConfig.temperature = input.temperature;
+  }
+  if (typeof input.maxOutputTokens === 'number') {
+    generationConfig.maxOutputTokens = input.maxOutputTokens;
+  }
+
+  return {
+    contents: [
+      {
+        role: 'user',
+        parts: [
+          {
+            text: prompt,
+          },
+        ],
+      },
+    ],
+    ...(Object.keys(generationConfig).length > 0 ? { generationConfig } : {}),
+    ...(includeSearchGrounding
+      ? {
+          tools: [
+            {
+              google_search: {},
+            },
+          ],
+        }
+      : {}),
+  };
+}
+
+function shouldRetryGeminiWithoutGrounding(error: unknown) {
+  return (
+    error instanceof AppError &&
+    error.code === 'PROVIDER_BAD_REQUEST' &&
+    error.upstreamStatus === 400 &&
+    error.retryable === false
+  );
+}
+
 export async function respondWithGemini(
   input: GatewayChatRespondRequest,
   routeRequestId: string,
 ): Promise<GatewayChatRespondResponse> {
   const provider = 'gemini';
   const model = input.model || env.GOOGLE_AI_DEFAULT_MODEL;
-  const prompt = [
-    GOOGLE_SEARCH_GROUNDING_INSTRUCTION,
-    ...input.messages.map((message) => `${message.role.toUpperCase()}: ${message.content}`),
-  ].join('\n\n');
+  const prompt = buildGeminiChatPrompt(input);
 
   logger.info('provider_gateway_request_started', {
     route: '/v1/providers/gemini/chat/respond',
@@ -177,38 +224,62 @@ export async function respondWithGemini(
     messageCount: input.messages.length,
   });
 
-  const response = await fetchProviderResponse({
+  const requestBase = {
     provider,
     route: '/v1/providers/gemini/chat/respond',
     requestId: routeRequestId,
     model,
     url: googleUrl(model),
-    init: {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-goog-api-key': env.GOOGLE_AI_API_KEY,
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: prompt,
-              },
-            ],
-          },
-        ],
-        tools: [
-          {
-            google_search: {},
-          },
-        ],
-      }),
-    },
     userId: input.userId,
     chatId: input.chatId,
-  });
+  } as const;
+
+  let groundingFallbackUsed = false;
+  let response: Response;
+  try {
+    response = await fetchProviderResponse({
+      ...requestBase,
+      init: {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-goog-api-key': env.GOOGLE_AI_API_KEY,
+        },
+        body: JSON.stringify(buildGeminiChatBody(input, prompt, true)),
+      },
+      suppressFailureLog: true,
+    });
+  } catch (error) {
+    if (!shouldRetryGeminiWithoutGrounding(error)) {
+      throw error;
+    }
+
+    const appError = error as AppError;
+    groundingFallbackUsed = true;
+    logger.info('provider_grounding_fallback_scheduled', {
+      route: '/v1/providers/gemini/chat/respond',
+      requestId: routeRequestId,
+      provider,
+      model,
+      userId: input.userId ?? null,
+      chatId: input.chatId ?? null,
+      upstreamStatus: appError.upstreamStatus ?? null,
+      upstreamRequestId: appError.upstreamRequestId ?? null,
+      details: appError.details ?? null,
+    });
+
+    response = await fetchProviderResponse({
+      ...requestBase,
+      init: {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-goog-api-key': env.GOOGLE_AI_API_KEY,
+        },
+        body: JSON.stringify(buildGeminiChatBody(input, prompt, false)),
+      },
+    });
+  }
 
   const upstreamRequestId = response.headers.get('x-request-id') ?? response.headers.get('request-id');
   const data = (await response.json()) as GoogleGenerateContentResponse;
@@ -224,6 +295,7 @@ export async function respondWithGemini(
     chatId: input.chatId ?? null,
     googleSearchEnabled: true,
     groundingReturned: Boolean(groundingMetadata),
+    groundingFallbackUsed,
     groundingChunkCount: Array.isArray(groundingMetadata?.groundingChunks)
       ? groundingMetadata.groundingChunks.length
       : 0,
