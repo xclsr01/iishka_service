@@ -1,6 +1,6 @@
 import test, { after, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { GenerationJobKind, ProviderKey, ProviderStatus } from '@prisma/client';
+import { GenerationJobKind, GenerationJobStatus, ProviderKey, ProviderStatus } from '@prisma/client';
 import { createApp } from './app';
 import { prisma } from './lib/prisma';
 import { env } from './env';
@@ -740,7 +740,6 @@ test('chat flow creates linked Veo async video message and attaches generated fi
       }),
     },
   );
-  assert.equal(seenDurationSeconds, 4);
   const createMessageBody = (await createMessageResponse.json()) as {
     assistantMessage: {
       id: string;
@@ -800,6 +799,7 @@ test('chat flow creates linked Veo async video message and attaches generated fi
   }
 
   assert.ok(completedAssistantMessage);
+  assert.equal(seenDurationSeconds, 4);
   assert.equal(completedAssistantMessage.attachments?.[0]?.file.mimeType, 'video/mp4');
   assert.equal(completedAssistantMessage.attachments?.[0]?.file.originalName, 'veo-test.mp4');
   assert.equal(
@@ -825,6 +825,111 @@ test('chat flow creates linked Veo async video message and attaches generated fi
 
   assert.equal(subscriptionResponse.status, 200);
   assert.equal(subscriptionBody.subscription.tokensRemaining, 900);
+});
+
+test('chat flow does not wait for slow Veo execution before returning queued message', async () => {
+  const app = createApp();
+  const bootstrap = await bootstrapDev(app);
+  await requestWithAuth(app, bootstrap.token, '/api/subscription/dev/activate', {
+    method: 'POST',
+  });
+  const veoProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.VEO);
+  assert.ok(veoProvider);
+
+  let resolveExecution: (() => void) | null = null;
+  let executionStarted = false;
+  mockExecuteAsyncJob(ProviderKey.VEO, async () => {
+    executionStarted = true;
+    await new Promise<void>((resolve) => {
+      resolveExecution = resolve;
+    });
+
+    return {
+      resultPayload: {
+        kind: GenerationJobKind.VIDEO,
+        text: null,
+        videos: [
+          {
+            index: 0,
+            mimeType: 'video/mp4',
+            filename: 'veo-slow.mp4',
+            sizeBytes: 10,
+          },
+        ],
+      },
+      artifacts: [
+        {
+          kind: 'file',
+          role: 'video',
+          filename: 'veo-slow.mp4',
+          mimeType: 'video/mp4',
+          bytes: new Uint8Array(Buffer.from('slow-video')),
+          sizeBytes: 10,
+        },
+      ],
+      usage: null,
+      upstreamRequestId: 'req_veo_slow',
+      externalJobId: 'operations/veo-slow-1',
+    };
+  });
+
+  const createChatResponse = await requestWithAuth(app, bootstrap.token, '/api/chats', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      providerId: veoProvider.id,
+    }),
+  });
+  const createChatBody = (await createChatResponse.json()) as {
+    chat: {
+      id: string;
+    };
+  };
+
+  const createMessageResponse = await requestWithAuth(
+    app,
+    bootstrap.token,
+    `/api/chats/${createChatBody.chat.id}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        content: 'Generate a slow Veo clip',
+      }),
+    },
+  );
+  const createMessageBody = (await createMessageResponse.json()) as {
+    assistantMessage: {
+      id: string;
+      status: string;
+      providerMeta?: Record<string, unknown>;
+    };
+  };
+
+  assert.equal(createMessageResponse.status, 201);
+  assert.equal(createMessageBody.assistantMessage.status, 'STREAMING');
+  assert.equal(createMessageBody.assistantMessage.providerMeta?.status, GenerationJobStatus.QUEUED);
+
+  for (let attempt = 0; attempt < 20 && !executionStarted; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  assert.equal(executionStarted, true);
+  assert.ok(resolveExecution);
+  resolveExecution();
+
+  const completedState = await waitForChatMessage(
+    app,
+    bootstrap.token,
+    createChatBody.chat.id,
+    createMessageBody.assistantMessage.id,
+    (message) => message.status === 'COMPLETED' && (message.attachments?.length ?? 0) === 1,
+  );
+  assert.equal(completedState.message.attachments?.[0]?.file.originalName, 'veo-slow.mp4');
 });
 
 test('chat flow retries a failed Veo async video message in place', async () => {
