@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiClient, type GenerationJob } from '@/lib/api';
+import { toFriendlyErrorMessage } from '@/lib/errors';
 import { useLocale } from '@/lib/i18n';
 
 const IMAGE_HISTORY_LIMIT = 100;
@@ -17,12 +18,8 @@ function isTerminalStatus(job: GenerationJob | null) {
   return job?.status === 'COMPLETED' || job?.status === 'FAILED' || job?.status === 'CANCELED';
 }
 
-function toUserFacingError(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-
-  return fallback;
+function toUserFacingError(error: unknown, translate: (key: string) => string, fallback: string) {
+  return toFriendlyErrorMessage(error, translate, fallback);
 }
 
 export function useImageJob(providerId: string) {
@@ -70,7 +67,7 @@ export function useImageJob(providerId: string) {
             isLoadingHistory: false,
             error: current.job || current.jobs.length > 0
               ? current.error
-              : toUserFacingError(error, t('imageGenerationFailed')),
+              : toUserFacingError(error, t, t('imageGenerationFailed')),
           }));
         }
       }
@@ -114,7 +111,7 @@ export function useImageJob(providerId: string) {
           setState((current) => ({
             ...current,
             isPolling: false,
-            error: toUserFacingError(error, t('imageGenerationFailed')),
+            error: toUserFacingError(error, t, t('imageGenerationFailed')),
           }));
         }
       }
@@ -160,7 +157,7 @@ export function useImageJob(providerId: string) {
         ...current,
         isSubmitting: false,
         isPolling: false,
-        error: toUserFacingError(error, t('imageGenerationFailed')),
+        error: toUserFacingError(error, t, t('imageGenerationFailed')),
       }));
       throw error;
     }

@@ -23,6 +23,7 @@ import { buildAsyncMessageProviderMeta } from '../jobs/jobs-service';
 import { deleteStoredFiles } from '../files/file-service';
 import { getRegisteredProvider } from '../providers/provider-registry';
 import { ProviderAdapterError } from '../providers/provider-types';
+import { toClientSafeProviderMessage } from '../providers/provider-error-mapping';
 import {
   TOKEN_COSTS,
   consumeSubscriptionTokens,
@@ -35,6 +36,18 @@ import { persistProviderUsage } from '../usage/usage-service';
 const QUERY_TIMEOUT_MS = 8000;
 const ASYNC_VIDEO_PENDING_CONTENT = 'Video generation in progress.';
 const ASYNC_VIDEO_FAILED_CONTENT = 'Video generation failed.';
+
+function toSafeFailureMessage(error: unknown) {
+  if (error instanceof ProviderAdapterError) {
+    return toClientSafeProviderMessage(error);
+  }
+
+  if (error instanceof AppError && error.statusCode < 500) {
+    return error.message;
+  }
+
+  return 'The request failed. Please try again.';
+}
 
 function scheduleBackgroundGenerationTask(task: () => Promise<unknown>) {
   setImmediate(() => {
@@ -719,7 +732,7 @@ export async function createMessage(input: {
           data: {
             status: MessageStatus.FAILED,
             content: ASYNC_VIDEO_FAILED_CONTENT,
-            failureReason: error instanceof Error ? error.message : 'provider-error',
+            failureReason: toSafeFailureMessage(error),
             providerMeta: buildAsyncMessageProviderMeta({
               requestedProviderKey: chat.provider.key,
               requestedModel: chat.provider.defaultModel,
@@ -729,7 +742,7 @@ export async function createMessage(input: {
               status: GenerationJobStatus.FAILED,
               sourceUserMessageId: userMessage.id,
               failureCode: error instanceof Error && 'code' in error ? String(error.code) : 'JOB_CREATE_FAILED',
-              failureMessage: error instanceof Error ? error.message : 'provider-error',
+              failureMessage: toSafeFailureMessage(error),
             }),
           },
         }),
@@ -865,7 +878,7 @@ export async function createMessage(input: {
           role: 'ASSISTANT',
           content: 'The provider request failed. Please retry.',
           status: MessageStatus.FAILED,
-          failureReason: error instanceof Error ? error.message : 'provider-error',
+          failureReason: toSafeFailureMessage(error),
         },
       }),
     );

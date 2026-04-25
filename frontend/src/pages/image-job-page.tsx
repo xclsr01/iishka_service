@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useImageJob } from '@/hooks/use-image-job';
+import { toFriendlyErrorMessage } from '@/lib/errors';
 import { useLocale } from '@/lib/i18n';
 import { cn } from '@/lib/cn';
 import { getTelegramWebApp } from '@/lib/telegram';
@@ -117,25 +118,8 @@ function canRefreshImageJob(job: GenerationJob, images: GeneratedImage[]) {
   return images.length === 0 && ['FAILED', 'CANCELED', 'QUEUED'].includes(job.status);
 }
 
-function toDeleteErrorMessage(error: unknown, fallback: string) {
-  if (!(error instanceof Error)) {
-    return fallback;
-  }
-
-  const normalized = error.message.trim().toLowerCase();
-  if (!normalized) {
-    return fallback;
-  }
-
-  if (
-    normalized.includes('load failed') ||
-    normalized.includes('failed to fetch') ||
-    normalized.includes('networkerror')
-  ) {
-    return fallback;
-  }
-
-  return error.message;
+function toDeleteErrorMessage(error: unknown, translate: (key: string) => string, fallback: string) {
+  return toFriendlyErrorMessage(error, translate, fallback);
 }
 
 export function ImageJobPage({
@@ -249,7 +233,7 @@ export function ImageJobPage({
       removeImageJob(deleteDialog.jobId);
       setDeleteDialog(null);
     } catch (caughtError) {
-      setDeleteError(toDeleteErrorMessage(caughtError, t('deleteImageFailed')));
+      setDeleteError(toDeleteErrorMessage(caughtError, t, t('deleteImageFailed')));
     } finally {
       setDeletingJobId(null);
     }
@@ -302,7 +286,7 @@ export function ImageJobPage({
       updateAssetAction({
         key: currentActionKey,
         status: 'error',
-        message: caughtError instanceof Error ? caughtError.message : t('imageDownloadFailed'),
+        message: toFriendlyErrorMessage(caughtError, t, t('imageDownloadFailed')),
       });
     }
   }
@@ -334,7 +318,7 @@ export function ImageJobPage({
       updateAssetAction({
         key: currentActionKey,
         status: 'error',
-        message: caughtError instanceof Error ? caughtError.message : t('imageOpenFailed'),
+        message: toFriendlyErrorMessage(caughtError, t, t('imageOpenFailed')),
       });
     }
   }

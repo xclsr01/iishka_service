@@ -1,4 +1,5 @@
 import { clientEnv } from './env';
+import { createFriendlyError } from './errors';
 
 const TOKEN_STORAGE_KEY = `iishka.token.${clientEnv.apiBaseUrl}`;
 
@@ -184,6 +185,7 @@ export type BootstrapResponse = {
 
 type ApiErrorPayload = {
   error?: {
+    code?: string;
     message?: string;
   };
 };
@@ -235,9 +237,8 @@ class ApiClient {
         payload = null;
       }
 
-      throw new Error(
-        payload?.error?.message ??
-          (rawText || `Request failed with status ${response.status}`),
+      throw createFriendlyError(
+        payload?.error?.message || payload?.error?.code || rawText || `Request failed with status ${response.status}`,
       );
     }
 
@@ -265,7 +266,7 @@ class ApiClient {
 
     if (!response.ok) {
       const rawText = await response.text().catch(() => '');
-      throw new Error(rawText || `Request failed with status ${response.status}`);
+      throw createFriendlyError(rawText || `Request failed with status ${response.status}`);
     }
 
     return response.blob();
