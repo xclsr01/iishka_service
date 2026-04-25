@@ -1,16 +1,22 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, Download, ExternalLink, Loader2, RefreshCw, Trash2, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import type { AsyncMessageProviderMeta, ChatMessage, FileAsset } from '@/lib/api';
+import type { AsyncMessageProviderMeta, ChatMessage, FileAsset, FileAssetLinks } from '@/lib/api';
 import { apiClient } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { useLocale } from '@/lib/i18n';
+import { getTelegramWebApp } from '@/lib/telegram';
 
 type VideoMessageCardState =
   | { kind: 'idle' }
   | { kind: 'loading' }
   | { kind: 'ready'; url: string }
   | { kind: 'error'; message: string };
+
+type DownloadSheetState = {
+  file: FileAsset;
+  links: FileAssetLinks;
+};
 
 function isAsyncVideoMeta(value: ChatMessage['providerMeta']): value is AsyncMessageProviderMeta {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -51,6 +57,33 @@ function openObjectUrl(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer') ?? window.location.assign(url);
 }
 
+function isLikelyMobileBrowser() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
+function openExternalUrl(url: string) {
+  const webApp = getTelegramWebApp();
+  if (webApp?.openLink) {
+    webApp.openLink(url);
+    return;
+  }
+
+  openObjectUrl(url);
+}
+
+function downloadWithTelegram(url: string, filename: string) {
+  const webApp = getTelegramWebApp();
+  if (!webApp?.downloadFile) {
+    return false;
+  }
+
+  webApp.downloadFile({
+    url,
+    file_name: filename,
+  });
+  return true;
+}
+
 function toVideoCardErrorMessage(error: unknown, fallback: string) {
   if (!(error instanceof Error)) {
     return fallback;
@@ -87,8 +120,11 @@ export function VideoMessageCard({
   const videoFile = getVideoAttachment(message);
   const [videoState, setVideoState] = useState<VideoMessageCardState>({ kind: 'idle' });
   const [actionError, setActionError] = useState<string | null>(null);
+  const [downloadSheet, setDownloadSheet] = useState<DownloadSheetState | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isPreparingDownload, setIsPreparingDownload] = useState(false);
+  const [isOpeningVideo, setIsOpeningVideo] = useState(false);
 
   useEffect(() => {
     const file = videoFile;
@@ -139,16 +175,63 @@ export function VideoMessageCard({
   const isPending = normalizedStatus === 'QUEUED' || normalizedStatus === 'RUNNING' || message.status === 'STREAMING';
   const isFailed = normalizedStatus === 'FAILED' || message.status === 'FAILED';
   const canShowPlayer = Boolean(videoFile) && videoState.kind === 'ready';
-  const isBusy = isRetrying || isDeleting;
+  const isBusy = isRetrying || isDeleting || isPreparingDownload || isOpeningVideo;
 
-  async function handleDownload(file: FileAsset, objectUrl: string) {
+  async function handleDownload(file: FileAsset) {
     setActionError(null);
-    triggerDownload(objectUrl, file.originalName);
+    setIsPreparingDownload(true);
+
+    try {
+      const links = await apiClient.getFileLinks(file.id);
+
+      if (isLikelyMobileBrowser()) {
+        setDownloadSheet({ file, links });
+        return;
+      }
+
+      triggerDownload(links.download.url, links.download.filename || file.originalName);
+    } catch (error) {
+      setActionError(toVideoCardErrorMessage(error, t('imageDownloadFailed')));
+    } finally {
+      setIsPreparingDownload(false);
+    }
   }
 
-  async function handleOpen(objectUrl: string) {
+  async function handleOpen(file: FileAsset) {
     setActionError(null);
-    openObjectUrl(objectUrl);
+    setIsOpeningVideo(true);
+
+    try {
+      const links = await apiClient.getFileLinks(file.id);
+      openExternalUrl(links.open.url);
+    } catch (error) {
+      setActionError(toVideoCardErrorMessage(error, t('imageOpenFailed')));
+    } finally {
+      setIsOpeningVideo(false);
+    }
+  }
+
+  function saveVideoToGallery() {
+    if (!downloadSheet) {
+      return;
+    }
+
+    openExternalUrl(downloadSheet.links.open.url);
+    setDownloadSheet(null);
+  }
+
+  function saveVideoToFiles() {
+    if (!downloadSheet) {
+      return;
+    }
+
+    const filename = downloadSheet.links.download.filename || downloadSheet.file.originalName;
+    const handledByTelegram = downloadWithTelegram(downloadSheet.links.download.url, filename);
+    if (!handledByTelegram) {
+      triggerDownload(downloadSheet.links.download.url, filename);
+    }
+
+    setDownloadSheet(null);
   }
 
   async function handleRetry() {
@@ -192,6 +275,30 @@ export function VideoMessageCard({
 
   return (
     <div className="space-y-3 rounded-[18px] border border-cyan-400/20 bg-[linear-gradient(180deg,rgba(7,16,32,0.96),rgba(8,20,38,0.88))] p-3 shadow-soft">
+      {downloadSheet && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/70 px-3 pb-4 pt-10 sm:items-center sm:justify-center">
+          <div className="w-full max-w-sm rounded-[18px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,18,34,0.98),rgba(8,13,26,0.98))] p-3 shadow-soft">
+            <div className="px-1 pb-3">
+              <div className="font-display text-lg font-bold text-white">{t('downloadVideoTitle')}</div>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">{t('downloadVideoHint')}</p>
+            </div>
+            <div className="space-y-2">
+              <Button type="button" className="w-full justify-start gap-2" onClick={saveVideoToGallery}>
+                <ExternalLink className="h-4 w-4" />
+                {t('saveVideoToGallery')}
+              </Button>
+              <Button type="button" variant="secondary" className="w-full justify-start gap-2" onClick={saveVideoToFiles}>
+                <Download className="h-4 w-4" />
+                {t('saveVideoToFiles')}
+              </Button>
+              <Button type="button" variant="ghost" className="w-full" onClick={() => setDownloadSheet(null)}>
+                {t('cancel')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-cyan-200/80">
@@ -240,20 +347,20 @@ export function VideoMessageCard({
               type="button"
               className="gap-2 px-3 py-2 text-xs"
               disabled={isBusy}
-              onClick={() => void handleOpen(videoState.url)}
+              onClick={() => void handleOpen(videoFile)}
             >
-              <ExternalLink className="h-4 w-4" />
-              {t('openVideo')}
+              {isOpeningVideo ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+              {isOpeningVideo ? t('openingImage') : t('openVideo')}
             </Button>
             <Button
               type="button"
               variant="secondary"
               className="gap-2 px-3 py-2 text-xs"
               disabled={isBusy}
-              onClick={() => void handleDownload(videoFile, videoState.url)}
+              onClick={() => void handleDownload(videoFile)}
             >
-              <Download className="h-4 w-4" />
-              {t('downloadVideo')}
+              {isPreparingDownload ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {isPreparingDownload ? t('preparingDownload') : t('downloadVideo')}
             </Button>
             <Button
               type="button"

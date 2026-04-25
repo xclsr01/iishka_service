@@ -12,6 +12,18 @@ type TelegramWebApp = {
   ready: () => void;
   expand: () => void;
   openLink?: (url: string, options?: { try_instant_view?: boolean }) => void;
+  downloadFile?: (
+    params: { url: string; file_name: string },
+    callback?: (accepted: boolean) => void,
+  ) => void;
+  showPopup?: (
+    params: {
+      title?: string;
+      message: string;
+      buttons?: Array<{ id?: string; type?: 'default' | 'ok' | 'close' | 'cancel' | 'destructive'; text?: string }>;
+    },
+    callback?: (buttonId?: string) => void,
+  ) => void;
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
   colorScheme?: 'light' | 'dark';
