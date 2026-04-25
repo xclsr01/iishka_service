@@ -20,6 +20,7 @@ type ProviderFetchInput = {
   userId?: string | null;
   chatId?: string | null;
   jobId?: string | null;
+  suppressFailureLog?: boolean;
 };
 
 function isTimeoutError(error: unknown) {
@@ -122,23 +123,25 @@ export async function fetchProviderResponse(input: ProviderFetchInput) {
             code: 'INTERNAL_ERROR',
           });
 
-    logger.error('provider_upstream_failed', {
-      route: input.route,
-      requestId: input.requestId,
-      provider: input.provider,
-      model: input.model,
-      gatewayRegion: env.GATEWAY_REGION,
-      gatewayEgressMode: env.GATEWAY_EGRESS_MODE,
-      userId: input.userId ?? null,
-      chatId: input.chatId ?? null,
-      jobId: input.jobId ?? null,
-      errorCode: appError.code,
-      retryable: appError.retryable ?? null,
-      upstreamStatus: appError.upstreamStatus ?? null,
-      upstreamRequestId: appError.upstreamRequestId ?? null,
-      details: appError.details ?? null,
-      message: appError.message,
-    });
+    if (!input.suppressFailureLog) {
+      logger.error('provider_upstream_failed', {
+        route: input.route,
+        requestId: input.requestId,
+        provider: input.provider,
+        model: input.model,
+        gatewayRegion: env.GATEWAY_REGION,
+        gatewayEgressMode: env.GATEWAY_EGRESS_MODE,
+        userId: input.userId ?? null,
+        chatId: input.chatId ?? null,
+        jobId: input.jobId ?? null,
+        errorCode: appError.code,
+        retryable: appError.retryable ?? null,
+        upstreamStatus: appError.upstreamStatus ?? null,
+        upstreamRequestId: appError.upstreamRequestId ?? null,
+        details: appError.details ?? null,
+        message: appError.message,
+      });
+    }
 
     throw appError;
   }

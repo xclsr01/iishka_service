@@ -21,6 +21,7 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
   let calledHeaders: Record<string, string> = {};
   let calledPayload: {
     contents: Array<{
+      role?: string;
       parts: Array<{ text: string }>;
     }>;
     tools: Array<{
@@ -78,6 +79,7 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
   assert.equal(calledHeaders['content-type'], 'application/json');
   assert.equal(calledHeaders['x-goog-api-key'], process.env.GOOGLE_AI_API_KEY);
   assert.ok(calledPayload);
+  assert.equal(calledPayload.contents[0]?.role, 'user');
   assert.match(calledPayload.contents[0]?.parts[0]?.text ?? '', /Google Search grounding is enabled/);
   assert.match(calledPayload.contents[0]?.parts[0]?.text ?? '', /USER: Explain how AI works in a few words/);
   assert.deepEqual(calledPayload.tools, [{ google_search: {} }]);
@@ -93,6 +95,64 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
       totalTokenCount: 16,
     },
   });
+});
+
+test('GeminiProviderAdapter retries without search grounding when Gemini rejects the grounded request', async () => {
+  const adapter = new GeminiProviderAdapter();
+  const calledPayloads: Array<{
+    tools?: Array<{
+      google_search: Record<string, never>;
+    }>;
+  }> = [];
+
+  env.AI_GATEWAY_URL = undefined;
+  env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+
+  globalThis.fetch = async (_input, init) => {
+    calledPayloads.push(JSON.parse(String(init?.body)));
+
+    if (calledPayloads.length === 1) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: 400,
+            message: 'Search grounding is not supported for this request.',
+            status: 'INVALID_ARGUMENT',
+          },
+        }),
+        { status: 400 },
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'Fallback Gemini response' }],
+            },
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  };
+
+  const result = await adapter.generateResponse({
+    providerKey: ProviderKey.GEMINI,
+    model: 'gemini-2.0-flash',
+    messages: [
+      {
+        role: 'user',
+        content: 'Hello',
+      },
+    ],
+  });
+
+  assert.equal(calledPayloads.length, 2);
+  assert.deepEqual(calledPayloads[0]?.tools, [{ google_search: {} }]);
+  assert.equal(calledPayloads[1]?.tools, undefined);
+  assert.equal(result.text, 'Fallback Gemini response');
 });
 
 test('GeminiProviderAdapter calls configured AI gateway when available', async () => {
