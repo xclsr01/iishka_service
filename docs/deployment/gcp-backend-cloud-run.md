@@ -87,6 +87,18 @@ printf "%s" "<SUPABASE_SERVICE_ROLE_KEY>" | gcloud secrets create SUPABASE_SERVI
 `SUPABASE_URL`, not the public anon key. The backend validates this at startup when
 `UPLOAD_STORAGE_DRIVER=supabase`; an anon key will fail storage writes with Supabase RLS errors.
 
+If the secret already exists with the anon key, add a new Secret Manager version with the real
+service role key, then redeploy the backend so `SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest`
+resolves to the corrected version:
+
+```bash
+printf "%s" "<REAL_SUPABASE_SERVICE_ROLE_KEY>" | \
+  gcloud secrets versions add SUPABASE_SERVICE_ROLE_KEY --data-file=-
+```
+
+You can find the service role key in Supabase project settings under API keys. It is server-only;
+never put it in frontend or Cloudflare Pages variables.
+
 Recommended Supabase connection split:
 
 ```text
