@@ -573,8 +573,8 @@ export async function completeGenerationJob(input: {
 }) {
   return withOperationTimeout(
     'jobs.complete',
-    prisma.$transaction(async (tx) => {
-      const completedJob = await tx.generationJob.update({
+    (async () => {
+      const completedJob = await prisma.generationJob.update({
         where: { id: input.jobId },
         data: {
           status: GenerationJobStatus.COMPLETED,
@@ -587,38 +587,53 @@ export async function completeGenerationJob(input: {
         },
       });
 
+      const followUpWrites: Prisma.PrismaPromise<unknown>[] = [];
+
       if (input.messageId) {
         if ((input.attachedFiles?.length ?? 0) > 0) {
-          await tx.messageAttachment.createMany({
-            data: input.attachedFiles!.map((file) => ({
-              messageId: input.messageId!,
-              fileId: file.id,
-            })),
-          });
+          followUpWrites.push(
+            prisma.messageAttachment.createMany({
+              data: input.attachedFiles!.map((file) => ({
+                messageId: input.messageId!,
+                fileId: file.id,
+              })),
+              skipDuplicates: true,
+            }),
+          );
         }
 
-        await tx.message.update({
-          where: { id: input.messageId },
-          data: {
-            status: MessageStatus.COMPLETED,
-            content: 'Video generation completed.',
-            failureReason: null,
-            providerMeta: input.messageProviderMeta,
-          },
-        });
+        followUpWrites.push(
+          prisma.message.update({
+            where: { id: input.messageId },
+            data: {
+              status: MessageStatus.COMPLETED,
+              content: completedJob.kind === GenerationJobKind.VIDEO
+                ? 'Video generation completed.'
+                : 'Generation completed.',
+              failureReason: null,
+              providerMeta: input.messageProviderMeta,
+            },
+          }),
+        );
       }
 
       if (completedJob.chatId) {
-        await tx.chat.update({
-          where: { id: completedJob.chatId },
-          data: {
-            lastMessageAt: new Date(),
-          },
-        });
+        followUpWrites.push(
+          prisma.chat.update({
+            where: { id: completedJob.chatId },
+            data: {
+              lastMessageAt: new Date(),
+            },
+          }),
+        );
+      }
+
+      if (followUpWrites.length > 0) {
+        await prisma.$transaction(followUpWrites);
       }
 
       return completedJob;
-    }),
+    })(),
   );
 }
 
@@ -633,8 +648,8 @@ export async function failGenerationJob(input: {
 }) {
   return withOperationTimeout(
     'jobs.fail',
-    prisma.$transaction(async (tx) => {
-      const failedJob = await tx.generationJob.update({
+    (async () => {
+      const failedJob = await prisma.generationJob.update({
         where: { id: input.jobId },
         data: {
           status: GenerationJobStatus.FAILED,
@@ -646,29 +661,41 @@ export async function failGenerationJob(input: {
         },
       });
 
+      const followUpWrites: Prisma.PrismaPromise<unknown>[] = [];
+
       if (input.messageId) {
-        await tx.message.update({
-          where: { id: input.messageId },
-          data: {
-            status: MessageStatus.FAILED,
-            content: 'Video generation failed.',
-            failureReason: input.failureMessage,
-            providerMeta: input.messageProviderMeta,
-          },
-        });
+        followUpWrites.push(
+          prisma.message.update({
+            where: { id: input.messageId },
+            data: {
+              status: MessageStatus.FAILED,
+              content: failedJob.kind === GenerationJobKind.VIDEO
+                ? 'Video generation failed.'
+                : 'Generation failed.',
+              failureReason: input.failureMessage,
+              providerMeta: input.messageProviderMeta,
+            },
+          }),
+        );
       }
 
       if (failedJob.chatId) {
-        await tx.chat.update({
-          where: { id: failedJob.chatId },
-          data: {
-            lastMessageAt: new Date(),
-          },
-        });
+        followUpWrites.push(
+          prisma.chat.update({
+            where: { id: failedJob.chatId },
+            data: {
+              lastMessageAt: new Date(),
+            },
+          }),
+        );
+      }
+
+      if (followUpWrites.length > 0) {
+        await prisma.$transaction(followUpWrites);
       }
 
       return failedJob;
-    }),
+    })(),
   );
 }
 
