@@ -60,6 +60,14 @@ function buildGeminiRequestBody(input: ProviderGenerateInput, prompt: string, in
   };
 }
 
+function normalizeGoogleModelName(model: string) {
+  return model.trim().replace(/^\/+/, '').replace(/^models\//, '');
+}
+
+function googleGenerateContentUrl(model: string) {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${normalizeGoogleModelName(model)}:generateContent`;
+}
+
 export class GeminiProviderAdapter implements AiProviderAdapter {
   readonly metadata = {
     key: ProviderKey.GEMINI,
@@ -128,31 +136,35 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
     }
 
     const prompt = buildGeminiPrompt(input);
-    const model = input.model || env.GOOGLE_AI_MODEL;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+    const requestedModel = normalizeGoogleModelName(input.model || env.GOOGLE_AI_MODEL);
+    const defaultModel = normalizeGoogleModelName(env.GOOGLE_AI_MODEL);
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
+    const fetchGemini = (model: string, includeSearchGrounding: boolean) =>
+      fetch(googleGenerateContentUrl(model), {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           'x-goog-api-key': env.GOOGLE_AI_API_KEY,
         },
-        body: JSON.stringify(buildGeminiRequestBody(input, prompt, true)),
+        body: JSON.stringify(buildGeminiRequestBody(input, prompt, includeSearchGrounding)),
         signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
       });
 
-      if (response.status === 400) {
-        response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-goog-api-key': env.GOOGLE_AI_API_KEY,
-          },
-          body: JSON.stringify(buildGeminiRequestBody(input, prompt, false)),
-          signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
-        });
+    const requestWithGroundingFallback = async (model: string) => {
+      const groundedResponse = await fetchGemini(model, true);
+      if (groundedResponse.status === 400) {
+        return fetchGemini(model, false);
+      }
+
+      return groundedResponse;
+    };
+
+    let response: Response;
+    try {
+      response = await requestWithGroundingFallback(requestedModel);
+
+      if (response.status === 404 && requestedModel !== defaultModel) {
+        response = await requestWithGroundingFallback(defaultModel);
       }
     } catch (error) {
       throw this.classifyError(error);

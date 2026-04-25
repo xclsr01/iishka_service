@@ -76,12 +76,16 @@ function trimTrailingSlashes(value: string) {
   return value.replace(/\/+$/, '');
 }
 
+function normalizeGoogleModelName(model: string) {
+  return model.trim().replace(/^\/+/, '').replace(/^models\//, '');
+}
+
 function googleUrl(model: string) {
-  return `${trimTrailingSlashes(env.GOOGLE_AI_BASE_URL)}/v1beta/models/${model}:generateContent`;
+  return `${trimTrailingSlashes(env.GOOGLE_AI_BASE_URL)}/v1beta/models/${normalizeGoogleModelName(model)}:generateContent`;
 }
 
 function googleLongRunningUrl(model: string) {
-  return `${trimTrailingSlashes(env.GOOGLE_AI_BASE_URL)}/v1beta/models/${model}:predictLongRunning`;
+  return `${trimTrailingSlashes(env.GOOGLE_AI_BASE_URL)}/v1beta/models/${normalizeGoogleModelName(model)}:predictLongRunning`;
 }
 
 function googleOperationUrl(operationName: string) {
@@ -206,61 +210,105 @@ function shouldRetryGeminiWithoutGrounding(error: unknown) {
   );
 }
 
+function shouldRetryGeminiWithDefaultModel(error: unknown) {
+  return (
+    error instanceof AppError &&
+    error.code === 'PROVIDER_BAD_REQUEST' &&
+    error.upstreamStatus === 404 &&
+    error.retryable === false
+  );
+}
+
 export async function respondWithGemini(
   input: GatewayChatRespondRequest,
   routeRequestId: string,
 ): Promise<GatewayChatRespondResponse> {
   const provider = 'gemini';
-  const model = input.model || env.GOOGLE_AI_DEFAULT_MODEL;
+  const requestedModel = normalizeGoogleModelName(input.model || env.GOOGLE_AI_DEFAULT_MODEL);
+  const defaultModel = normalizeGoogleModelName(env.GOOGLE_AI_DEFAULT_MODEL);
   const prompt = buildGeminiChatPrompt(input);
 
   logger.info('provider_gateway_request_started', {
     route: '/v1/providers/gemini/chat/respond',
     requestId: routeRequestId,
     provider,
-    model,
+    model: requestedModel,
     userId: input.userId ?? null,
     chatId: input.chatId ?? null,
     messageCount: input.messages.length,
   });
 
-  const requestBase = {
-    provider,
-    route: '/v1/providers/gemini/chat/respond',
-    requestId: routeRequestId,
-    model,
-    url: googleUrl(model),
-    userId: input.userId,
-    chatId: input.chatId,
-  } as const;
-
   let groundingFallbackUsed = false;
-  let response: Response;
-  try {
-    response = await fetchProviderResponse({
-      ...requestBase,
+  let modelFallbackUsed = false;
+  let model = requestedModel;
+
+  const fetchGeminiChatResponse = async (
+    targetModel: string,
+    includeSearchGrounding: boolean,
+    suppressFailureLog = false,
+  ) =>
+    fetchProviderResponse({
+      provider,
+      route: '/v1/providers/gemini/chat/respond',
+      requestId: routeRequestId,
+      model: targetModel,
+      url: googleUrl(targetModel),
+      userId: input.userId,
+      chatId: input.chatId,
       init: {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           'x-goog-api-key': env.GOOGLE_AI_API_KEY,
         },
-        body: JSON.stringify(buildGeminiChatBody(input, prompt, true)),
+        body: JSON.stringify(buildGeminiChatBody(input, prompt, includeSearchGrounding)),
       },
-      suppressFailureLog: true,
+      suppressFailureLog,
     });
+
+  const runGeminiChatRequest = async (targetModel: string, suppressInitialFailureLog: boolean) => {
+    try {
+      return await fetchGeminiChatResponse(targetModel, true, suppressInitialFailureLog);
+    } catch (error) {
+      if (!shouldRetryGeminiWithoutGrounding(error)) {
+        throw error;
+      }
+
+      const appError = error as AppError;
+      groundingFallbackUsed = true;
+      logger.info('provider_grounding_fallback_scheduled', {
+        route: '/v1/providers/gemini/chat/respond',
+        requestId: routeRequestId,
+        provider,
+        model: targetModel,
+        userId: input.userId ?? null,
+        chatId: input.chatId ?? null,
+        upstreamStatus: appError.upstreamStatus ?? null,
+        upstreamRequestId: appError.upstreamRequestId ?? null,
+        details: appError.details ?? null,
+      });
+
+      return fetchGeminiChatResponse(targetModel, false);
+    }
+  };
+
+  let response: Response;
+  try {
+    response = await runGeminiChatRequest(requestedModel, requestedModel !== defaultModel);
   } catch (error) {
-    if (!shouldRetryGeminiWithoutGrounding(error)) {
+    if (!shouldRetryGeminiWithDefaultModel(error) || requestedModel === defaultModel) {
       throw error;
     }
 
     const appError = error as AppError;
-    groundingFallbackUsed = true;
-    logger.info('provider_grounding_fallback_scheduled', {
+    modelFallbackUsed = true;
+    model = defaultModel;
+    logger.info('provider_model_fallback_scheduled', {
       route: '/v1/providers/gemini/chat/respond',
       requestId: routeRequestId,
       provider,
-      model,
+      model: requestedModel,
+      fallbackModel: defaultModel,
       userId: input.userId ?? null,
       chatId: input.chatId ?? null,
       upstreamStatus: appError.upstreamStatus ?? null,
@@ -268,17 +316,7 @@ export async function respondWithGemini(
       details: appError.details ?? null,
     });
 
-    response = await fetchProviderResponse({
-      ...requestBase,
-      init: {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-goog-api-key': env.GOOGLE_AI_API_KEY,
-        },
-        body: JSON.stringify(buildGeminiChatBody(input, prompt, false)),
-      },
-    });
+    response = await runGeminiChatRequest(defaultModel, false);
   }
 
   const upstreamRequestId = response.headers.get('x-request-id') ?? response.headers.get('request-id');
@@ -296,6 +334,7 @@ export async function respondWithGemini(
     googleSearchEnabled: true,
     groundingReturned: Boolean(groundingMetadata),
     groundingFallbackUsed,
+    modelFallbackUsed,
     groundingChunkCount: Array.isArray(groundingMetadata?.groundingChunks)
       ? groundingMetadata.groundingChunks.length
       : 0,
