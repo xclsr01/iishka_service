@@ -83,21 +83,22 @@ printf "%s" "<AI_GATEWAY_INTERNAL_TOKEN>" | gcloud secrets create AI_GATEWAY_INT
 printf "%s" "<SUPABASE_SERVICE_ROLE_KEY>" | gcloud secrets create SUPABASE_SERVICE_ROLE_KEY --data-file=-
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY` must be the Supabase **secret/service_role** key for the same project as
-`SUPABASE_URL`, not the public anon key. The backend validates this at startup when
+`SUPABASE_SERVICE_ROLE_KEY` must be a server-only elevated Supabase API key for the same project as
+`SUPABASE_URL`: preferably a newer `sb_secret_...` secret key, or the legacy JWT `service_role` key.
+Do not use the public `anon` key. The backend validates this at startup when
 `UPLOAD_STORAGE_DRIVER=supabase`; an anon key will fail storage writes with Supabase RLS errors.
 
 If the secret already exists with the anon key, add a new Secret Manager version with the real
-service role key, then redeploy the backend so `SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest`
+server-only elevated key, then redeploy the backend so `SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest`
 resolves to the corrected version:
 
 ```bash
-printf "%s" "<REAL_SUPABASE_SERVICE_ROLE_KEY>" | \
+printf "%s" "<REAL_SUPABASE_SECRET_OR_SERVICE_ROLE_KEY>" | \
   gcloud secrets versions add SUPABASE_SERVICE_ROLE_KEY --data-file=-
 ```
 
-You can find the service role key in Supabase project settings under API keys. It is server-only;
-never put it in frontend or Cloudflare Pages variables.
+You can find these keys in Supabase project settings under API keys. They are server-only;
+never put them in frontend or Cloudflare Pages variables.
 
 Recommended Supabase connection split:
 
