@@ -71,6 +71,7 @@ const GOOGLE_SEARCH_GROUNDING_INSTRUCTION = [
   'Never answer time-sensitive questions from model memory alone.',
   'When grounding metadata is available, include concise source names or links in the answer.',
 ].join('\n');
+const GEMINI_CHAT_MODEL_FALLBACK = 'gemini-2.5-flash';
 
 function trimTrailingSlashes(value: string) {
   return value.replace(/\/+$/, '');
@@ -78,6 +79,20 @@ function trimTrailingSlashes(value: string) {
 
 function normalizeGoogleModelName(model: string) {
   return model.trim().replace(/^\/+/, '').replace(/^models\//, '');
+}
+
+function uniqueGoogleModelNames(models: string[]) {
+  const seen = new Set<string>();
+  return models
+    .map(normalizeGoogleModelName)
+    .filter((model) => {
+      if (!model || seen.has(model)) {
+        return false;
+      }
+
+      seen.add(model);
+      return true;
+    });
 }
 
 function googleUrl(model: string) {
@@ -225,7 +240,11 @@ export async function respondWithGemini(
 ): Promise<GatewayChatRespondResponse> {
   const provider = 'gemini';
   const requestedModel = normalizeGoogleModelName(input.model || env.GOOGLE_AI_DEFAULT_MODEL);
-  const defaultModel = normalizeGoogleModelName(env.GOOGLE_AI_DEFAULT_MODEL);
+  const modelCandidates = uniqueGoogleModelNames([
+    requestedModel,
+    env.GOOGLE_AI_DEFAULT_MODEL,
+    GEMINI_CHAT_MODEL_FALLBACK,
+  ]);
   const prompt = buildGeminiChatPrompt(input);
 
   logger.info('provider_gateway_request_started', {
@@ -292,31 +311,44 @@ export async function respondWithGemini(
     }
   };
 
-  let response: Response;
-  try {
-    response = await runGeminiChatRequest(requestedModel, requestedModel !== defaultModel);
-  } catch (error) {
-    if (!shouldRetryGeminiWithDefaultModel(error) || requestedModel === defaultModel) {
-      throw error;
+  let response: Response | null = null;
+  let lastModelError: unknown = null;
+  for (const [index, candidateModel] of modelCandidates.entries()) {
+    try {
+      response = await runGeminiChatRequest(candidateModel, index < modelCandidates.length - 1);
+      model = candidateModel;
+      lastModelError = null;
+      break;
+    } catch (error) {
+      if (!shouldRetryGeminiWithDefaultModel(error) || index === modelCandidates.length - 1) {
+        throw error;
+      }
+
+      const appError = error as AppError;
+      const fallbackModel = modelCandidates[index + 1] ?? null;
+      modelFallbackUsed = true;
+      lastModelError = error;
+      logger.info('provider_model_fallback_scheduled', {
+        route: '/v1/providers/gemini/chat/respond',
+        requestId: routeRequestId,
+        provider,
+        model: candidateModel,
+        fallbackModel,
+        userId: input.userId ?? null,
+        chatId: input.chatId ?? null,
+        upstreamStatus: appError.upstreamStatus ?? null,
+        upstreamRequestId: appError.upstreamRequestId ?? null,
+        details: appError.details ?? null,
+      });
+    }
+  }
+
+  if (!response) {
+    if (lastModelError) {
+      throw lastModelError;
     }
 
-    const appError = error as AppError;
-    modelFallbackUsed = true;
-    model = defaultModel;
-    logger.info('provider_model_fallback_scheduled', {
-      route: '/v1/providers/gemini/chat/respond',
-      requestId: routeRequestId,
-      provider,
-      model: requestedModel,
-      fallbackModel: defaultModel,
-      userId: input.userId ?? null,
-      chatId: input.chatId ?? null,
-      upstreamStatus: appError.upstreamStatus ?? null,
-      upstreamRequestId: appError.upstreamRequestId ?? null,
-      details: appError.details ?? null,
-    });
-
-    response = await runGeminiChatRequest(defaultModel, false);
+    throw createEmptyResponseError(provider);
   }
 
   const upstreamRequestId = response.headers.get('x-request-id') ?? response.headers.get('request-id');

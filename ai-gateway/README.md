@@ -67,7 +67,7 @@ curl -X POST http://localhost:8080/v1/providers/gemini/chat/respond \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $AI_GATEWAY_INTERNAL_TOKEN" \
   -d '{
-    "model": "gemini-2.0-flash",
+    "model": "gemini-2.5-flash",
     "messages": [
       { "role": "user", "content": "Explain AI in one sentence." }
     ],
@@ -110,7 +110,7 @@ ANTHROPIC_VERSION=2023-06-01
 
 GOOGLE_AI_API_KEY=<real Google AI Studio API key>
 GOOGLE_AI_BASE_URL=https://generativelanguage.googleapis.com
-GOOGLE_AI_DEFAULT_MODEL=gemini-2.0-flash
+GOOGLE_AI_DEFAULT_MODEL=gemini-2.5-flash
 NANO_BANANA_DEFAULT_MODEL=gemini-2.5-flash-image
 
 PROVIDER_REQUEST_TIMEOUT_MS=15000
@@ -165,7 +165,7 @@ gcloud run deploy ai-gateway \
   --region asia-southeast1 \
   --port 8080 \
   --allow-unauthenticated \
-  --set-env-vars APP_ENV=production,PORT=8080,GATEWAY_REGION=asia-southeast1,GATEWAY_EGRESS_MODE=default,OPENAI_BASE_URL=https://api.openai.com/v1,OPENAI_DEFAULT_MODEL=gpt-5.4-mini,ANTHROPIC_BASE_URL=https://api.anthropic.com,ANTHROPIC_DEFAULT_MODEL=claude-3-5-sonnet-latest,ANTHROPIC_VERSION=2023-06-01,GOOGLE_AI_BASE_URL=https://generativelanguage.googleapis.com,GOOGLE_AI_DEFAULT_MODEL=gemini-2.0-flash,NANO_BANANA_DEFAULT_MODEL=gemini-2.5-flash-image,PROVIDER_REQUEST_TIMEOUT_MS=15000,PROVIDER_MAX_RETRIES=2,PROVIDER_RETRY_BASE_DELAY_MS=300 \
+  --set-env-vars APP_ENV=production,PORT=8080,GATEWAY_REGION=asia-southeast1,GATEWAY_EGRESS_MODE=default,OPENAI_BASE_URL=https://api.openai.com/v1,OPENAI_DEFAULT_MODEL=gpt-5.4-mini,ANTHROPIC_BASE_URL=https://api.anthropic.com,ANTHROPIC_DEFAULT_MODEL=claude-3-5-sonnet-latest,ANTHROPIC_VERSION=2023-06-01,GOOGLE_AI_BASE_URL=https://generativelanguage.googleapis.com,GOOGLE_AI_DEFAULT_MODEL=gemini-2.5-flash,NANO_BANANA_DEFAULT_MODEL=gemini-2.5-flash-image,PROVIDER_REQUEST_TIMEOUT_MS=15000,PROVIDER_MAX_RETRIES=2,PROVIDER_RETRY_BASE_DELAY_MS=300 \
   --set-secrets AI_GATEWAY_INTERNAL_TOKEN=AI_GATEWAY_INTERNAL_TOKEN:latest,OPENAI_API_KEY=OPENAI_API_KEY:latest,ANTHROPIC_API_KEY=ANTHROPIC_API_KEY:latest,GOOGLE_AI_API_KEY=GOOGLE_AI_API_KEY:latest
 ```
 
