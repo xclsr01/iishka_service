@@ -28,6 +28,7 @@ const GOOGLE_SEARCH_GROUNDING_INSTRUCTION = [
   'Never answer time-sensitive questions from model memory alone.',
   'When grounding metadata is available, include concise source names or links in the answer.',
 ].join('\n');
+const GEMINI_CHAT_MODEL_FALLBACK = 'gemini-2.5-flash';
 
 function buildGeminiPrompt(input: ProviderGenerateInput) {
   return [
@@ -62,6 +63,20 @@ function buildGeminiRequestBody(input: ProviderGenerateInput, prompt: string, in
 
 function normalizeGoogleModelName(model: string) {
   return model.trim().replace(/^\/+/, '').replace(/^models\//, '');
+}
+
+function uniqueGoogleModelNames(models: string[]) {
+  const seen = new Set<string>();
+  return models
+    .map(normalizeGoogleModelName)
+    .filter((model) => {
+      if (!model || seen.has(model)) {
+        return false;
+      }
+
+      seen.add(model);
+      return true;
+    });
 }
 
 function googleGenerateContentUrl(model: string) {
@@ -137,7 +152,11 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
 
     const prompt = buildGeminiPrompt(input);
     const requestedModel = normalizeGoogleModelName(input.model || env.GOOGLE_AI_MODEL);
-    const defaultModel = normalizeGoogleModelName(env.GOOGLE_AI_MODEL);
+    const modelCandidates = uniqueGoogleModelNames([
+      requestedModel,
+      env.GOOGLE_AI_MODEL,
+      GEMINI_CHAT_MODEL_FALLBACK,
+    ]);
 
     const fetchGemini = (model: string, includeSearchGrounding: boolean) =>
       fetch(googleGenerateContentUrl(model), {
@@ -159,15 +178,25 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
       return groundedResponse;
     };
 
-    let response: Response;
+    let response: Response | null = null;
     try {
-      response = await requestWithGroundingFallback(requestedModel);
-
-      if (response.status === 404 && requestedModel !== defaultModel) {
-        response = await requestWithGroundingFallback(defaultModel);
+      for (const [index, candidateModel] of modelCandidates.entries()) {
+        response = await requestWithGroundingFallback(candidateModel);
+        if (response.status !== 404 || index === modelCandidates.length - 1) {
+          break;
+        }
       }
     } catch (error) {
       throw this.classifyError(error);
+    }
+
+    if (!response) {
+      throw this.classifyError(
+        createProviderEmptyResponseError({
+          key: ProviderKey.GEMINI,
+          label: 'Gemini',
+        }),
+      );
     }
 
     if (!response.ok) {

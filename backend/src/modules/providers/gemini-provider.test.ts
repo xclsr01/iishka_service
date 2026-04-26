@@ -65,7 +65,7 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
 
   const result = await adapter.generateResponse({
     providerKey: ProviderKey.GEMINI,
-    model: 'gemini-3.0-flash',
+    model: 'gemini-2.5-flash',
     messages: [
       {
         role: 'user',
@@ -76,7 +76,7 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
 
   assert.equal(
     calledUrl,
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
   );
   assert.equal(calledHeaders['content-type'], 'application/json');
   assert.equal(calledHeaders['x-goog-api-key'], process.env.GOOGLE_AI_API_KEY);
@@ -142,7 +142,7 @@ test('GeminiProviderAdapter retries without search grounding when Gemini rejects
 
   const result = await adapter.generateResponse({
     providerKey: ProviderKey.GEMINI,
-    model: 'gemini-3.0-flash',
+    model: 'gemini-2.5-flash',
     messages: [
       {
         role: 'user',
@@ -163,7 +163,7 @@ test('GeminiProviderAdapter normalizes model names and falls back to default on 
 
   env.AI_GATEWAY_URL = undefined;
   env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
-  env.GOOGLE_AI_MODEL = 'gemini-3.0-flash';
+  env.GOOGLE_AI_MODEL = 'gemini-2.5-flash';
 
   globalThis.fetch = async (input) => {
     calledUrls.push(String(input));
@@ -208,9 +208,65 @@ test('GeminiProviderAdapter normalizes model names and falls back to default on 
 
   assert.deepEqual(calledUrls, [
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-retired-chat-model:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
   ]);
   assert.equal(result.text, 'Fallback model response');
+});
+
+test('GeminiProviderAdapter falls back to stable chat model when configured model is unavailable', async () => {
+  const adapter = new GeminiProviderAdapter();
+  const calledUrls: string[] = [];
+
+  env.AI_GATEWAY_URL = undefined;
+  env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+  env.GOOGLE_AI_MODEL = 'gemini-3.0-flash';
+
+  globalThis.fetch = async (input) => {
+    calledUrls.push(String(input));
+
+    if (calledUrls.length === 1) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: 404,
+            message: 'Model not found',
+            status: 'NOT_FOUND',
+          },
+        }),
+        { status: 404 },
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'Stable fallback response' }],
+            },
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  };
+
+  const result = await adapter.generateResponse({
+    providerKey: ProviderKey.GEMINI,
+    model: 'gemini-3.0-flash',
+    messages: [
+      {
+        role: 'user',
+        content: 'Hello',
+      },
+    ],
+  });
+
+  assert.deepEqual(calledUrls, [
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent',
+    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+  ]);
+  assert.equal(result.text, 'Stable fallback response');
 });
 
 test('GeminiProviderAdapter calls configured AI gateway when available', async () => {
@@ -233,7 +289,7 @@ test('GeminiProviderAdapter calls configured AI gateway when available', async (
     return new Response(
       JSON.stringify({
         provider: 'gemini',
-        model: 'gemini-3.0-flash',
+        model: 'gemini-2.5-flash',
         text: 'Gateway Gemini response',
         upstreamRequestId: 'req_gateway_gemini',
         usage: {
@@ -256,7 +312,7 @@ test('GeminiProviderAdapter calls configured AI gateway when available', async (
 
   const result = await adapter.generateResponse({
     providerKey: ProviderKey.GEMINI,
-    model: 'gemini-3.0-flash',
+    model: 'gemini-2.5-flash',
     messages: [
       {
         role: 'user',
@@ -268,7 +324,7 @@ test('GeminiProviderAdapter calls configured AI gateway when available', async (
   assert.equal(calledUrl, 'https://ai-gateway.example.run.app/v1/providers/gemini/chat/respond');
   assert.equal(calledHeaders.authorization, 'Bearer test-ai-gateway-token-000000000000000000');
   assert.ok(calledPayload);
-  assert.equal(calledPayload.model, 'gemini-3.0-flash');
+  assert.equal(calledPayload.model, 'gemini-2.5-flash');
   assert.deepEqual(calledPayload.messages, [{ role: 'user', content: 'Hello' }]);
   assert.equal(result.text, 'Gateway Gemini response');
   assert.equal(result.upstreamRequestId, 'req_gateway_gemini');
@@ -298,7 +354,7 @@ test('GeminiProviderAdapter classifies retryable Google AI rate limit errors', a
     () =>
       adapter.generateResponse({
         providerKey: ProviderKey.GEMINI,
-        model: 'gemini-3.0-flash',
+        model: 'gemini-2.5-flash',
         messages: [
           {
             role: 'user',
