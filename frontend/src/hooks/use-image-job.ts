@@ -3,6 +3,7 @@ import { apiClient, type GenerationJob } from '@/lib/api';
 import { useLocale } from '@/lib/i18n';
 
 const IMAGE_HISTORY_LIMIT = 100;
+const IMAGE_HISTORY_DETAIL_LIMIT = 20;
 
 type ImageJobState = {
   job: GenerationJob | null;
@@ -15,6 +16,10 @@ type ImageJobState = {
 
 function isTerminalStatus(job: GenerationJob | null) {
   return job?.status === 'COMPLETED' || job?.status === 'FAILED' || job?.status === 'CANCELED';
+}
+
+function shouldHydrateHistoryJob(job: GenerationJob) {
+  return job.status === 'COMPLETED' && !job.resultPayload;
 }
 
 function toUserFacingError(error: unknown, fallback: string) {
@@ -62,6 +67,32 @@ export function useImageJob(providerId: string) {
           isLoadingHistory: false,
           isPolling: Boolean(activeJob),
           error: null,
+        }));
+
+        const jobsToHydrate = imageJobs.filter(shouldHydrateHistoryJob).slice(0, IMAGE_HISTORY_DETAIL_LIMIT);
+        if (jobsToHydrate.length === 0) {
+          return;
+        }
+
+        const hydratedJobs = await Promise.all(
+          jobsToHydrate.map(async (historyJob) => {
+            try {
+              return (await apiClient.getGenerationJob(historyJob.id)).job;
+            } catch {
+              return historyJob;
+            }
+          }),
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const hydratedJobById = new Map(hydratedJobs.map((historyJob) => [historyJob.id, historyJob]));
+        setState((current) => ({
+          ...current,
+          job: current.job ? hydratedJobById.get(current.job.id) ?? current.job : current.job,
+          jobs: current.jobs.map((historyJob) => hydratedJobById.get(historyJob.id) ?? historyJob),
         }));
       } catch (error) {
         if (!cancelled) {
