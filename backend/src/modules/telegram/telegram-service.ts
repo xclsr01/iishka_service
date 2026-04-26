@@ -70,6 +70,40 @@ function canSendTelegramWebAppButton() {
   return hasUsablePublicMiniAppUrl(resolveMiniAppUrl());
 }
 
+async function setMiniAppMenuButton(input?: { chatId?: number }) {
+  const miniAppUrl = resolveMiniAppUrl();
+
+  if (!canSendTelegramWebAppButton()) {
+    logger.info('telegram_menu_button_skipped', {
+      reason: 'invalid_mini_app_url',
+      chatScoped: Boolean(input?.chatId),
+    });
+    return;
+  }
+
+  await callTelegram('setChatMenuButton', {
+    ...(input?.chatId ? { chat_id: input.chatId } : {}),
+    menu_button: {
+      type: 'web_app',
+      text: 'Open',
+      web_app: {
+        url: miniAppUrl,
+      },
+    },
+  });
+}
+
+export async function configureDefaultMiniAppMenuButton() {
+  try {
+    await setMiniAppMenuButton();
+    logger.info('telegram_default_menu_button_configured');
+  } catch (error) {
+    logger.error('telegram_default_menu_button_failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function sendWelcomeMessage(chatId: number, firstName?: string) {
   const intro = firstName ? `Hi ${firstName}.` : 'Hi.';
   const miniAppUrl = resolveMiniAppUrl();
@@ -95,6 +129,16 @@ async function sendWelcomeMessage(chatId: number, firstName?: string) {
     hasFirstName: Boolean(firstName),
     miniAppUrlHost: new URL(miniAppUrl).hostname,
   });
+
+  try {
+    await setMiniAppMenuButton({ chatId });
+  } catch (error) {
+    logger.error('telegram_chat_menu_button_failed', {
+      chatId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   await callTelegram('sendMessage', {
     chat_id: chatId,
     text: `${intro} Open the Mini App to browse providers, manage subscription state, and continue your chats.`,
