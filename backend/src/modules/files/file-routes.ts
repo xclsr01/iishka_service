@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import type { AppVariables } from '../../types';
 import { AppError } from '../../lib/errors';
+import { contentDisposition } from '../../lib/content-disposition';
 import {
   createOwnedFileLinks,
   getFileContentByToken,
@@ -10,11 +11,6 @@ import {
 } from './file-service';
 
 export const fileRoutes = new Hono<{ Variables: AppVariables }>();
-
-function contentDisposition(disposition: 'inline' | 'attachment', filename: string) {
-  const safeFilename = filename.replace(/["\\\r\n]/g, '_') || 'iishka-file';
-  return `${disposition}; filename="${safeFilename}"`;
-}
 
 function fileContentResponse(input: {
   content: Uint8Array;
@@ -27,7 +23,7 @@ function fileContentResponse(input: {
     headers: {
       'content-type': input.mimeType,
       'content-length': String(input.content.byteLength),
-      'content-disposition': contentDisposition(input.disposition, input.filename),
+      'content-disposition': contentDisposition(input.disposition, input.filename, 'iishka-file'),
       'cache-control': 'private, max-age=300',
       'x-content-type-options': 'nosniff',
       'access-control-allow-origin': 'https://web.telegram.org',

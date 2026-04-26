@@ -45,9 +45,12 @@ export function UploadPicker({
           {pendingFiles.map((file) => (
             <div
               key={file.id}
-              className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-muted/75 px-3 py-1 text-xs text-foreground"
+              className="inline-flex max-w-full items-center gap-2 rounded-full border border-border/70 bg-muted/75 px-3 py-1 text-xs text-foreground"
+              title={file.originalName}
             >
-              <span>{file.originalName}</span>
+              <span className="min-w-0 max-w-[min(18rem,70vw)] overflow-hidden text-ellipsis whitespace-nowrap">
+                {file.originalName}
+              </span>
               <Button
                 type="button"
                 variant="ghost"

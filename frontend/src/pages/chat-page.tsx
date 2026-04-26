@@ -121,6 +121,7 @@ export function ChatPage({
           </div>
         ) : (
           <ChatMessageList
+            chatId={chat?.id}
             messages={messages}
             scrollToBottomSignal={scrollToBottomSignal}
             onRetryAsyncMessage={retryAsyncMessage}

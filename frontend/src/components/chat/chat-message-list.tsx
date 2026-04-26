@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { ChatMessage } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { AssistantMessageContent } from './assistant-message-content';
@@ -23,17 +23,29 @@ function shouldRenderVideoCard(message: ChatMessage) {
 }
 
 export function ChatMessageList({
+  chatId,
   messages,
   scrollToBottomSignal,
   onRetryAsyncMessage,
   onDeleteAsyncMessage,
 }: {
+  chatId?: string;
   messages: ChatMessage[];
   scrollToBottomSignal?: number;
   onRetryAsyncMessage?: (messageId: string) => Promise<void>;
   onDeleteAsyncMessage?: (messageId: string) => Promise<void>;
 }) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const lastInitialScrollChatIdRef = useRef<string | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    if (messages.length === 0 || lastInitialScrollChatIdRef.current === chatId) {
+      return;
+    }
+
+    lastInitialScrollChatIdRef.current = chatId;
+    bottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+  }, [chatId, messages.length]);
 
   useEffect(() => {
     if (!scrollToBottomSignal) {
@@ -81,13 +93,16 @@ export function ChatMessageList({
                     <div
                       key={attachment.file.id}
                       className={cn(
-                        'rounded-full border px-3 py-1 text-xs',
+                        'max-w-full rounded-full border px-3 py-1 text-xs',
                         isAssistant
                           ? 'border-border/70 bg-background/60 text-muted-foreground'
                           : 'border-white/20 bg-white/10',
                       )}
+                      title={attachment.file.originalName}
                     >
-                      {attachment.file.originalName}
+                      <span className="block max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
+                        {attachment.file.originalName}
+                      </span>
                     </div>
                   ))}
                 </div>

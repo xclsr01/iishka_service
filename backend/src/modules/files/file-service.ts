@@ -23,7 +23,12 @@ function createStorageAdapter(): StorageAdapter {
 const storage = createStorageAdapter();
 
 function sanitizeFilename(filename: string) {
-  return filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return filename.normalize('NFKD').replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function normalizeOriginalName(filename: string) {
+  const normalized = filename.replace(/[/\\\0\r\n]/g, '_').trim();
+  return normalized || 'iishka-file';
 }
 
 function base64UrlEncode(input: string) {
@@ -110,9 +115,10 @@ async function persistFileRecord(input: {
   mimeType: string;
   bytes: Uint8Array;
 }) {
-  const ext = path.extname(input.originalName) || '';
+  const originalName = normalizeOriginalName(input.originalName);
+  const ext = path.extname(originalName) || '';
   const checksumSha256 = sha256Hex(Buffer.from(input.bytes));
-  const storageKey = `${input.userId}/${randomUUID()}-${sanitizeFilename(input.originalName.replace(ext, ''))}${ext}`;
+  const storageKey = `${input.userId}/${randomUUID()}-${sanitizeFilename(originalName.replace(ext, ''))}${sanitizeFilename(ext)}`;
 
   await storage.putObject({
     storageKey,
@@ -123,7 +129,7 @@ async function persistFileRecord(input: {
   return prisma.fileAsset.create({
     data: {
       userId: input.userId,
-      originalName: sanitizeFilename(input.originalName),
+      originalName,
       storageKey,
       mimeType: input.mimeType,
       sizeBytes: input.bytes.byteLength,
