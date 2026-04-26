@@ -87,7 +87,7 @@ async function main() {
       summary: 'Fast multimodal assistant for search-heavy and product-style workflows.',
       description:
         'Google-backed assistant with strong multimodal tooling and practical speed for lightweight chat experiences.',
-      defaultModel: 'gemini-2.0-flash',
+      defaultModel: 'gemini-3.0-flash',
       isFileUploadBeta: true,
     },
     create: {
@@ -97,7 +97,7 @@ async function main() {
       summary: 'Fast multimodal assistant for search-heavy and product-style workflows.',
       description:
         'Google-backed assistant with strong multimodal tooling and practical speed for lightweight chat experiences.',
-      defaultModel: 'gemini-2.0-flash',
+      defaultModel: 'gemini-3.0-flash',
       isFileUploadBeta: true,
     },
   });
