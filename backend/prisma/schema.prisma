@@ -219,6 +219,8 @@ model GenerationJob {
   providerUsages    ProviderUsage[]
 
   @@index([userId, createdAt])
+  @@index([userId, providerId, kind, createdAt, id])
+  @@index([userId, providerId, kind, status, createdAt, id])
   @@index([status, queuedAt])
   @@index([providerId, status])
   @@index([chatId])

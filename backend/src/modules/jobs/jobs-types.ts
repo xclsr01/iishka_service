@@ -22,6 +22,7 @@ export type ListGenerationJobsInput = {
   kind?: GenerationJobKind;
   status?: GenerationJobStatus;
   limit?: number;
+  cursor?: string;
 };
 
 export type EnqueueGenerationJobInput = {

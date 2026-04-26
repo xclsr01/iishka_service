@@ -22,7 +22,6 @@ import type {
   EnqueueGenerationJobOptions,
   CreateGenerationJobInput,
   EnqueueGenerationJobInput,
-  GenerationJobRecord,
   ListGenerationJobsInput,
   PresentedGenerationJobImageLinks,
   PresentedGenerationJob,
@@ -44,6 +43,61 @@ type ImageJobResultPayload = {
   images: GeneratedImagePayload[];
 };
 
+type PresentableGenerationJob = Pick<
+  GenerationJob,
+  | 'id'
+  | 'userId'
+  | 'providerId'
+  | 'chatId'
+  | 'kind'
+  | 'status'
+  | 'prompt'
+  | 'metadata'
+  | 'failureCode'
+  | 'failureMessage'
+  | 'providerRequestId'
+  | 'externalJobId'
+  | 'attemptCount'
+  | 'queuedAt'
+  | 'startedAt'
+  | 'completedAt'
+  | 'createdAt'
+  | 'updatedAt'
+> & {
+  resultPayload?: Prisma.JsonValue | null;
+  provider: Pick<Provider, 'id' | 'key' | 'name' | 'slug' | 'defaultModel'>;
+};
+
+const generationJobListSelect = {
+  id: true,
+  userId: true,
+  providerId: true,
+  chatId: true,
+  kind: true,
+  status: true,
+  prompt: true,
+  metadata: true,
+  failureCode: true,
+  failureMessage: true,
+  providerRequestId: true,
+  externalJobId: true,
+  attemptCount: true,
+  queuedAt: true,
+  startedAt: true,
+  completedAt: true,
+  createdAt: true,
+  updatedAt: true,
+  provider: {
+    select: {
+      id: true,
+      key: true,
+      name: true,
+      slug: true,
+      defaultModel: true,
+    },
+  },
+} satisfies Prisma.GenerationJobSelect;
+
 function toMetadataObject(value: Prisma.JsonValue | null): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
@@ -57,7 +111,7 @@ function getLinkedMessageId(value: Prisma.JsonValue | null) {
   return typeof metadata?.linkedMessageId === 'string' ? metadata.linkedMessageId : null;
 }
 
-function presentGenerationJob(job: GenerationJobRecord): PresentedGenerationJob {
+function presentGenerationJob(job: PresentableGenerationJob): PresentedGenerationJob {
   return {
     id: job.id,
     kind: job.kind,
@@ -82,7 +136,7 @@ function presentGenerationJob(job: GenerationJobRecord): PresentedGenerationJob 
       slug: job.provider.slug,
       defaultModel: job.provider.defaultModel,
     },
-    resultPayload: job.resultPayload ?? null,
+    resultPayload: 'resultPayload' in job ? job.resultPayload ?? null : null,
   };
 }
 
@@ -361,6 +415,7 @@ export async function createLinkedGenerationJob(
 }
 
 export async function listGenerationJobs(input: ListGenerationJobsInput) {
+  const limit = input.limit ?? 20;
   const jobs = await withOperationTimeout('jobs.list', prisma.generationJob.findMany({
     where: {
       userId: input.userId,
@@ -368,14 +423,26 @@ export async function listGenerationJobs(input: ListGenerationJobsInput) {
       kind: input.kind,
       status: input.status,
     },
-    include: {
-      provider: true,
-    },
-    orderBy: [{ createdAt: 'desc' }],
-    take: input.limit ?? 20,
+    select: generationJobListSelect,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    ...(input.cursor
+      ? {
+          cursor: {
+            id: input.cursor,
+          },
+          skip: 1,
+        }
+      : {}),
+    take: limit + 1,
   }));
 
-  return jobs.map(presentGenerationJob);
+  const page = jobs.slice(0, limit);
+  const nextCursor = jobs.length > limit ? page.at(-1)?.id ?? null : null;
+
+  return {
+    jobs: page.map(presentGenerationJob),
+    nextCursor,
+  };
 }
 
 export async function getGenerationJob(userId: string, jobId: string) {

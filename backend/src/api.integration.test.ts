@@ -581,6 +581,76 @@ test('jobs API creates and completes Nano Banana image jobs', async () => {
   });
 });
 
+test('jobs API paginates image history without returning image payloads in the list', async () => {
+  const app = createApp();
+  const bootstrap = await bootstrapDev(app);
+  const nanoBananaProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.NANO_BANANA);
+  assert.ok(nanoBananaProvider);
+
+  const createdAt = new Date('2026-04-26T06:00:00.000Z');
+  const jobs = await Promise.all(
+    [0, 1, 2].map((index) =>
+      prisma.generationJob.create({
+        data: {
+          userId: bootstrap.user.id,
+          providerId: nanoBananaProvider.id,
+          kind: GenerationJobKind.IMAGE,
+          status: GenerationJobStatus.COMPLETED,
+          prompt: `Paginated image ${index}`,
+          inputPayload: {
+            prompt: `Paginated image ${index}`,
+          },
+          resultPayload: {
+            kind: GenerationJobKind.IMAGE,
+            text: null,
+            images: [
+              {
+                index: 0,
+                mimeType: 'image/png',
+                filename: `paginated-${index}.png`,
+                dataBase64: 'aW1hZ2U=',
+                sizeBytes: 5,
+              },
+            ],
+          },
+          createdAt: new Date(createdAt.getTime() + index * 1000),
+        },
+      }),
+    ),
+  );
+
+  const firstPageResponse = await requestWithAuth(
+    app,
+    bootstrap.token,
+    `/api/jobs?providerId=${nanoBananaProvider.id}&kind=${GenerationJobKind.IMAGE}&limit=2`,
+  );
+  const firstPage = (await firstPageResponse.json()) as {
+    jobs: Array<{ id: string; resultPayload: unknown }>;
+    nextCursor: string | null;
+  };
+
+  assert.equal(firstPageResponse.status, 200);
+  assert.deepEqual(firstPage.jobs.map((job) => job.id), [jobs[2]!.id, jobs[1]!.id]);
+  assert.equal(firstPage.jobs[0]?.resultPayload, null);
+  assert.equal(firstPage.jobs[1]?.resultPayload, null);
+  assert.equal(firstPage.nextCursor, jobs[1]!.id);
+
+  const secondPageResponse = await requestWithAuth(
+    app,
+    bootstrap.token,
+    `/api/jobs?providerId=${nanoBananaProvider.id}&kind=${GenerationJobKind.IMAGE}&limit=2&cursor=${firstPage.nextCursor}`,
+  );
+  const secondPage = (await secondPageResponse.json()) as {
+    jobs: Array<{ id: string; resultPayload: unknown }>;
+    nextCursor: string | null;
+  };
+
+  assert.equal(secondPageResponse.status, 200);
+  assert.deepEqual(secondPage.jobs.map((job) => job.id), [jobs[0]!.id]);
+  assert.equal(secondPage.jobs[0]?.resultPayload, null);
+  assert.equal(secondPage.nextCursor, null);
+});
+
 test('jobs API deletes completed Nano Banana image jobs from history', async () => {
   const app = createApp();
   const bootstrap = await bootstrapDev(app);

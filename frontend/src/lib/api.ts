@@ -409,6 +409,7 @@ class ApiClient {
     kind?: GenerationJobKind;
     status?: GenerationJobStatus;
     limit?: number;
+    cursor?: string;
   }) {
     const searchParams = new URLSearchParams();
 
@@ -428,8 +429,14 @@ class ApiClient {
       searchParams.set('limit', String(params.limit));
     }
 
+    if (params?.cursor) {
+      searchParams.set('cursor', params.cursor);
+    }
+
     const query = searchParams.toString();
-    return this.request<{ jobs: GenerationJob[] }>(`/api/jobs${query ? `?${query}` : ''}`);
+    return this.request<{ jobs: GenerationJob[]; nextCursor: string | null }>(
+      `/api/jobs${query ? `?${query}` : ''}`,
+    );
   }
 }
 
