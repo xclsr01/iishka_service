@@ -2,15 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { apiClient, type GenerationJob } from '@/lib/api';
 import { useLocale } from '@/lib/i18n';
 
-const IMAGE_HISTORY_LIMIT = 100;
-const IMAGE_HISTORY_DETAIL_LIMIT = 20;
+const IMAGE_HISTORY_PAGE_SIZE = 10;
 
 type ImageJobState = {
   job: GenerationJob | null;
   jobs: GenerationJob[];
   isLoadingHistory: boolean;
+  isLoadingMore: boolean;
   isSubmitting: boolean;
   isPolling: boolean;
+  nextCursor: string | null;
   error: string | null;
 };
 
@@ -36,11 +37,33 @@ export function useImageJob(providerId: string) {
     job: null,
     jobs: [],
     isLoadingHistory: true,
+    isLoadingMore: false,
     isSubmitting: false,
     isPolling: false,
+    nextCursor: null,
     error: null,
   });
   const activeJobIdRef = useRef<string | null>(null);
+
+  async function hydrateHistoryJobs(jobs: GenerationJob[]) {
+    const jobsToHydrate = jobs.filter(shouldHydrateHistoryJob);
+    if (jobsToHydrate.length === 0) {
+      return jobs;
+    }
+
+    const hydratedJobs = await Promise.all(
+      jobsToHydrate.map(async (historyJob) => {
+        try {
+          return (await apiClient.getGenerationJob(historyJob.id)).job;
+        } catch {
+          return historyJob;
+        }
+      }),
+    );
+    const hydratedJobById = new Map(hydratedJobs.map((historyJob) => [historyJob.id, historyJob]));
+
+    return jobs.map((historyJob) => hydratedJobById.get(historyJob.id) ?? historyJob);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -50,13 +73,19 @@ export function useImageJob(providerId: string) {
         const response = await apiClient.getGenerationJobs({
           providerId,
           kind: 'IMAGE',
-          limit: IMAGE_HISTORY_LIMIT,
+          limit: IMAGE_HISTORY_PAGE_SIZE,
         });
         if (cancelled) {
           return;
         }
 
-        const imageJobs = response.jobs.filter((job) => job.kind === 'IMAGE' && job.provider.id === providerId);
+        const imageJobs = await hydrateHistoryJobs(
+          response.jobs.filter((job) => job.kind === 'IMAGE' && job.provider.id === providerId),
+        );
+        if (cancelled) {
+          return;
+        }
+
         const activeJob = imageJobs.find((historyJob) => !isTerminalStatus(historyJob)) ?? null;
         activeJobIdRef.current = activeJob?.id ?? null;
 
@@ -64,35 +93,10 @@ export function useImageJob(providerId: string) {
           ...current,
           job: activeJob,
           jobs: imageJobs,
+          nextCursor: response.nextCursor,
           isLoadingHistory: false,
           isPolling: Boolean(activeJob),
           error: null,
-        }));
-
-        const jobsToHydrate = imageJobs.filter(shouldHydrateHistoryJob).slice(0, IMAGE_HISTORY_DETAIL_LIMIT);
-        if (jobsToHydrate.length === 0) {
-          return;
-        }
-
-        const hydratedJobs = await Promise.all(
-          jobsToHydrate.map(async (historyJob) => {
-            try {
-              return (await apiClient.getGenerationJob(historyJob.id)).job;
-            } catch {
-              return historyJob;
-            }
-          }),
-        );
-
-        if (cancelled) {
-          return;
-        }
-
-        const hydratedJobById = new Map(hydratedJobs.map((historyJob) => [historyJob.id, historyJob]));
-        setState((current) => ({
-          ...current,
-          job: current.job ? hydratedJobById.get(current.job.id) ?? current.job : current.job,
-          jobs: current.jobs.map((historyJob) => hydratedJobById.get(historyJob.id) ?? historyJob),
         }));
       } catch (error) {
         if (!cancelled) {
@@ -113,6 +117,58 @@ export function useImageJob(providerId: string) {
       cancelled = true;
     };
   }, [providerId, t]);
+
+  async function loadMoreHistory() {
+    const cursor = state.nextCursor;
+    if (!cursor || state.isLoadingHistory || state.isLoadingMore) {
+      return;
+    }
+
+    try {
+      setState((current) => ({
+        ...current,
+        isLoadingMore: true,
+        error: null,
+      }));
+
+      const response = await apiClient.getGenerationJobs({
+        providerId,
+        kind: 'IMAGE',
+        limit: IMAGE_HISTORY_PAGE_SIZE,
+        cursor,
+      });
+      const imageJobs = await hydrateHistoryJobs(
+        response.jobs.filter((job) => job.kind === 'IMAGE' && job.provider.id === providerId),
+      );
+
+      setState((current) => {
+        const existingJobIds = new Set(current.jobs.map((historyJob) => historyJob.id));
+        const nextJobs = [
+          ...current.jobs,
+          ...imageJobs.filter((historyJob) => !existingJobIds.has(historyJob.id)),
+        ];
+        const nextActiveJob = current.job ?? nextJobs.find((historyJob) => !isTerminalStatus(historyJob)) ?? null;
+
+        activeJobIdRef.current = nextActiveJob?.id ?? activeJobIdRef.current;
+
+        return {
+          ...current,
+          job: nextActiveJob,
+          jobs: nextJobs,
+          nextCursor: response.nextCursor,
+          isLoadingMore: false,
+          isPolling: current.isPolling || Boolean(nextActiveJob && !isTerminalStatus(nextActiveJob)),
+          error: null,
+        };
+      });
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        isLoadingMore: false,
+        error: toUserFacingError(error, t('imageGenerationFailed')),
+      }));
+    }
+  }
 
   useEffect(() => {
     if (!state.job || isTerminalStatus(state.job)) {
@@ -230,6 +286,7 @@ export function useImageJob(providerId: string) {
   return {
     ...state,
     createImageJob,
+    loadMoreHistory,
     removeImageJob,
     resetJob,
   };

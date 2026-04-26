@@ -160,7 +160,19 @@ export function ImageJobPage({
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
-  const { job, jobs, isLoadingHistory, isSubmitting, error, createImageJob, removeImageJob, resetJob } = useImageJob(provider.id);
+  const {
+    job,
+    jobs,
+    isLoadingHistory,
+    isLoadingMore,
+    isSubmitting,
+    nextCursor,
+    error,
+    createImageJob,
+    loadMoreHistory,
+    removeImageJob,
+    resetJob,
+  } = useImageJob(provider.id);
   const syncedJobIdRef = useRef<string | null>(null);
   const actionResetTimerRef = useRef<number | null>(null);
   const isBusy = isSubmitting;
@@ -670,6 +682,24 @@ export function ImageJobPage({
               );
             })}
           </div>
+          {nextCursor && (
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-11 w-full"
+              disabled={isLoadingMore}
+              onClick={() => void loadMoreHistory()}
+            >
+              {isLoadingMore ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {t('loadingMoreImages')}
+                </>
+              ) : (
+                t('loadMoreImages')
+              )}
+            </Button>
+          )}
         </section>
       )}
     </div>

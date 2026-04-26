@@ -415,6 +415,7 @@ export async function createLinkedGenerationJob(
 }
 
 export async function listGenerationJobs(input: ListGenerationJobsInput) {
+  const limit = input.limit ?? 20;
   const jobs = await withOperationTimeout('jobs.list', prisma.generationJob.findMany({
     where: {
       userId: input.userId,
@@ -423,11 +424,25 @@ export async function listGenerationJobs(input: ListGenerationJobsInput) {
       status: input.status,
     },
     select: generationJobListSelect,
-    orderBy: [{ createdAt: 'desc' }],
-    take: input.limit ?? 20,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    ...(input.cursor
+      ? {
+          cursor: {
+            id: input.cursor,
+          },
+          skip: 1,
+        }
+      : {}),
+    take: limit + 1,
   }));
 
-  return jobs.map(presentGenerationJob);
+  const page = jobs.slice(0, limit);
+  const nextCursor = jobs.length > limit ? page.at(-1)?.id ?? null : null;
+
+  return {
+    jobs: page.map(presentGenerationJob),
+    nextCursor,
+  };
 }
 
 export async function getGenerationJob(userId: string, jobId: string) {

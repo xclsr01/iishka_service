@@ -26,6 +26,7 @@ const listGenerationJobsSchema = z.object({
   kind: z.nativeEnum(GenerationJobKind).optional(),
   status: z.nativeEnum(GenerationJobStatus).optional(),
   limit: z.coerce.number().int().positive().max(100).default(100),
+  cursor: z.string().min(1).optional(),
 });
 
 const imageIndexSchema = z.coerce.number().int().min(0);
@@ -70,6 +71,7 @@ jobsRoutes.get('/', async (c) => {
     kind: c.req.query('kind'),
     status: c.req.query('status'),
     limit: c.req.query('limit'),
+    cursor: c.req.query('cursor'),
   });
   const jobs = await listGenerationJobs({
     userId: session.userId,
@@ -77,8 +79,9 @@ jobsRoutes.get('/', async (c) => {
     kind: query.kind,
     status: query.status,
     limit: query.limit,
+    cursor: query.cursor,
   });
-  return c.json({ jobs });
+  return c.json(jobs);
 });
 
 jobsRoutes.post('/', async (c) => {
