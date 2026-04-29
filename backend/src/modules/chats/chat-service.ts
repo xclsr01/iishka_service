@@ -567,7 +567,9 @@ export async function getChatWithMessages(
             skip: 1,
           }
         : {}),
-      orderBy: limit ? { createdAt: 'desc' } : { createdAt: 'asc' },
+      orderBy: limit
+        ? [{ createdAt: 'desc' }, { id: 'desc' }]
+        : [{ createdAt: 'asc' }, { id: 'asc' }],
       ...(limit ? { take: limit + 1 } : {}),
     }),
   );

@@ -155,13 +155,14 @@ export function useProviderChat(
   onSubscriptionChange: (subscription: Subscription) => void,
 ) {
   const { t } = useLocale();
-  const cachedChat = readCachedProviderChat(provider.id);
-  const pendingAsyncMessageRef = useRef(isPendingAsyncMessage(cachedChat));
   const shouldPaginateHistory = provider.executionMode === 'async-job';
+  const cachedChat = readCachedProviderChat(provider.id);
+  const initialChat = shouldPaginateHistory ? null : cachedChat;
+  const pendingAsyncMessageRef = useRef(isPendingAsyncMessage(initialChat));
   const [state, setState] = useState<ProviderChatState>({
-    chat: cachedChat,
-    chatsLoaded: Boolean(cachedChat),
-    messagesLoading: !cachedChat,
+    chat: initialChat,
+    chatsLoaded: Boolean(initialChat),
+    messagesLoading: !initialChat,
     olderMessagesLoading: false,
     error: null,
     pendingFiles: [],
@@ -184,15 +185,15 @@ export function useProviderChat(
     const nextChat =
       options.merge && state.chat
         ? {
-          ...response.chat,
-          messages: mergeMessages(
-            state.chat.messages,
-            response.chat.messages,
-          ),
-          messagesNextCursor:
-            state.chat.messagesNextCursor ?? response.chat.messagesNextCursor,
-        }
-      : response.chat;
+            ...response.chat,
+            messages: mergeMessages(
+              state.chat.messages,
+              response.chat.messages,
+            ),
+            messagesNextCursor:
+              state.chat.messagesNextCursor ?? response.chat.messagesNextCursor,
+          }
+        : response.chat;
 
     writeCachedProviderChat(provider.id, nextChat);
     setState((current) => ({
