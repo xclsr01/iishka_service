@@ -21,6 +21,11 @@ const createMessageSchema = z.object({
   fileIds: z.array(z.string().min(1)).max(5).optional(),
 });
 
+const messagesQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  cursor: z.string().min(1).optional(),
+});
+
 export const chatRoutes = new Hono<{ Variables: AppVariables }>();
 
 chatRoutes.use('*', authMiddleware);
@@ -34,13 +39,25 @@ chatRoutes.get('/', async (c) => {
 chatRoutes.post('/', async (c) => {
   const session = c.get('authSession');
   const payload = createChatSchema.parse(await c.req.json());
-  const chat = await createChat(session.userId, payload.providerId, payload.title);
+  const chat = await createChat(
+    session.userId,
+    payload.providerId,
+    payload.title,
+  );
   return c.json({ chat }, 201);
 });
 
 chatRoutes.get('/:chatId/messages', async (c) => {
   const session = c.get('authSession');
-  const chat = await getChatWithMessages(session.userId, c.req.param('chatId'));
+  const query = messagesQuerySchema.parse({
+    limit: c.req.query('limit'),
+    cursor: c.req.query('cursor'),
+  });
+  const chat = await getChatWithMessages(
+    session.userId,
+    c.req.param('chatId'),
+    query,
+  );
   return c.json({ chat });
 });
 

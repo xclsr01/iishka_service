@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { apiClient, type Chat, type FileAsset, type Provider, type Subscription } from '@/lib/api';
+import {
+  apiClient,
+  type Chat,
+  type FileAsset,
+  type Provider,
+  type Subscription,
+} from '@/lib/api';
 import { clientEnv } from '@/lib/env';
 import { useLocale } from '@/lib/i18n';
 
@@ -7,6 +13,7 @@ type ProviderChatState = {
   chat: Chat | null;
   chatsLoaded: boolean;
   messagesLoading: boolean;
+  olderMessagesLoading: boolean;
   error: string | null;
   pendingFiles: FileAsset[];
 };
@@ -15,6 +22,8 @@ type CachedProviderChat = {
   chat: Chat | null;
   cachedAt: number;
 };
+
+const ASYNC_CHAT_HISTORY_PAGE_SIZE = 20;
 
 function toUserFacingError(error: unknown, fallback: string) {
   if (!(error instanceof Error)) {
@@ -43,7 +52,10 @@ function toUserFacingError(error: unknown, fallback: string) {
   return fallback;
 }
 
-function buildOptimisticUserMessage(content: string, pendingFiles: FileAsset[]) {
+function buildOptimisticUserMessage(
+  content: string,
+  pendingFiles: FileAsset[],
+) {
   return {
     id: `optimistic-user-${crypto.randomUUID()}`,
     role: 'USER' as const,
@@ -74,12 +86,17 @@ function isPendingAsyncMessage(chat: Chat | null) {
     }
 
     const providerMeta = message.providerMeta;
-    if (!providerMeta || typeof providerMeta !== 'object' || Array.isArray(providerMeta)) {
+    if (
+      !providerMeta ||
+      typeof providerMeta !== 'object' ||
+      Array.isArray(providerMeta)
+    ) {
       return false;
     }
 
-    return providerMeta.executionMode === 'async_job' && (
-      providerMeta.status === 'QUEUED' || providerMeta.status === 'RUNNING'
+    return (
+      providerMeta.executionMode === 'async_job' &&
+      (providerMeta.status === 'QUEUED' || providerMeta.status === 'RUNNING')
     );
   });
 }
@@ -116,6 +133,22 @@ function writeCachedProviderChat(providerId: string, chat: Chat | null) {
   }
 }
 
+function mergeMessages(
+  existing: Chat['messages'] = [],
+  incoming: Chat['messages'] = [],
+) {
+  const byId = new Map(existing.map((message) => [message.id, message]));
+
+  for (const message of incoming) {
+    byId.set(message.id, message);
+  }
+
+  return Array.from(byId.values()).sort(
+    (left, right) =>
+      new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
+  );
+}
+
 export function useProviderChat(
   provider: Provider,
   subscription: Subscription,
@@ -124,23 +157,50 @@ export function useProviderChat(
   const { t } = useLocale();
   const cachedChat = readCachedProviderChat(provider.id);
   const pendingAsyncMessageRef = useRef(isPendingAsyncMessage(cachedChat));
+  const shouldPaginateHistory = provider.executionMode === 'async-job';
   const [state, setState] = useState<ProviderChatState>({
     chat: cachedChat,
     chatsLoaded: Boolean(cachedChat),
     messagesLoading: !cachedChat,
+    olderMessagesLoading: false,
     error: null,
     pendingFiles: [],
   });
 
-  async function refreshChat(chatId: string) {
-    const response = await apiClient.getChat(chatId);
-    writeCachedProviderChat(provider.id, response.chat);
+  function getChatPage(chatId: string, cursor?: string) {
+    return apiClient.getChat(
+      chatId,
+      shouldPaginateHistory
+        ? { limit: ASYNC_CHAT_HISTORY_PAGE_SIZE, cursor }
+        : undefined,
+    );
+  }
+
+  async function refreshChat(
+    chatId: string,
+    options: { merge?: boolean } = {},
+  ) {
+    const response = await getChatPage(chatId);
+    const nextChat =
+      options.merge && state.chat
+        ? {
+          ...response.chat,
+          messages: mergeMessages(
+            state.chat.messages,
+            response.chat.messages,
+          ),
+          messagesNextCursor:
+            state.chat.messagesNextCursor ?? response.chat.messagesNextCursor,
+        }
+      : response.chat;
+
+    writeCachedProviderChat(provider.id, nextChat);
     setState((current) => ({
       ...current,
-      chat: response.chat,
+      chat: nextChat,
       error: null,
     }));
-    return response.chat;
+    return nextChat;
   }
 
   useEffect(() => {
@@ -151,7 +211,7 @@ export function useProviderChat(
         const cachedChatId = cachedChat?.id ?? null;
         if (cachedChatId) {
           try {
-            const cachedResponse = await apiClient.getChat(cachedChatId);
+            const cachedResponse = await getChatPage(cachedChatId);
             if (cachedResponse.chat.providerId !== provider.id) {
               writeCachedProviderChat(provider.id, null);
               throw new Error('Cached chat provider mismatch');
@@ -174,7 +234,9 @@ export function useProviderChat(
         }
 
         const chatsResponse = await apiClient.getChats();
-        const existing = chatsResponse.chats.find((candidate) => candidate.providerId === provider.id);
+        const existing = chatsResponse.chats.find(
+          (candidate) => candidate.providerId === provider.id,
+        );
 
         if (!existing) {
           if (!cancelled) {
@@ -190,7 +252,7 @@ export function useProviderChat(
           return;
         }
 
-        const chatResponse = await apiClient.getChat(existing.id);
+        const chatResponse = await getChatPage(existing.id);
         if (!cancelled) {
           setState((current) => ({
             ...current,
@@ -226,7 +288,8 @@ export function useProviderChat(
 
     if (!state.chat?.id || !hasPendingAsyncMessage) {
       if (hadPendingAsyncMessage && provider.executionMode === 'async-job') {
-        apiClient.getSubscription()
+        apiClient
+          .getSubscription()
           .then((response) => onSubscriptionChange(response.subscription))
           .catch(() => undefined);
       }
@@ -235,16 +298,29 @@ export function useProviderChat(
 
     let cancelled = false;
     const intervalId = window.setInterval(() => {
-      apiClient.getChat(state.chat!.id)
+      getChatPage(state.chat!.id)
         .then((response) => {
           if (cancelled) {
             return;
           }
 
-          writeCachedProviderChat(provider.id, response.chat);
+          const nextChat = shouldPaginateHistory
+            ? {
+                ...response.chat,
+                messages: mergeMessages(
+                  state.chat?.messages,
+                  response.chat.messages,
+                ),
+                messagesNextCursor:
+                  state.chat?.messagesNextCursor ??
+                  response.chat.messagesNextCursor,
+              }
+            : response.chat;
+
+          writeCachedProviderChat(provider.id, nextChat);
           setState((current) => ({
             ...current,
-            chat: response.chat,
+            chat: nextChat,
             error: null,
           }));
         })
@@ -264,7 +340,70 @@ export function useProviderChat(
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [onSubscriptionChange, provider.executionMode, provider.id, state.chat, t]);
+  }, [
+    onSubscriptionChange,
+    provider.executionMode,
+    provider.id,
+    state.chat,
+    t,
+  ]);
+
+  async function loadOlderMessages() {
+    if (
+      !shouldPaginateHistory ||
+      !state.chat?.id ||
+      !state.chat.messagesNextCursor ||
+      state.olderMessagesLoading
+    ) {
+      return;
+    }
+
+    try {
+      setState((current) => ({
+        ...current,
+        olderMessagesLoading: true,
+        error: null,
+      }));
+
+      const response = await getChatPage(
+        state.chat.id,
+        state.chat.messagesNextCursor,
+      );
+
+      setState((current) => {
+        if (!current.chat) {
+          return {
+            ...current,
+            olderMessagesLoading: false,
+          };
+        }
+
+        const nextChat = {
+          ...current.chat,
+          messages: mergeMessages(
+            response.chat.messages,
+            current.chat.messages,
+          ),
+          messagesNextCursor: response.chat.messagesNextCursor,
+        };
+
+        writeCachedProviderChat(provider.id, nextChat);
+
+        return {
+          ...current,
+          chat: nextChat,
+          olderMessagesLoading: false,
+          error: null,
+        };
+      });
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        olderMessagesLoading: false,
+        error: toUserFacingError(error, t('loadFailed')),
+      }));
+    }
+  }
 
   async function uploadFiles(files: FileList | null) {
     if (!files || files.length === 0) {
@@ -295,8 +434,13 @@ export function useProviderChat(
     try {
       let activeChat = state.chat;
       const previousMessages = activeChat?.messages ?? [];
-      const optimisticUserMessage = buildOptimisticUserMessage(content, state.pendingFiles);
-      const optimisticAssistantMessage = buildOptimisticAssistantMessage(t('thinking'));
+      const optimisticUserMessage = buildOptimisticUserMessage(
+        content,
+        state.pendingFiles,
+      );
+      const optimisticAssistantMessage = buildOptimisticAssistantMessage(
+        t('thinking'),
+      );
 
       if (!activeChat) {
         const created = await apiClient.createChat(provider.id);
@@ -342,7 +486,12 @@ export function useProviderChat(
         }),
         provider,
         lastMessageAt: createdMessages.assistantMessage.createdAt,
-        messages: [...previousMessages, createdMessages.userMessage, createdMessages.assistantMessage],
+        messagesNextCursor: activeChat?.messagesNextCursor ?? null,
+        messages: [
+          ...previousMessages,
+          createdMessages.userMessage,
+          createdMessages.assistantMessage,
+        ],
       };
 
       writeCachedProviderChat(provider.id, resolvedChat);
@@ -358,7 +507,7 @@ export function useProviderChat(
       if (activeChatId) {
         let refreshedChat: Chat | null = null;
         try {
-          const refreshed = await apiClient.getChat(activeChatId);
+          const refreshed = await getChatPage(activeChatId);
           refreshedChat = refreshed.chat;
         } catch {
           refreshedChat = null;
@@ -431,6 +580,7 @@ export function useProviderChat(
     ...state,
     uploadFiles,
     sendMessage,
+    loadOlderMessages,
     removePendingFile,
     retryAsyncMessage,
     deleteAsyncMessage,

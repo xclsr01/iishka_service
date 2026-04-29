@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { ChatMessage } from '@/lib/api';
 import { cn } from '@/lib/cn';
+import { Spinner } from '@/components/ui/spinner';
 import { AssistantMessageContent } from './assistant-message-content';
 import { VideoMessageCard } from './video-message-card';
 
@@ -9,7 +10,11 @@ function shouldRenderVideoCard(message: ChatMessage) {
     return false;
   }
 
-  if (message.attachments?.some((attachment) => attachment.file.mimeType.startsWith('video/'))) {
+  if (
+    message.attachments?.some((attachment) =>
+      attachment.file.mimeType.startsWith('video/'),
+    )
+  ) {
     return true;
   }
 
@@ -25,21 +30,32 @@ function shouldRenderVideoCard(message: ChatMessage) {
 export function ChatMessageList({
   chatId,
   messages,
+  hasMoreMessages,
+  isLoadingOlderMessages,
   scrollToBottomSignal,
+  onLoadOlderMessages,
   onRetryAsyncMessage,
   onDeleteAsyncMessage,
 }: {
   chatId?: string;
   messages: ChatMessage[];
+  hasMoreMessages?: boolean;
+  isLoadingOlderMessages?: boolean;
   scrollToBottomSignal?: number;
+  onLoadOlderMessages?: () => Promise<void>;
   onRetryAsyncMessage?: (messageId: string) => Promise<void>;
   onDeleteAsyncMessage?: (messageId: string) => Promise<void>;
 }) {
+  const listRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastInitialScrollChatIdRef = useRef<string | undefined>(undefined);
+  const previousScrollHeightRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
-    if (messages.length === 0 || lastInitialScrollChatIdRef.current === chatId) {
+    if (
+      messages.length === 0 ||
+      lastInitialScrollChatIdRef.current === chatId
+    ) {
       return;
     }
 
@@ -55,8 +71,48 @@ export function ChatMessageList({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [scrollToBottomSignal]);
 
+  useLayoutEffect(() => {
+    const previousScrollHeight = previousScrollHeightRef.current;
+    const list = listRef.current;
+
+    if (previousScrollHeight === null || !list) {
+      return;
+    }
+
+    list.scrollTop = list.scrollHeight - previousScrollHeight + list.scrollTop;
+    previousScrollHeightRef.current = null;
+  }, [messages.length]);
+
+  async function handleScroll() {
+    const list = listRef.current;
+    if (
+      !list ||
+      !hasMoreMessages ||
+      isLoadingOlderMessages ||
+      !onLoadOlderMessages
+    ) {
+      return;
+    }
+
+    if (list.scrollTop > 80) {
+      return;
+    }
+
+    previousScrollHeightRef.current = list.scrollHeight;
+    await onLoadOlderMessages();
+  }
+
   return (
-    <div className="flex flex-1 flex-col gap-3 overflow-y-auto pb-2 pt-1">
+    <div
+      ref={listRef}
+      className="flex flex-1 flex-col gap-3 overflow-y-auto pb-2 pt-1"
+      onScroll={() => void handleScroll()}
+    >
+      {isLoadingOlderMessages && (
+        <div className="flex justify-center py-1">
+          <Spinner />
+        </div>
+      )}
       {messages.map((message) => {
         const isAssistant = message.role === 'ASSISTANT';
         const attachments = message.attachments ?? [];
@@ -64,7 +120,10 @@ export function ChatMessageList({
         return (
           <div
             key={message.id}
-            className={cn('flex', isAssistant ? 'justify-start' : 'justify-end')}
+            className={cn(
+              'flex',
+              isAssistant ? 'justify-start' : 'justify-end',
+            )}
           >
             <div
               className={cn(

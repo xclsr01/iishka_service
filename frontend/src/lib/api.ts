@@ -86,9 +86,15 @@ export type Chat = {
   lastMessageAt?: string | null;
   provider: Provider;
   messages?: ChatMessage[];
+  messagesNextCursor?: string | null;
 };
 
-export type GenerationJobStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED';
+export type GenerationJobStatus =
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELED';
 
 export type GenerationJobKind = 'IMAGE' | 'MUSIC' | 'VIDEO' | 'PROVIDER_ASYNC';
 
@@ -265,7 +271,9 @@ class ApiClient {
 
     if (!response.ok) {
       const rawText = await response.text().catch(() => '');
-      throw new Error(rawText || `Request failed with status ${response.status}`);
+      throw new Error(
+        rawText || `Request failed with status ${response.status}`,
+      );
     }
 
     return response.blob();
@@ -311,11 +319,27 @@ class ApiClient {
     });
   }
 
-  getChat(chatId: string) {
-    return this.request<{ chat: Chat }>('/api/chats/' + chatId + '/messages');
+  getChat(chatId: string, params?: { limit?: number; cursor?: string }) {
+    const searchParams = new URLSearchParams();
+
+    if (params?.limit) {
+      searchParams.set('limit', String(params.limit));
+    }
+
+    if (params?.cursor) {
+      searchParams.set('cursor', params.cursor);
+    }
+
+    const query = searchParams.toString();
+    return this.request<{ chat: Chat }>(
+      `/api/chats/${chatId}/messages${query ? `?${query}` : ''}`,
+    );
   }
 
-  createMessage(chatId: string, payload: { content: string; fileIds?: string[] }) {
+  createMessage(
+    chatId: string,
+    payload: { content: string; fileIds?: string[] },
+  ) {
     return this.request<{
       userMessage: ChatMessage;
       assistantMessage: ChatMessage;
@@ -330,15 +354,21 @@ class ApiClient {
   }
 
   retryChatMessage(chatId: string, messageId: string) {
-    return this.request<{ message: ChatMessage }>(`/api/chats/${chatId}/messages/${messageId}/retry`, {
-      method: 'POST',
-    });
+    return this.request<{ message: ChatMessage }>(
+      `/api/chats/${chatId}/messages/${messageId}/retry`,
+      {
+        method: 'POST',
+      },
+    );
   }
 
   deleteChatMessage(chatId: string, messageId: string) {
-    return this.request<{ deleted: true }>(`/api/chats/${chatId}/messages/${messageId}`, {
-      method: 'DELETE',
-    });
+    return this.request<{ deleted: true }>(
+      `/api/chats/${chatId}/messages/${messageId}`,
+      {
+        method: 'DELETE',
+      },
+    );
   }
 
   uploadFile(file: File) {
@@ -356,15 +386,21 @@ class ApiClient {
   }
 
   activateDevSubscription() {
-    return this.request<{ subscription: Subscription }>('/api/subscription/dev/activate', {
-      method: 'POST',
-    });
+    return this.request<{ subscription: Subscription }>(
+      '/api/subscription/dev/activate',
+      {
+        method: 'POST',
+      },
+    );
   }
 
   unsubscribeDevSubscription() {
-    return this.request<{ subscription: Subscription }>('/api/subscription/dev/unsubscribe', {
-      method: 'POST',
-    });
+    return this.request<{ subscription: Subscription }>(
+      '/api/subscription/dev/unsubscribe',
+      {
+        method: 'POST',
+      },
+    );
   }
 
   createGenerationJob(payload: {
@@ -393,7 +429,9 @@ class ApiClient {
   }
 
   getGenerationJobImageLinks(jobId: string, imageIndex: number) {
-    return this.request<GenerationJobImageLinks>(`/api/jobs/${jobId}/images/${imageIndex}/links`);
+    return this.request<GenerationJobImageLinks>(
+      `/api/jobs/${jobId}/images/${imageIndex}/links`,
+    );
   }
 
   getFileBlob(fileId: string) {
