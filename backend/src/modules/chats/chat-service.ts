@@ -42,7 +42,11 @@ function scheduleBackgroundGenerationTask(task: () => Promise<unknown>) {
   });
 }
 
-async function withTimeout<T>(label: string, operation: Promise<T>, timeoutMs = QUERY_TIMEOUT_MS) {
+async function withTimeout<T>(
+  label: string,
+  operation: Promise<T>,
+  timeoutMs = QUERY_TIMEOUT_MS,
+) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
   try {
@@ -50,7 +54,14 @@ async function withTimeout<T>(label: string, operation: Promise<T>, timeoutMs = 
       operation,
       new Promise<T>((_, reject) => {
         timeoutId = setTimeout(() => {
-          reject(new AppError(`Operation timed out: ${label}`, 504, 'OPERATION_TIMEOUT', { label }));
+          reject(
+            new AppError(
+              `Operation timed out: ${label}`,
+              504,
+              'OPERATION_TIMEOUT',
+              { label },
+            ),
+          );
         }, timeoutMs);
       }),
     ]);
@@ -109,7 +120,9 @@ function getChatAsyncJobKind(providerKey: Provider['key']) {
   }
 }
 
-function isAsyncChatMessageMeta(value: Prisma.JsonValue | null): value is AsyncChatMessageMeta {
+function isAsyncChatMessageMeta(
+  value: Prisma.JsonValue | null,
+): value is AsyncChatMessageMeta {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
@@ -200,7 +213,9 @@ async function mapAttachmentsByMessageId(messageIds: string[]) {
     }),
   );
 
-  const fileIds = Array.from(new Set(attachments.map((attachment) => attachment.fileId)));
+  const fileIds = Array.from(
+    new Set(attachments.map((attachment) => attachment.fileId)),
+  );
   const files = fileIds.length
     ? await withTimeout(
         'mapAttachmentsByMessageId.findManyFiles',
@@ -229,7 +244,11 @@ async function mapAttachmentsByMessageId(messageIds: string[]) {
   return attachmentsByMessageId;
 }
 
-async function assembleChat(chat: Chat, messages: Message[]) {
+async function assembleChat(
+  chat: Chat,
+  messages: Message[],
+  messagesNextCursor: string | null = null,
+) {
   const provider = assertPresent(
     await withTimeout(
       'assembleChat.findUniqueProvider',
@@ -240,7 +259,9 @@ async function assembleChat(chat: Chat, messages: Message[]) {
     'Provider not found',
   );
 
-  const attachmentsByMessageId = await mapAttachmentsByMessageId(messages.map((message) => message.id));
+  const attachmentsByMessageId = await mapAttachmentsByMessageId(
+    messages.map((message) => message.id),
+  );
 
   return {
     ...chat,
@@ -249,10 +270,14 @@ async function assembleChat(chat: Chat, messages: Message[]) {
       ...message,
       attachments: attachmentsByMessageId.get(message.id) ?? [],
     })),
+    messagesNextCursor,
   };
 }
 
-async function resolveUsageProvider(chatProvider: Provider, executedProviderKey: Provider['key']) {
+async function resolveUsageProvider(
+  chatProvider: Provider,
+  executedProviderKey: Provider['key'],
+) {
   if (chatProvider.key === executedProviderKey) {
     return chatProvider;
   }
@@ -271,7 +296,10 @@ async function resolveUsageProvider(chatProvider: Provider, executedProviderKey:
   );
 }
 
-async function refreshChatLastMessageAtTx(tx: Prisma.TransactionClient, chatId: string) {
+async function refreshChatLastMessageAtTx(
+  tx: Prisma.TransactionClient,
+  chatId: string,
+) {
   const latestMessage = await tx.message.findFirst({
     where: {
       chatId,
@@ -289,7 +317,11 @@ async function refreshChatLastMessageAtTx(tx: Prisma.TransactionClient, chatId: 
   });
 }
 
-async function detachMessageFilesTx(tx: Prisma.TransactionClient, messageId: string, userId: string) {
+async function detachMessageFilesTx(
+  tx: Prisma.TransactionClient,
+  messageId: string,
+  userId: string,
+) {
   const attachments = await tx.messageAttachment.findMany({
     where: {
       messageId,
@@ -380,21 +412,43 @@ async function getAsyncChatMessageContext(
   );
 
   if (message.role !== 'ASSISTANT') {
-    throw new AppError('Only assistant async messages can be managed here', 400, 'INVALID_MESSAGE');
+    throw new AppError(
+      'Only assistant async messages can be managed here',
+      400,
+      'INVALID_MESSAGE',
+    );
   }
 
-  if (!isAsyncChatMessageMeta(message.providerMeta) || message.providerMeta.executionMode !== 'async_job') {
-    throw new AppError('Message does not support async actions', 400, 'INVALID_MESSAGE');
+  if (
+    !isAsyncChatMessageMeta(message.providerMeta) ||
+    message.providerMeta.executionMode !== 'async_job'
+  ) {
+    throw new AppError(
+      'Message does not support async actions',
+      400,
+      'INVALID_MESSAGE',
+    );
   }
 
   const jobKind = getChatAsyncJobKind(chat.provider.key);
   if (!jobKind) {
-    throw new AppError('Provider does not support async chat actions', 400, 'INVALID_PROVIDER');
+    throw new AppError(
+      'Provider does not support async chat actions',
+      400,
+      'INVALID_PROVIDER',
+    );
   }
 
-  const prompt = typeof message.providerMeta.prompt === 'string' ? message.providerMeta.prompt.trim() : '';
+  const prompt =
+    typeof message.providerMeta.prompt === 'string'
+      ? message.providerMeta.prompt.trim()
+      : '';
   if (!prompt) {
-    throw new AppError('Async message prompt is unavailable', 400, 'INVALID_MESSAGE');
+    throw new AppError(
+      'Async message prompt is unavailable',
+      400,
+      'INVALID_MESSAGE',
+    );
   }
 
   return {
@@ -419,7 +473,9 @@ export async function listChats(userId: string) {
     }),
   );
 
-  const providersById = await mapProvidersById(Array.from(new Set(chats.map((chat) => chat.providerId))));
+  const providersById = await mapProvidersById(
+    Array.from(new Set(chats.map((chat) => chat.providerId))),
+  );
   const chatIds = chats.map((chat) => chat.id);
   const latestMessages = chatIds.length
     ? await withTimeout(
@@ -442,12 +498,19 @@ export async function listChats(userId: string) {
 
   return chats.map((chat) => ({
     ...chat,
-    provider: assertPresent(providersById.get(chat.providerId), 'Provider not found'),
+    provider: assertPresent(
+      providersById.get(chat.providerId),
+      'Provider not found',
+    ),
     messages: latestByChatId.has(chat.id) ? [latestByChatId.get(chat.id)!] : [],
   }));
 }
 
-export async function createChat(userId: string, providerId: string, title?: string) {
+export async function createChat(
+  userId: string,
+  providerId: string,
+  title?: string,
+) {
   const provider = assertPresent(
     await withTimeout(
       'createChat.findProvider',
@@ -476,7 +539,11 @@ export async function createChat(userId: string, providerId: string, title?: str
   );
 }
 
-export async function getChatWithMessages(userId: string, chatId: string) {
+export async function getChatWithMessages(
+  userId: string,
+  chatId: string,
+  options: { limit?: number; cursor?: string } = {},
+) {
   const chat = await withTimeout(
     'getChatWithMessages.findChat',
     prisma.chat.findFirst({
@@ -487,17 +554,39 @@ export async function getChatWithMessages(userId: string, chatId: string) {
     }),
   );
   const resolvedChat = assertPresent(chat, 'Chat not found');
+  const limit = options.limit;
   const messages = await withTimeout(
     'getChatWithMessages.findMessages',
     prisma.message.findMany({
       where: {
         chatId: resolvedChat.id,
       },
-      orderBy: { createdAt: 'asc' },
+      ...(options.cursor
+        ? {
+            cursor: { id: options.cursor },
+            skip: 1,
+          }
+        : {}),
+      orderBy: limit ? { createdAt: 'desc' } : { createdAt: 'asc' },
+      ...(limit ? { take: limit + 1 } : {}),
     }),
   );
 
-  return withTimeout('getChatWithMessages.assembleChat', assembleChat(resolvedChat, messages));
+  if (!limit) {
+    return withTimeout(
+      'getChatWithMessages.assembleChat',
+      assembleChat(resolvedChat, messages),
+    );
+  }
+
+  const page = messages.slice(0, limit);
+  const messagesNextCursor =
+    messages.length > limit ? (page.at(-1)?.id ?? null) : null;
+
+  return withTimeout(
+    'getChatWithMessages.assembleChat',
+    assembleChat(resolvedChat, [...page].reverse(), messagesNextCursor),
+  );
 }
 
 export async function createMessage(input: {
@@ -550,15 +639,19 @@ export async function createMessage(input: {
   const chatAsyncJobKind = getChatAsyncJobKind(chat.provider.key);
   const registeredProvider = getRegisteredProvider(chat.provider.key);
 
-  const subscription = chatAsyncJobKind && registeredProvider.metadata.executionMode === 'async-job'
-    ? await withTimeout(
-        'createMessage.requireAsyncJobTokenBalance',
-        requireSubscriptionTokenBalance(
-          input.userId,
-          chatAsyncJobKind === GenerationJobKind.VIDEO ? TOKEN_COSTS.video : TOKEN_COSTS.text,
-        ),
-      )
-    : null;
+  const subscription =
+    chatAsyncJobKind &&
+    registeredProvider.metadata.executionMode === 'async-job'
+      ? await withTimeout(
+          'createMessage.requireAsyncJobTokenBalance',
+          requireSubscriptionTokenBalance(
+            input.userId,
+            chatAsyncJobKind === GenerationJobKind.VIDEO
+              ? TOKEN_COSTS.video
+              : TOKEN_COSTS.text,
+          ),
+        )
+      : null;
 
   const files = input.fileIds?.length
     ? await withTimeout(
@@ -574,7 +667,11 @@ export async function createMessage(input: {
     : [];
 
   if ((input.fileIds?.length ?? 0) !== files.length) {
-    throw new AppError('Some files are missing or unavailable', 400, 'INVALID_FILE_REFERENCE');
+    throw new AppError(
+      'Some files are missing or unavailable',
+      400,
+      'INVALID_FILE_REFERENCE',
+    );
   }
   logger.info('create_message_files_loaded', {
     chatId: chat.id,
@@ -609,13 +706,18 @@ export async function createMessage(input: {
     messageId: userMessage.id,
   });
 
-  const attachmentsByMessageId = await mapAttachmentsByMessageId([userMessage.id]);
+  const attachmentsByMessageId = await mapAttachmentsByMessageId([
+    userMessage.id,
+  ]);
   const userMessageWithAttachments = {
     ...userMessage,
     attachments: attachmentsByMessageId.get(userMessage.id) ?? [],
   };
 
-  if (chatAsyncJobKind && registeredProvider.metadata.executionMode === 'async-job') {
+  if (
+    chatAsyncJobKind &&
+    registeredProvider.metadata.executionMode === 'async-job'
+  ) {
     const assistantMessage = await withTimeout(
       'createMessage.createAsyncAssistantMessage',
       prisma.message.create({
@@ -647,7 +749,10 @@ export async function createMessage(input: {
             prompt: content,
             chatId: chat.id,
             messageId: assistantMessage.id,
-            metadata: buildAsyncGenerationJobMetadata(chat.provider.key, userMessage.id),
+            metadata: buildAsyncGenerationJobMetadata(
+              chat.provider.key,
+              userMessage.id,
+            ),
           },
           {
             schedule: scheduleBackgroundGenerationTask,
@@ -667,7 +772,9 @@ export async function createMessage(input: {
         upstreamRequestId: job.providerRequestId,
         externalJobId: job.externalJobId,
         resultPayload:
-          job.resultPayload && typeof job.resultPayload === 'object' && !Array.isArray(job.resultPayload)
+          job.resultPayload &&
+          typeof job.resultPayload === 'object' &&
+          !Array.isArray(job.resultPayload)
             ? (job.resultPayload as Record<string, unknown>)
             : null,
         failureCode: job.failureCode,
@@ -709,7 +816,9 @@ export async function createMessage(input: {
           ...updatedAssistantMessage,
           attachments: [],
         },
-        subscription: presentSubscription(assertPresent(subscription, 'Subscription not found')),
+        subscription: presentSubscription(
+          assertPresent(subscription, 'Subscription not found'),
+        ),
       };
     } catch (error) {
       await withTimeout(
@@ -719,7 +828,8 @@ export async function createMessage(input: {
           data: {
             status: MessageStatus.FAILED,
             content: ASYNC_VIDEO_FAILED_CONTENT,
-            failureReason: error instanceof Error ? error.message : 'provider-error',
+            failureReason:
+              error instanceof Error ? error.message : 'provider-error',
             providerMeta: buildAsyncMessageProviderMeta({
               requestedProviderKey: chat.provider.key,
               requestedModel: chat.provider.defaultModel,
@@ -728,8 +838,12 @@ export async function createMessage(input: {
               prompt: content,
               status: GenerationJobStatus.FAILED,
               sourceUserMessageId: userMessage.id,
-              failureCode: error instanceof Error && 'code' in error ? String(error.code) : 'JOB_CREATE_FAILED',
-              failureMessage: error instanceof Error ? error.message : 'provider-error',
+              failureCode:
+                error instanceof Error && 'code' in error
+                  ? String(error.code)
+                  : 'JOB_CREATE_FAILED',
+              failureMessage:
+                error instanceof Error ? error.message : 'provider-error',
             }),
           },
         }),
@@ -803,7 +917,10 @@ export async function createMessage(input: {
     await withTimeout(
       'createMessage.persistProviderUsage',
       (async () => {
-        const usageProvider = await resolveUsageProvider(chat.provider, result.providerKey);
+        const usageProvider = await resolveUsageProvider(
+          chat.provider,
+          result.providerKey,
+        );
         return persistProviderUsage({
           userId: input.userId,
           providerId: usageProvider.id,
@@ -849,12 +966,18 @@ export async function createMessage(input: {
       code: error instanceof ProviderAdapterError ? error.code : null,
       category: error instanceof ProviderAdapterError ? error.category : null,
       retryable: error instanceof ProviderAdapterError ? error.retryable : null,
-      upstreamStatus: error instanceof ProviderAdapterError ? error.upstreamStatus ?? null : null,
+      upstreamStatus:
+        error instanceof ProviderAdapterError
+          ? (error.upstreamStatus ?? null)
+          : null,
       upstreamRequestId:
-        error instanceof ProviderAdapterError ? error.upstreamRequestId ?? null : null,
-      details: error instanceof ProviderAdapterError ? error.details ?? null : null,
+        error instanceof ProviderAdapterError
+          ? (error.upstreamRequestId ?? null)
+          : null,
+      details:
+        error instanceof ProviderAdapterError ? (error.details ?? null) : null,
       message: error instanceof Error ? error.message : 'unknown',
-      stack: error instanceof Error ? error.stack ?? null : null,
+      stack: error instanceof Error ? (error.stack ?? null) : null,
     });
     await withTimeout(
       'createMessage.createFailureMessage',
@@ -865,7 +988,8 @@ export async function createMessage(input: {
           role: 'ASSISTANT',
           content: 'The provider request failed. Please retry.',
           status: MessageStatus.FAILED,
-          failureReason: error instanceof Error ? error.message : 'provider-error',
+          failureReason:
+            error instanceof Error ? error.message : 'provider-error',
         },
       }),
     );
@@ -908,20 +1032,42 @@ export async function retryAsyncMessage(input: {
     requireActiveSubscription(input.userId),
   );
 
-  const context = await getAsyncChatMessageContext(input.userId, input.chatId, input.messageId);
-  if (!(context.message.status === MessageStatus.FAILED || context.meta.status === GenerationJobStatus.CANCELED)) {
-    throw new AppError('Only failed async messages can be retried', 400, 'INVALID_MESSAGE_STATE');
+  const context = await getAsyncChatMessageContext(
+    input.userId,
+    input.chatId,
+    input.messageId,
+  );
+  if (
+    !(
+      context.message.status === MessageStatus.FAILED ||
+      context.meta.status === GenerationJobStatus.CANCELED
+    )
+  ) {
+    throw new AppError(
+      'Only failed async messages can be retried',
+      400,
+      'INVALID_MESSAGE_STATE',
+    );
   }
 
   await withTimeout(
     'retryAsyncMessage.requireTokenBalance',
-    requireSubscriptionTokenBalance(input.userId, getChatAsyncJobKind(context.chat.provider.key) === GenerationJobKind.VIDEO ? TOKEN_COSTS.video : TOKEN_COSTS.text),
+    requireSubscriptionTokenBalance(
+      input.userId,
+      getChatAsyncJobKind(context.chat.provider.key) === GenerationJobKind.VIDEO
+        ? TOKEN_COSTS.video
+        : TOKEN_COSTS.text,
+    ),
   );
 
   const removableFiles = await withTimeout(
     'retryAsyncMessage.resetMessage',
     prisma.$transaction(async (tx) => {
-      const detachedFiles = await detachMessageFilesTx(tx, context.message.id, input.userId);
+      const detachedFiles = await detachMessageFilesTx(
+        tx,
+        context.message.id,
+        input.userId,
+      );
       await tx.message.update({
         where: { id: context.message.id },
         data: {
@@ -950,7 +1096,9 @@ export async function retryAsyncMessage(input: {
   );
 
   if (removableFiles.length > 0) {
-    await deleteStoredFiles(removableFiles.map((file) => file.storageKey)).catch((error) => {
+    await deleteStoredFiles(
+      removableFiles.map((file) => file.storageKey),
+    ).catch((error) => {
       logger.error('async_message_retry_storage_cleanup_failed', {
         chatId: context.chat.id,
         messageId: context.message.id,
@@ -999,7 +1147,9 @@ export async function retryAsyncMessage(input: {
             upstreamRequestId: job.providerRequestId,
             externalJobId: job.externalJobId,
             resultPayload:
-              job.resultPayload && typeof job.resultPayload === 'object' && !Array.isArray(job.resultPayload)
+              job.resultPayload &&
+              typeof job.resultPayload === 'object' &&
+              !Array.isArray(job.resultPayload)
                 ? (job.resultPayload as Record<string, unknown>)
                 : null,
             failureCode: job.failureCode,
@@ -1023,8 +1173,12 @@ export async function retryAsyncMessage(input: {
       },
     };
   } catch (error) {
-    const failureCode = error instanceof Error && 'code' in error ? String(error.code) : 'JOB_EXECUTION_FAILED';
-    const failureMessage = error instanceof Error ? error.message : 'Video generation failed';
+    const failureCode =
+      error instanceof Error && 'code' in error
+        ? String(error.code)
+        : 'JOB_EXECUTION_FAILED';
+    const failureMessage =
+      error instanceof Error ? error.message : 'Video generation failed';
 
     await withTimeout(
       'retryAsyncMessage.failMessage',
@@ -1058,12 +1212,20 @@ export async function deleteAsyncMessage(input: {
   chatId: string;
   messageId: string;
 }) {
-  const context = await getAsyncChatMessageContext(input.userId, input.chatId, input.messageId);
+  const context = await getAsyncChatMessageContext(
+    input.userId,
+    input.chatId,
+    input.messageId,
+  );
 
   const removableFiles = await withTimeout(
     'deleteAsyncMessage.transaction',
     prisma.$transaction(async (tx) => {
-      const detachedFiles = await detachMessageFilesTx(tx, context.message.id, input.userId);
+      const detachedFiles = await detachMessageFilesTx(
+        tx,
+        context.message.id,
+        input.userId,
+      );
 
       await tx.generationJob.deleteMany({
         where: {
@@ -1110,7 +1272,9 @@ export async function deleteAsyncMessage(input: {
   );
 
   if (removableFiles.length > 0) {
-    await deleteStoredFiles(removableFiles.map((file) => file.storageKey)).catch((error) => {
+    await deleteStoredFiles(
+      removableFiles.map((file) => file.storageKey),
+    ).catch((error) => {
       logger.error('async_message_delete_storage_cleanup_failed', {
         chatId: context.chat.id,
         messageId: context.message.id,

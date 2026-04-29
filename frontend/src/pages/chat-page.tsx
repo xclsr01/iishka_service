@@ -32,15 +32,16 @@ export function ChatPage({
   const {
     chat,
     messagesLoading,
+    olderMessagesLoading,
     error,
     pendingFiles,
     uploadFiles,
     sendMessage,
+    loadOlderMessages,
     removePendingFile,
     retryAsyncMessage,
     deleteAsyncMessage,
-  } =
-    useProviderChat(provider, subscription, onSubscriptionChange);
+  } = useProviderChat(provider, subscription, onSubscriptionChange);
   const [busy, setBusy] = useState(false);
   const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0);
   const messages = chat?.messages ?? [];
@@ -60,13 +61,19 @@ export function ChatPage({
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="sticky top-0 z-20 -mx-1 rounded-b-[24px] bg-background/90 px-1 pb-2 pt-1 backdrop-blur-xl">
         <div className="flex items-center justify-between">
-          <Button asChild variant="ghost" className="px-0 py-0.5 text-base text-white">
+          <Button
+            asChild
+            variant="ghost"
+            className="px-0 py-0.5 text-base text-white"
+          >
             <Link to="/">
               <ArrowLeft className="mr-1.5 h-4 w-4" />
               {t('back')}
             </Link>
           </Button>
-          <Badge className="border-primary/30 bg-primary/10 text-primary">{provider.name}</Badge>
+          <Badge className="border-primary/30 bg-primary/10 text-primary">
+            {provider.name}
+          </Badge>
         </div>
       </div>
 
@@ -96,7 +103,9 @@ export function ChatPage({
               disabled={isActivatingSubscription || isUnsubscribingSubscription}
               onClick={onActivateDevSubscription}
             >
-              {isActivatingSubscription ? t('activating') : t('getSubscription')}
+              {isActivatingSubscription
+                ? t('activating')
+                : t('getSubscription')}
             </Button>
           </div>
         </Card>
@@ -115,7 +124,10 @@ export function ChatPage({
           <ChatMessageList
             chatId={chat?.id}
             messages={messages}
+            hasMoreMessages={Boolean(chat?.messagesNextCursor)}
+            isLoadingOlderMessages={olderMessagesLoading}
             scrollToBottomSignal={scrollToBottomSignal}
+            onLoadOlderMessages={loadOlderMessages}
             onRetryAsyncMessage={retryAsyncMessage}
             onDeleteAsyncMessage={deleteAsyncMessage}
           />
