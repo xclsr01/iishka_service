@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Download,
@@ -184,11 +184,12 @@ export function ImageJobPage({
     createImageJob,
     loadMoreHistory,
     removeImageJob,
-    resetJob,
   } = useImageJob(provider.id);
   const syncedJobIdRef = useRef<string | null>(null);
   const actionResetTimerRef = useRef<number | null>(null);
   const imageScrollRef = useRef<HTMLDivElement | null>(null);
+  const previousImageScrollHeightRef = useRef<number | null>(null);
+  const lastNewestImageJobIdRef = useRef<string | null>(null);
   const isBusy = isSubmitting;
   const imageHistory = useMemo<ImageHistoryItem[]>(() => {
     return jobs.map((historyJob) => {
@@ -202,6 +203,9 @@ export function ImageJobPage({
       };
     });
   }, [jobs]);
+  const renderedImageHistory = useMemo(() => {
+    return [...imageHistory].reverse();
+  }, [imageHistory]);
 
   useEffect(() => {
     if (job?.status !== 'COMPLETED' || syncedJobIdRef.current === job.id) {
@@ -232,15 +236,31 @@ export function ImageJobPage({
     }
 
     if (list.scrollHeight <= list.clientHeight + 24) {
+      previousImageScrollHeightRef.current = list.scrollHeight;
       void loadMoreHistory();
     }
-  }, [
-    imageHistory.length,
-    isLoadingHistory,
-    isLoadingMore,
-    loadMoreHistory,
-    nextCursor,
-  ]);
+  }, [imageHistory.length, isLoadingHistory, isLoadingMore, nextCursor]);
+
+  useLayoutEffect(() => {
+    const list = imageScrollRef.current;
+    if (!list) {
+      return;
+    }
+
+    const previousScrollHeight = previousImageScrollHeightRef.current;
+    if (previousScrollHeight !== null) {
+      list.scrollTop =
+        list.scrollHeight - previousScrollHeight + list.scrollTop;
+      previousImageScrollHeightRef.current = null;
+      return;
+    }
+
+    const newestJobId = imageHistory[0]?.job.id ?? null;
+    if (newestJobId && newestJobId !== lastNewestImageJobIdRef.current) {
+      list.scrollTop = list.scrollHeight;
+      lastNewestImageJobIdRef.current = newestJobId;
+    }
+  }, [imageHistory]);
 
   function updateAssetAction(nextAction: AssetActionState | null) {
     if (actionResetTimerRef.current) {
@@ -399,9 +419,8 @@ export function ImageJobPage({
       return;
     }
 
-    const remainingScroll =
-      list.scrollHeight - list.scrollTop - list.clientHeight;
-    if (remainingScroll < 240) {
+    if (list.scrollTop < 80) {
+      previousImageScrollHeightRef.current = list.scrollHeight;
       void loadMoreHistory();
     }
   }
@@ -529,48 +548,6 @@ export function ImageJobPage({
             </div>
           )}
 
-          {job && (
-            <div className="flex justify-start">
-              <div className="max-w-[86%] rounded-[22px] border border-border/70 bg-muted/70 px-4 py-3 text-sm leading-6 text-foreground shadow-soft">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                      {t('jobStatus')}
-                    </div>
-                    <div className="mt-1 font-display text-base font-bold text-white">
-                      {t(`jobStatus${job.status}`)}
-                    </div>
-                  </div>
-                  <Badge
-                    className={cn(
-                      'border-primary/30 bg-primary/10 text-primary',
-                      job.status === 'FAILED' &&
-                        'border-destructive/30 bg-destructive/10 text-destructive',
-                    )}
-                  >
-                    {job.status}
-                  </Badge>
-                </div>
-                {job.failureMessage && (
-                  <p className="mt-3 text-sm text-destructive">
-                    {job.failureMessage}
-                  </p>
-                )}
-                <div className="mt-3 flex justify-end">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="min-h-10"
-                    disabled={isSubmitting}
-                    onClick={resetJob}
-                  >
-                    {t('newImage')}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {error && (
             <div className="flex justify-start">
               <div className="max-w-[86%] rounded-[22px] border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm leading-6 text-destructive shadow-soft">
@@ -579,8 +556,14 @@ export function ImageJobPage({
             </div>
           )}
 
-          {imageHistory.length > 0 &&
-            imageHistory.map((item) => {
+          {isLoadingMore && (
+            <div className="flex justify-center py-2">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            </div>
+          )}
+
+          {renderedImageHistory.length > 0 &&
+            renderedImageHistory.map((item) => {
               return (
                 <div key={item.job.id} className="space-y-3">
                   <div className="flex justify-end">
@@ -793,11 +776,6 @@ export function ImageJobPage({
                 </div>
               );
             })}
-          {isLoadingMore && (
-            <div className="flex justify-center py-2">
-              <Loader2 className="h-5 w-5 animate-spin text-primary" />
-            </div>
-          )}
         </div>
       </Card>
 
