@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Download, ExternalLink, ImageIcon, Loader2, RefreshCw, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, ExternalLink, Loader2, RefreshCw, ShieldAlert, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
   apiClient,
@@ -12,6 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ChatComposer } from '@/components/chat/chat-composer';
 import { useImageJob } from '@/hooks/use-image-job';
 import { useLocale } from '@/lib/i18n';
 import { cn } from '@/lib/cn';
@@ -154,7 +155,6 @@ export function ImageJobPage({
   onSubscriptionChange: (subscription: Subscription) => void;
 }) {
   const { t } = useLocale();
-  const [prompt, setPrompt] = useState('');
   const [assetAction, setAssetAction] = useState<AssetActionState | null>(null);
   const [refreshingJobId, setRefreshingJobId] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
@@ -222,16 +222,6 @@ export function ImageJobPage({
         actionResetTimerRef.current = null;
       }, 5000);
     }
-  }
-
-  async function submit() {
-    const normalizedPrompt = prompt.trim();
-    if (!normalizedPrompt || isBusy || !subscription.hasAccess) {
-      return;
-    }
-
-    await createImageJob(normalizedPrompt);
-    setPrompt('');
   }
 
   async function refreshImageJob(jobToRefresh: GenerationJob) {
@@ -352,7 +342,7 @@ export function ImageJobPage({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
       {deleteDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <Card className="w-full max-w-sm border-border/70 bg-[linear-gradient(180deg,rgba(12,18,34,0.96),rgba(8,13,26,0.94))] px-4 py-4">
@@ -406,24 +396,15 @@ export function ImageJobPage({
               {t('back')}
             </Link>
           </Button>
-          <Badge className="border-primary/30 bg-primary/10 text-primary">{t('imageStudio')}</Badge>
+          <Badge className="border-primary/30 bg-primary/10 text-primary">{provider.name}</Badge>
         </div>
-        <Card className="mt-2 overflow-hidden border-primary/20 bg-[linear-gradient(135deg,rgba(16,24,42,0.96),rgba(9,15,30,0.9))] px-4 py-3">
-          <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#f7ff5c] via-[#17f1a7] to-[#52f3ff]" />
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <ImageIcon className="h-4 w-4 text-primary" />
-                <h1 className="font-display text-lg font-bold text-white">{provider.name}</h1>
-              </div>
-              <p className="mt-1 text-sm leading-5 text-muted-foreground">{provider.summary}</p>
-            </div>
-            <Badge className="shrink-0 rounded-[14px] border-primary/30 bg-primary/10 px-3 py-2 text-primary">
-              {provider.defaultModel}
-            </Badge>
-          </div>
-        </Card>
       </div>
+
+      {!provider.isAvailable && provider.availabilityMessage && (
+        <Card className="border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          {provider.availabilityMessage}
+        </Card>
+      )}
 
       {!subscription.hasAccess && (
         <Card className="border-accent/20 bg-[linear-gradient(135deg,rgba(32,20,16,0.92),rgba(17,14,28,0.86))] px-4 py-3">
@@ -451,98 +432,62 @@ export function ImageJobPage({
         </Card>
       )}
 
-      <Card className="border-border/70 bg-[linear-gradient(180deg,rgba(12,18,34,0.92),rgba(8,13,26,0.88))] px-4 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h2 className="font-display text-xl font-bold text-white">{t('createImage')}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{t('imageStudioHint')}</p>
-          </div>
-          <Badge className="border-primary/30 bg-primary/10 text-primary">{t('imageCost')}</Badge>
-        </div>
-
-        <textarea
-          value={prompt}
-          disabled={isBusy}
-          rows={4}
-          placeholder={t('imagePromptPlaceholder')}
-          className="mt-4 min-h-[112px] w-full resize-none rounded-[20px] border border-border/80 bg-background/80 px-4 py-3 text-base leading-6 text-foreground outline-none transition placeholder:text-muted-foreground focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50"
-          onChange={(event) => setPrompt(event.target.value)}
-        />
-
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-          <Button
-            type="button"
-            className="min-h-11 flex-1"
-            disabled={!prompt.trim() || isBusy || !subscription.hasAccess}
-            onClick={() => void submit()}
-          >
-            {isBusy ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {t('generatingImage')}
-              </>
-            ) : (
-              <>
-                <Sparkles className="mr-2 h-4 w-4" />
-                {t('generateImage')}
-              </>
-            )}
-          </Button>
-          {job && (
-            <Button type="button" variant="ghost" className="min-h-11" disabled={isSubmitting} onClick={resetJob}>
-              {t('newImage')}
-            </Button>
-          )}
-        </div>
-      </Card>
-
-      {job && (
-        <Card className="border-primary/20 bg-[linear-gradient(180deg,rgba(7,19,31,0.9),rgba(10,14,26,0.86))] px-4 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('jobStatus')}</div>
-              <div className="mt-1 font-display text-xl font-bold text-white">{t(`jobStatus${job.status}`)}</div>
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/70 bg-[linear-gradient(180deg,rgba(9,13,26,0.9),rgba(12,18,34,0.82))] px-3 py-3">
+        <div className="flex flex-1 flex-col gap-3 overflow-y-auto pb-2 pt-1">
+          {isLoadingHistory && (
+            <div className="flex flex-1 items-center justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
             </div>
-            <Badge
-              className={cn(
-                'border-primary/30 bg-primary/10 text-primary',
-                job.status === 'FAILED' && 'border-destructive/30 bg-destructive/10 text-destructive',
-              )}
-            >
-              {job.status}
-            </Badge>
-          </div>
-          {job.failureMessage && (
-            <p className="mt-3 text-sm text-destructive">{job.failureMessage}</p>
           )}
-        </Card>
-      )}
 
-      {error && (
-        <Card className="border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          {error}
-        </Card>
-      )}
+          {!isLoadingHistory && imageHistory.length === 0 && !job && !error && (
+            <div className="flex flex-1 items-center justify-center text-center text-sm text-muted-foreground">
+              {t('startFirstConversation', { providerName: provider.name })}
+            </div>
+          )}
 
-      {isLoadingHistory && (
-        <Card className="flex items-center gap-2 border-border/70 bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {t('loading')}
-        </Card>
-      )}
+          {job && (
+            <div className="flex justify-start">
+              <div className="max-w-[86%] rounded-[22px] border border-border/70 bg-muted/70 px-4 py-3 text-sm leading-6 text-foreground shadow-soft">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('jobStatus')}</div>
+                    <div className="mt-1 font-display text-base font-bold text-white">{t(`jobStatus${job.status}`)}</div>
+                  </div>
+                  <Badge
+                    className={cn(
+                      'border-primary/30 bg-primary/10 text-primary',
+                      job.status === 'FAILED' && 'border-destructive/30 bg-destructive/10 text-destructive',
+                    )}
+                  >
+                    {job.status}
+                  </Badge>
+                </div>
+                {job.failureMessage && (
+                  <p className="mt-3 text-sm text-destructive">{job.failureMessage}</p>
+                )}
+                <div className="mt-3 flex justify-end">
+                  <Button type="button" variant="ghost" className="min-h-10" disabled={isSubmitting} onClick={resetJob}>
+                    {t('newImage')}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
-      {imageHistory.length > 0 && (
-        <section className="space-y-3 pb-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-xl font-bold text-white">{t('generatedImages')}</h2>
-            <Badge className="border-border/60 bg-muted/70">{imageHistory.length}</Badge>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {imageHistory.map((item) => {
+          {error && (
+            <div className="flex justify-start">
+              <div className="max-w-[86%] rounded-[22px] border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm leading-6 text-destructive shadow-soft">
+                {error}
+              </div>
+            </div>
+          )}
+
+          {imageHistory.length > 0 && imageHistory.map((item) => {
               return (
-                <Card
+                <div
                   key={item.job.id}
-                  className="overflow-hidden border-primary/20 bg-background/70 p-0"
+                  className="max-w-[92%] overflow-hidden rounded-[22px] border border-border/70 bg-muted/70 text-sm leading-6 text-foreground shadow-soft"
                 >
                   {item.images.length > 0 ? (
                     <div className="grid gap-px bg-border/40">
@@ -678,10 +623,9 @@ export function ImageJobPage({
                       </div>
                     );
                   })}
-                </Card>
+                </div>
               );
             })}
-          </div>
           {nextCursor && (
             <Button
               type="button"
@@ -700,8 +644,31 @@ export function ImageJobPage({
               )}
             </Button>
           )}
-        </section>
-      )}
+        </div>
+      </Card>
+
+      <div className="sticky bottom-0 z-20 -mx-1 bg-background/90 px-1 pb-[max(env(safe-area-inset-bottom),0.25rem)] pt-2 backdrop-blur-xl">
+        <ChatComposer
+          pendingFiles={[]}
+          onUpload={() => undefined}
+          onRemoveFile={() => undefined}
+          onSend={async (content) => {
+            const normalizedPrompt = content.trim();
+            if (!normalizedPrompt || isBusy || !subscription.hasAccess) {
+              return;
+            }
+
+            await createImageJob(normalizedPrompt);
+          }}
+          disabled={
+            !provider.isAvailable ||
+            !subscription.hasAccess ||
+            isActivatingSubscription ||
+            isUnsubscribingSubscription
+          }
+          busy={isBusy}
+        />
+      </div>
     </div>
   );
 }
