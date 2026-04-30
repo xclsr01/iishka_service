@@ -25,13 +25,68 @@ function providerLabel(provider: GatewayProviderKey) {
   }
 }
 
-function sanitizeUpstreamBody(rawBody?: string) {
-  const trimmed = rawBody?.trim();
-  if (!trimmed) {
+function extractProviderErrorCode(rawBody?: string) {
+  if (!rawBody) {
     return null;
   }
 
-  return trimmed.slice(0, 1200);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    return null;
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    return null;
+  }
+
+  const payload = parsed as Record<string, unknown>;
+  const error = payload.error;
+  if (error && typeof error === 'object') {
+    const errorPayload = error as Record<string, unknown>;
+    const code = errorPayload.code ?? errorPayload.type;
+    return typeof code === 'string' && code.trim()
+      ? code.trim().slice(0, 120)
+      : null;
+  }
+
+  const code = payload.code ?? payload.type;
+  return typeof code === 'string' && code.trim()
+    ? code.trim().slice(0, 120)
+    : null;
+}
+
+function buildSafeProviderDetails(input: ProviderErrorInput) {
+  const providerErrorCode = extractProviderErrorCode(input.rawBody);
+  if (!providerErrorCode) {
+    return undefined;
+  }
+
+  return {
+    providerErrorCode,
+  };
+}
+
+export function gatewayProviderErrorLogMeta(error: AppError) {
+  const details =
+    error.details &&
+    typeof error.details === 'object' &&
+    !Array.isArray(error.details)
+      ? (error.details as Record<string, unknown>)
+      : {};
+  const providerErrorCode =
+    typeof details.providerErrorCode === 'string'
+      ? details.providerErrorCode
+      : null;
+
+  return {
+    errorCode: error.code,
+    providerErrorCode,
+    retryable: error.retryable ?? null,
+    upstreamStatus: error.upstreamStatus ?? null,
+    upstreamRequestId: error.upstreamRequestId ?? null,
+  };
 }
 
 export function isRetryableUpstreamStatus(status: number) {
@@ -51,15 +106,18 @@ export function createTimeoutError(provider: GatewayProviderKey) {
   });
 }
 
-export function createNetworkError(provider: GatewayProviderKey, error?: Error) {
+export function createNetworkError(
+  provider: GatewayProviderKey,
+  error?: Error,
+) {
   return new AppError({
     message: `${providerLabel(provider)} network request failed`,
     statusCode: 502,
     code: 'PROVIDER_UNAVAILABLE',
     retryable: true,
-    details: error
+    details: error?.message.trim()
       ? {
-          upstreamMessage: error.message,
+          providerErrorCode: 'NETWORK_ERROR',
         }
       : undefined,
   });
@@ -74,7 +132,10 @@ export function createEmptyResponseError(provider: GatewayProviderKey) {
   });
 }
 
-export function createUnsupportedOperationError(provider: GatewayProviderKey, operation: string) {
+export function createUnsupportedOperationError(
+  provider: GatewayProviderKey,
+  operation: string,
+) {
   return new AppError({
     message: `${providerLabel(provider)} does not support ${operation}`,
     statusCode: 400,
@@ -84,15 +145,10 @@ export function createUnsupportedOperationError(provider: GatewayProviderKey, op
 }
 
 export function createUpstreamHttpError(input: ProviderErrorInput) {
-  const sanitizedBody = sanitizeUpstreamBody(input.rawBody);
   const base = {
     upstreamStatus: input.status,
     upstreamRequestId: input.upstreamRequestId ?? null,
-    details: sanitizedBody
-      ? {
-          upstreamBody: sanitizedBody,
-        }
-      : undefined,
+    details: buildSafeProviderDetails(input),
   };
 
   if (input.status === 429) {

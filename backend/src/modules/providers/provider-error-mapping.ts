@@ -14,21 +14,87 @@ type UpstreamHttpErrorInput = ProviderDescriptor & {
   rawBody?: string;
 };
 
-function sanitizeUpstreamBody(rawBody?: string) {
-  const trimmed = rawBody?.trim();
-  if (!trimmed) {
+function extractProviderErrorCode(rawBody?: string) {
+  if (!rawBody) {
     return null;
   }
 
-  return trimmed.slice(0, 1000);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    return null;
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    return null;
+  }
+
+  const payload = parsed as Record<string, unknown>;
+  const error = payload.error;
+  if (error && typeof error === 'object') {
+    const errorPayload = error as Record<string, unknown>;
+    const code = errorPayload.code ?? errorPayload.type;
+    return typeof code === 'string' && code.trim()
+      ? code.trim().slice(0, 120)
+      : null;
+  }
+
+  const code = payload.code ?? payload.type;
+  return typeof code === 'string' && code.trim()
+    ? code.trim().slice(0, 120)
+    : null;
+}
+
+function buildSafeProviderDetails(input: UpstreamHttpErrorInput) {
+  const providerErrorCode = extractProviderErrorCode(input.rawBody);
+  if (!providerErrorCode) {
+    return undefined;
+  }
+
+  return {
+    providerErrorCode,
+  };
+}
+
+export function providerErrorLogMeta(error: ProviderAdapterError) {
+  const details =
+    error.details &&
+    typeof error.details === 'object' &&
+    !Array.isArray(error.details)
+      ? (error.details as Record<string, unknown>)
+      : {};
+  const providerErrorCode =
+    typeof details.providerErrorCode === 'string'
+      ? details.providerErrorCode
+      : null;
+
+  return {
+    providerKey: error.providerKey,
+    errorCode: error.code,
+    errorCategory: error.category,
+    providerErrorCode,
+    retryable: error.retryable,
+    upstreamStatus: error.upstreamStatus ?? null,
+    upstreamRequestId: error.upstreamRequestId ?? null,
+  };
 }
 
 export function isProviderTimeoutError(error: unknown) {
-  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+  return (
+    error instanceof Error &&
+    (error.name === 'TimeoutError' || error.name === 'AbortError')
+  );
 }
 
 export function isRetryableProviderStatus(status: number) {
-  return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+  return (
+    status === 408 ||
+    status === 409 ||
+    status === 425 ||
+    status === 429 ||
+    status >= 500
+  );
 }
 
 export function mapProviderHttpCategory(status: number) {
@@ -62,7 +128,9 @@ export function createProviderTimeoutError(input: ProviderDescriptor) {
   });
 }
 
-export function createProviderNetworkError(input: ProviderDescriptor & { error?: Error }) {
+export function createProviderNetworkError(
+  input: ProviderDescriptor & { error?: Error },
+) {
   return new ProviderAdapterError({
     providerKey: input.key,
     message: `${input.label} network request failed`,
@@ -70,9 +138,9 @@ export function createProviderNetworkError(input: ProviderDescriptor & { error?:
     category: 'network',
     retryable: true,
     statusCode: 502,
-    details: input.error
+    details: input.error?.message.trim()
       ? {
-          upstreamMessage: input.error.message,
+          providerErrorCode: 'NETWORK_ERROR',
         }
       : undefined,
   });
@@ -90,7 +158,10 @@ export function createProviderEmptyResponseError(input: ProviderDescriptor) {
 }
 
 export function createProviderRegionUnavailableError(
-  input: ProviderDescriptor & { clientMessage: string; upstreamRequestId?: string | null },
+  input: ProviderDescriptor & {
+    clientMessage: string;
+    upstreamRequestId?: string | null;
+  },
 ) {
   return new ProviderAdapterError({
     providerKey: input.key,
@@ -107,17 +178,16 @@ export function createUpstreamHttpError(input: UpstreamHttpErrorInput) {
   return new ProviderAdapterError({
     providerKey: input.key,
     message: `${input.label} upstream request failed`,
-    code: input.status === 429 ? 'PROVIDER_RATE_LIMITED' : 'PROVIDER_REQUEST_FAILED',
+    code:
+      input.status === 429
+        ? 'PROVIDER_RATE_LIMITED'
+        : 'PROVIDER_REQUEST_FAILED',
     category: mapProviderHttpCategory(input.status),
     retryable: isRetryableProviderStatus(input.status),
     statusCode: 502,
     upstreamStatus: input.status,
     upstreamRequestId: input.upstreamRequestId ?? null,
-    details: sanitizeUpstreamBody(input.rawBody)
-      ? {
-          upstreamBody: sanitizeUpstreamBody(input.rawBody),
-        }
-      : undefined,
+    details: buildSafeProviderDetails(input),
   });
 }
 

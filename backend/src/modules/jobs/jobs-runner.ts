@@ -1,8 +1,15 @@
-import { GenerationJobStatus, type FileAsset, type Prisma } from '@prisma/client';
+import {
+  GenerationJobStatus,
+  type FileAsset,
+  type Prisma,
+} from '@prisma/client';
 import { logger } from '../../lib/logger';
 import { persistGeneratedFile } from '../files/file-service';
 import { executeAsyncGenerationJob } from '../orchestration/orchestration-service';
-import { toClientSafeProviderMessage } from '../providers/provider-error-mapping';
+import {
+  providerErrorLogMeta,
+  toClientSafeProviderMessage,
+} from '../providers/provider-error-mapping';
 import type { ProviderGeneratedFileArtifact } from '../providers/provider-types';
 import { ProviderAdapterError } from '../providers/provider-types';
 import { consumeSubscriptionTokens } from '../subscriptions/subscription-service';
@@ -16,7 +23,9 @@ import {
   markGenerationJobRunning,
 } from './jobs-service';
 
-function toMetadataObject(value: Prisma.JsonValue | null): Record<string, unknown> | undefined {
+function toMetadataObject(
+  value: Prisma.JsonValue | null,
+): Record<string, unknown> | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined;
   }
@@ -26,12 +35,16 @@ function toMetadataObject(value: Prisma.JsonValue | null): Record<string, unknow
 
 function getSourceUserMessageId(value: Prisma.JsonValue | null) {
   const metadata = toMetadataObject(value);
-  return typeof metadata?.sourceUserMessageId === 'string' ? metadata.sourceUserMessageId : null;
+  return typeof metadata?.sourceUserMessageId === 'string'
+    ? metadata.sourceUserMessageId
+    : null;
 }
 
 function getLinkedMessageId(value: Prisma.JsonValue | null) {
   const metadata = toMetadataObject(value);
-  return typeof metadata?.linkedMessageId === 'string' ? metadata.linkedMessageId : null;
+  return typeof metadata?.linkedMessageId === 'string'
+    ? metadata.linkedMessageId
+    : null;
 }
 
 async function persistGeneratedArtifacts(
@@ -44,12 +57,14 @@ async function persistGeneratedArtifacts(
 
   const files: FileAsset[] = [];
   for (const artifact of artifacts) {
-    files.push(await persistGeneratedFile({
-      userId,
-      filename: artifact.filename,
-      mimeType: artifact.mimeType,
-      bytes: artifact.bytes,
-    }));
+    files.push(
+      await persistGeneratedFile({
+        userId,
+        filename: artifact.filename,
+        mimeType: artifact.mimeType,
+        bytes: artifact.bytes,
+      }),
+    );
   }
 
   return files;
@@ -118,10 +133,19 @@ export async function runGenerationJob(jobId: string) {
       return;
     }
 
-    await consumeSubscriptionTokens(runningJob.userId, getGenerationJobTokenCost(runningJob.kind));
+    await consumeSubscriptionTokens(
+      runningJob.userId,
+      getGenerationJobTokenCost(runningJob.kind),
+    );
 
-    const attachedFiles = await persistGeneratedArtifacts(runningJob.userId, result.artifacts);
-    const persistedResultPayload = injectPersistedFilesIntoResultPayload(result.resultPayload, attachedFiles);
+    const attachedFiles = await persistGeneratedArtifacts(
+      runningJob.userId,
+      result.artifacts,
+    );
+    const persistedResultPayload = injectPersistedFilesIntoResultPayload(
+      result.resultPayload,
+      attachedFiles,
+    );
     const sourceUserMessageId = getSourceUserMessageId(currentJob.metadata);
     const linkedMessageId = getLinkedMessageId(currentJob.metadata);
 
@@ -194,13 +218,14 @@ export async function runGenerationJob(jobId: string) {
     }
 
     const registeredProviderKey = currentJob.provider.key;
-    const failureCode = error instanceof Error && 'code' in error ? String(error.code) : 'JOB_EXECUTION_FAILED';
+    const failureCode =
+      error instanceof Error && 'code' in error
+        ? String(error.code)
+        : 'JOB_EXECUTION_FAILED';
     const failureMessage =
       error instanceof ProviderAdapterError
         ? toClientSafeProviderMessage(error)
-        : error instanceof Error
-          ? error.message
-          : 'Generation job failed';
+        : 'Generation job failed';
     const sourceUserMessageId = getSourceUserMessageId(currentJob.metadata);
     const linkedMessageId = getLinkedMessageId(currentJob.metadata);
 
@@ -208,7 +233,10 @@ export async function runGenerationJob(jobId: string) {
       jobId,
       failureCode,
       failureMessage,
-      providerRequestId: error instanceof ProviderAdapterError ? error.upstreamRequestId ?? null : null,
+      providerRequestId:
+        error instanceof ProviderAdapterError
+          ? (error.upstreamRequestId ?? null)
+          : null,
       messageId: linkedMessageId,
       messageProviderMeta: linkedMessageId
         ? buildAsyncMessageProviderMeta({
@@ -219,7 +247,10 @@ export async function runGenerationJob(jobId: string) {
             prompt: currentJob.prompt,
             status: GenerationJobStatus.FAILED,
             sourceUserMessageId,
-            upstreamRequestId: error instanceof ProviderAdapterError ? error.upstreamRequestId ?? null : null,
+            upstreamRequestId:
+              error instanceof ProviderAdapterError
+                ? (error.upstreamRequestId ?? null)
+                : null,
             externalJobId: null,
             failureCode,
             failureMessage,
@@ -227,18 +258,26 @@ export async function runGenerationJob(jobId: string) {
         : undefined,
     });
 
+    const providerMeta =
+      error instanceof ProviderAdapterError
+        ? providerErrorLogMeta(error)
+        : null;
     logger.error('generation_job_run_failed', {
       jobId,
       providerKey: registeredProviderKey,
       failureCode,
       failureMessage,
-      upstreamRequestId: error instanceof ProviderAdapterError ? error.upstreamRequestId ?? null : null,
-      upstreamStatus: error instanceof ProviderAdapterError ? error.upstreamStatus ?? null : null,
-      errorCategory: error instanceof ProviderAdapterError ? error.category : null,
-      retryable: error instanceof ProviderAdapterError ? error.retryable : null,
-      details: error instanceof ProviderAdapterError ? error.details ?? null : null,
-      message: error instanceof Error ? error.message : 'unknown',
-      stack: error instanceof Error ? error.stack ?? null : null,
+      providerErrorCode: providerMeta?.providerErrorCode ?? null,
+      upstreamRequestId: providerMeta?.upstreamRequestId ?? null,
+      upstreamStatus: providerMeta?.upstreamStatus ?? null,
+      errorCategory: providerMeta?.errorCategory ?? null,
+      retryable: providerMeta?.retryable ?? null,
+      errorMessage:
+        error instanceof ProviderAdapterError
+          ? 'Provider request failed'
+          : error instanceof Error
+            ? error.message
+            : 'unknown',
     });
   }
 }

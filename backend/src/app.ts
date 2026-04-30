@@ -9,6 +9,7 @@ import { toAppError } from './lib/errors';
 import { jsonSafeError } from './lib/http';
 import { logger } from './lib/logger';
 import { ProviderAdapterError } from './modules/providers/provider-types';
+import { providerErrorLogMeta } from './modules/providers/provider-error-mapping';
 import { authRoutes } from './modules/auth/auth-routes';
 import { catalogRoutes } from './modules/catalog/catalog-routes';
 import { chatRoutes } from './modules/chats/chat-routes';
@@ -61,19 +62,27 @@ export function createApp() {
 
   app.onError((error, c) => {
     const appError = toAppError(error);
+    const providerMeta =
+      error instanceof ProviderAdapterError
+        ? providerErrorLogMeta(error)
+        : null;
     logger.error('request_failed', {
       method: c.req.method,
       path: c.req.path,
       statusCode: appError.statusCode,
       code: appError.code,
-      providerKey: error instanceof ProviderAdapterError ? error.providerKey : null,
-      providerCategory: error instanceof ProviderAdapterError ? error.category : null,
-      providerRetryable: error instanceof ProviderAdapterError ? error.retryable : null,
-      upstreamStatus: error instanceof ProviderAdapterError ? error.upstreamStatus ?? null : null,
-      upstreamRequestId: error instanceof ProviderAdapterError ? error.upstreamRequestId ?? null : null,
-      message: error instanceof Error ? error.message : 'unknown',
-      details: appError.details ?? null,
-      stack: error instanceof Error ? error.stack ?? null : null,
+      providerKey: providerMeta?.providerKey ?? null,
+      providerCategory: providerMeta?.errorCategory ?? null,
+      providerErrorCode: providerMeta?.providerErrorCode ?? null,
+      providerRetryable: providerMeta?.retryable ?? null,
+      upstreamStatus: providerMeta?.upstreamStatus ?? null,
+      upstreamRequestId: providerMeta?.upstreamRequestId ?? null,
+      errorMessage:
+        error instanceof ProviderAdapterError
+          ? 'Provider request failed'
+          : error instanceof Error
+            ? error.message
+            : 'unknown',
     });
     return c.json(jsonSafeError(appError), {
       status: appError.statusCode as ContentfulStatusCode,
