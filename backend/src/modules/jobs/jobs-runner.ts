@@ -1,8 +1,12 @@
 import {
   GenerationJobStatus,
   type FileAsset,
+  type GenerationJob,
   type Prisma,
+  type Provider,
 } from '@prisma/client';
+import os from 'node:os';
+import { env } from '../../env';
 import { logger } from '../../lib/logger';
 import { persistGeneratedFile } from '../files/file-service';
 import { executeAsyncGenerationJob } from '../orchestration/orchestration-service';
@@ -16,12 +20,22 @@ import { consumeSubscriptionTokens } from '../subscriptions/subscription-service
 import { persistProviderUsage } from '../usage/usage-service';
 import {
   buildAsyncMessageProviderMeta,
+  claimGenerationJobById,
+  claimNextGenerationJob,
   completeGenerationJob,
   failGenerationJob,
   getGenerationJobForExecution,
   getGenerationJobTokenCost,
-  markGenerationJobRunning,
+  heartbeatGenerationJob,
+  repairStaleGenerationJobs,
 } from './jobs-service';
+
+type ClaimedGenerationJob = GenerationJob & {
+  provider: Provider;
+};
+
+const defaultClaimOwner =
+  env.JOB_WORKER_CLAIM_OWNER ?? `backend-job-worker:${os.hostname()}:${process.pid}`;
 
 function toMetadataObject(
   value: Prisma.JsonValue | null,
@@ -93,12 +107,21 @@ function injectPersistedFilesIntoResultPayload(
   return candidate;
 }
 
-export async function runGenerationJob(jobId: string) {
-  const runningJob = await markGenerationJobRunning(jobId);
+export async function runGenerationJob(
+  jobId: string,
+  options?: {
+    claimOwner?: string;
+    claimedJob?: ClaimedGenerationJob;
+  },
+) {
+  const claimOwner = options?.claimOwner ?? defaultClaimOwner;
+  const runningJob =
+    options?.claimedJob ?? (await claimGenerationJobById(jobId, claimOwner));
   if (!runningJob) {
     logger.info('generation_job_run_skipped', {
       jobId,
-      reason: 'not_queued',
+      reason: 'not_claimable',
+      claimOwner,
     });
     return;
   }
@@ -110,9 +133,12 @@ export async function runGenerationJob(jobId: string) {
     userId: runningJob.userId,
     chatId: runningJob.chatId ?? null,
     attemptCount: runningJob.attemptCount,
+    claimOwner,
   });
 
   try {
+    await heartbeatGenerationJob(runningJob.id, claimOwner);
+
     const result = await executeAsyncGenerationJob({
       jobId: runningJob.id,
       providerKey: runningJob.provider.key,
@@ -125,13 +151,20 @@ export async function runGenerationJob(jobId: string) {
     });
 
     const currentJob = await getGenerationJobForExecution(jobId);
-    if (!currentJob) {
+    if (
+      !currentJob ||
+      currentJob.status !== GenerationJobStatus.RUNNING ||
+      currentJob.claimOwner !== claimOwner
+    ) {
       logger.info('generation_job_run_aborted', {
         jobId,
-        reason: 'deleted_after_execution',
+        reason: currentJob ? 'lease_lost_after_execution' : 'deleted_after_execution',
+        claimOwner,
       });
       return;
     }
+
+    await heartbeatGenerationJob(runningJob.id, claimOwner);
 
     await consumeSubscriptionTokens(
       runningJob.userId,
@@ -151,6 +184,7 @@ export async function runGenerationJob(jobId: string) {
 
     await completeGenerationJob({
       jobId: runningJob.id,
+      claimOwner,
       resultPayload: persistedResultPayload as Prisma.InputJsonValue,
       providerRequestId: result.upstreamRequestId,
       externalJobId: result.externalJobId,
@@ -171,6 +205,17 @@ export async function runGenerationJob(jobId: string) {
           })
         : undefined,
     });
+
+    const completedJob = await getGenerationJobForExecution(runningJob.id);
+    if (completedJob?.status !== GenerationJobStatus.COMPLETED) {
+      logger.info('generation_job_completion_skipped', {
+        jobId: runningJob.id,
+        providerKey: runningJob.provider.key,
+        reason: 'terminal_update_not_applied',
+        claimOwner,
+      });
+      return;
+    }
 
     await persistProviderUsage({
       userId: runningJob.userId,
@@ -205,6 +250,7 @@ export async function runGenerationJob(jobId: string) {
       kind: runningJob.kind,
       upstreamRequestId: result.upstreamRequestId,
       externalJobId: result.externalJobId,
+      claimOwner,
     });
   } catch (error) {
     const currentJob = await getGenerationJobForExecution(jobId);
@@ -231,6 +277,7 @@ export async function runGenerationJob(jobId: string) {
 
     await failGenerationJob({
       jobId,
+      claimOwner,
       failureCode,
       failureMessage,
       providerRequestId:
@@ -262,6 +309,7 @@ export async function runGenerationJob(jobId: string) {
       error instanceof ProviderAdapterError
         ? providerErrorLogMeta(error)
         : null;
+    const failedJob = await getGenerationJobForExecution(jobId);
     logger.error('generation_job_run_failed', {
       jobId,
       providerKey: registeredProviderKey,
@@ -272,6 +320,8 @@ export async function runGenerationJob(jobId: string) {
       upstreamStatus: providerMeta?.upstreamStatus ?? null,
       errorCategory: providerMeta?.errorCategory ?? null,
       retryable: providerMeta?.retryable ?? null,
+      claimOwner,
+      terminalStatus: failedJob?.status ?? null,
       errorMessage:
         error instanceof ProviderAdapterError
           ? 'Provider request failed'
@@ -280,4 +330,89 @@ export async function runGenerationJob(jobId: string) {
             : 'unknown',
     });
   }
+}
+
+export async function runGenerationJobWorkerOnce(input?: {
+  claimOwner?: string;
+  batchSize?: number;
+}) {
+  const claimOwner = input?.claimOwner ?? defaultClaimOwner;
+  const batchSize = input?.batchSize ?? env.JOB_WORKER_BATCH_SIZE;
+  const staleRepair = await repairStaleGenerationJobs({ batchSize });
+  let claimed = 0;
+
+  for (let index = 0; index < batchSize; index += 1) {
+    const job = await claimNextGenerationJob(claimOwner);
+    if (!job) {
+      break;
+    }
+
+    claimed += 1;
+    await runGenerationJob(job.id, {
+      claimOwner,
+      claimedJob: job,
+    });
+  }
+
+  return {
+    claimOwner,
+    claimed,
+    staleRepair,
+  };
+}
+
+function delay(ms: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+
+    const timeout = setTimeout(resolve, ms);
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timeout);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+}
+
+export async function startGenerationJobWorkerLoop(input?: {
+  claimOwner?: string;
+  pollIntervalMs?: number;
+  batchSize?: number;
+  signal?: AbortSignal;
+}) {
+  const claimOwner = input?.claimOwner ?? defaultClaimOwner;
+  const pollIntervalMs = input?.pollIntervalMs ?? env.JOB_WORKER_POLL_INTERVAL_MS;
+  const batchSize = input?.batchSize ?? env.JOB_WORKER_BATCH_SIZE;
+
+  logger.info('generation_job_worker_started', {
+    claimOwner,
+    pollIntervalMs,
+    batchSize,
+    queueDriver: env.JOB_QUEUE_DRIVER,
+  });
+
+  while (!input?.signal?.aborted) {
+    try {
+      await runGenerationJobWorkerOnce({
+        claimOwner,
+        batchSize,
+      });
+    } catch (error) {
+      logger.error('generation_job_worker_iteration_failed', {
+        claimOwner,
+        message: error instanceof Error ? error.message : 'unknown',
+        stack: error instanceof Error ? (error.stack ?? null) : null,
+      });
+    }
+
+    await delay(pollIntervalMs, input?.signal);
+  }
+
+  logger.info('generation_job_worker_stopped', { claimOwner });
 }

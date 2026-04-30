@@ -1,3 +1,5 @@
+import os from 'node:os';
+import { env } from '../../env';
 import { logger } from '../../lib/logger';
 import type {
   EnqueueGenerationJobInput,
@@ -19,6 +21,8 @@ function scheduleBackgroundTask(task: () => Promise<unknown>) {
 
 class InlineGenerationJobQueue implements GenerationJobQueue {
   private providerTails = new Map<string, Promise<void>>();
+  private claimOwner =
+    env.JOB_WORKER_CLAIM_OWNER ?? `inline-job-worker:${os.hostname()}:${process.pid}`;
 
   async enqueue(
     input: EnqueueGenerationJobInput,
@@ -34,7 +38,9 @@ class InlineGenerationJobQueue implements GenerationJobQueue {
     const runTask = async () => {
       try {
         const { runGenerationJob } = await import('./jobs-runner');
-        await runGenerationJob(input.jobId);
+        await runGenerationJob(input.jobId, {
+          claimOwner: this.claimOwner,
+        });
       } catch (error) {
         logger.error('generation_job_enqueue_execution_failed', {
           jobId: input.jobId,
@@ -82,5 +88,45 @@ class InlineGenerationJobQueue implements GenerationJobQueue {
   }
 }
 
+class DbBackedGenerationJobQueue implements GenerationJobQueue {
+  async enqueue(
+    input: EnqueueGenerationJobInput,
+    options?: EnqueueGenerationJobOptions,
+  ) {
+    logger.info('generation_job_enqueued_for_db_worker', {
+      jobId: input.jobId,
+      providerKey: input.providerKey,
+      kind: input.kind,
+      chatId: input.chatId ?? null,
+      queueDriver: env.JOB_QUEUE_DRIVER,
+    });
+
+    await options?.onSettled?.().catch((error) => {
+      logger.error('generation_job_enqueue_cleanup_failed', {
+        jobId: input.jobId,
+        providerKey: input.providerKey,
+        kind: input.kind,
+        message: error instanceof Error ? error.message : 'unknown',
+        stack: error instanceof Error ? (error.stack ?? null) : null,
+      });
+    });
+  }
+}
+
+function createGenerationJobQueue(): GenerationJobQueue {
+  if (env.JOB_QUEUE_DRIVER === 'db') {
+    logger.info('generation_job_queue_mode_selected', {
+      queueDriver: 'db',
+    });
+    return new DbBackedGenerationJobQueue();
+  }
+
+  logger.info('generation_job_queue_mode_selected', {
+    queueDriver: 'inline',
+    devOnly: true,
+  });
+  return new InlineGenerationJobQueue();
+}
+
 export const generationJobQueue: GenerationJobQueue =
-  new InlineGenerationJobQueue();
+  createGenerationJobQueue();

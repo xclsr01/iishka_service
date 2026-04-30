@@ -208,6 +208,10 @@ model GenerationJob {
   providerRequestId String?
   externalJobId     String?
   attemptCount      Int                 @default(0)
+  maxAttempts       Int                 @default(3)
+  claimOwner        String?
+  heartbeatAt       DateTime?
+  nextAttemptAt     DateTime?
   queuedAt          DateTime            @default(now())
   startedAt         DateTime?
   completedAt       DateTime?
@@ -222,6 +226,9 @@ model GenerationJob {
   @@index([userId, providerId, kind, createdAt, id])
   @@index([userId, providerId, kind, status, createdAt, id])
   @@index([status, queuedAt])
+  @@index([status, nextAttemptAt, queuedAt])
+  @@index([status, heartbeatAt])
+  @@index([claimOwner, status])
   @@index([providerId, status])
   @@index([chatId])
 }
