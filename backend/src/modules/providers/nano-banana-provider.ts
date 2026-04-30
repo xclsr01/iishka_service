@@ -1,7 +1,11 @@
 import { GenerationJobKind, ProviderKey } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { env } from '../../env';
-import { executeGatewayAsyncJob, isAiGatewayConfigured } from './gateway-client';
+import {
+  assertDirectProviderEgressAllowed,
+  executeGatewayAsyncJob,
+  isAiGatewayConfigured,
+} from './gateway-client';
 import type {
   AiProviderAdapter,
   ProviderAsyncJobInput,
@@ -108,7 +112,8 @@ export class NanoBananaProviderAdapter implements AiProviderAdapter {
 
     return new NormalizedProviderError({
       providerKey: ProviderKey.NANO_BANANA,
-      message: error instanceof Error ? error.message : 'Nano Banana request failed',
+      message:
+        error instanceof Error ? error.message : 'Nano Banana request failed',
       code: 'PROVIDER_REQUEST_FAILED',
       category: 'unknown',
       retryable: false,
@@ -116,7 +121,9 @@ export class NanoBananaProviderAdapter implements AiProviderAdapter {
     });
   }
 
-  async generateResponse(_input: ProviderGenerateInput): Promise<ProviderGenerateResult> {
+  async generateResponse(
+    _input: ProviderGenerateInput,
+  ): Promise<ProviderGenerateResult> {
     throw new AppError(
       'Nano Banana image generation must be executed as an async job',
       400,
@@ -124,10 +131,14 @@ export class NanoBananaProviderAdapter implements AiProviderAdapter {
     );
   }
 
-  async executeAsyncJob(input: ProviderAsyncJobInput): Promise<ProviderAsyncJobResult> {
+  async executeAsyncJob(
+    input: ProviderAsyncJobInput,
+  ): Promise<ProviderAsyncJobResult> {
     if (isAiGatewayConfigured()) {
       return executeGatewayAsyncJob(input);
     }
+
+    assertDirectProviderEgressAllowed(ProviderKey.NANO_BANANA, 'async_job');
 
     if (input.kind !== GenerationJobKind.IMAGE) {
       throw new AppError(
@@ -141,34 +152,39 @@ export class NanoBananaProviderAdapter implements AiProviderAdapter {
     let response: Response;
 
     try {
-      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-goog-api-key': env.GOOGLE_AI_API_KEY,
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  text: input.prompt,
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            responseModalities: ['IMAGE', 'TEXT'],
+      response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-goog-api-key': env.GOOGLE_AI_API_KEY,
           },
-        }),
-        signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
-      });
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    text: input.prompt,
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              responseModalities: ['IMAGE', 'TEXT'],
+            },
+          }),
+          signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
+        },
+      );
     } catch (error) {
       throw this.classifyError(error);
     }
 
-    const upstreamRequestId = response.headers.get('x-request-id') ?? response.headers.get('request-id');
+    const upstreamRequestId =
+      response.headers.get('x-request-id') ??
+      response.headers.get('request-id');
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');

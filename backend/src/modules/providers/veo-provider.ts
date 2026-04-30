@@ -1,7 +1,11 @@
 import { GenerationJobKind, ProviderKey } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { env } from '../../env';
-import { executeGatewayAsyncJob, isAiGatewayConfigured } from './gateway-client';
+import {
+  assertDirectProviderEgressAllowed,
+  executeGatewayAsyncJob,
+  isAiGatewayConfigured,
+} from './gateway-client';
 import type {
   AiProviderAdapter,
   ProviderAsyncJobInput,
@@ -92,13 +96,22 @@ function normalizeDurationSeconds(value: unknown) {
   return 4;
 }
 
-function normalizeMetadata(metadata?: Record<string, unknown>): VeoGenerationMetadata {
-  const aspectRatio = typeof metadata?.aspectRatio === 'string' ? metadata.aspectRatio : '9:16';
+function normalizeMetadata(
+  metadata?: Record<string, unknown>,
+): VeoGenerationMetadata {
+  const aspectRatio =
+    typeof metadata?.aspectRatio === 'string' ? metadata.aspectRatio : '9:16';
   const durationSeconds = normalizeDurationSeconds(metadata?.durationSeconds);
-  const resolution = typeof metadata?.resolution === 'string' ? metadata.resolution : '720p';
-  const negativePrompt = typeof metadata?.negativePrompt === 'string' ? metadata.negativePrompt : undefined;
+  const resolution =
+    typeof metadata?.resolution === 'string' ? metadata.resolution : '720p';
+  const negativePrompt =
+    typeof metadata?.negativePrompt === 'string'
+      ? metadata.negativePrompt
+      : undefined;
   const personGeneration =
-    typeof metadata?.personGeneration === 'string' ? metadata.personGeneration : 'allow_all';
+    typeof metadata?.personGeneration === 'string'
+      ? metadata.personGeneration
+      : 'allow_all';
   const seed = typeof metadata?.seed === 'number' ? metadata.seed : undefined;
 
   return {
@@ -121,7 +134,8 @@ function extractGeneratedVideo(operation: VeoOperationResponse) {
     return modernVideo;
   }
 
-  const legacyVideo = operation.response?.generateVideoResponse?.generatedSamples?.[0]?.video;
+  const legacyVideo =
+    operation.response?.generateVideoResponse?.generatedSamples?.[0]?.video;
   if (legacyVideo?.uri) {
     return legacyVideo;
   }
@@ -191,7 +205,9 @@ export class VeoProviderAdapter implements AiProviderAdapter {
     });
   }
 
-  async generateResponse(_input: ProviderGenerateInput): Promise<ProviderGenerateResult> {
+  async generateResponse(
+    _input: ProviderGenerateInput,
+  ): Promise<ProviderGenerateResult> {
     throw new AppError(
       'Veo video generation must be executed as an async job',
       400,
@@ -199,10 +215,14 @@ export class VeoProviderAdapter implements AiProviderAdapter {
     );
   }
 
-  async executeAsyncJob(input: ProviderAsyncJobInput): Promise<ProviderAsyncJobResult> {
+  async executeAsyncJob(
+    input: ProviderAsyncJobInput,
+  ): Promise<ProviderAsyncJobResult> {
     if (isAiGatewayConfigured()) {
       return executeGatewayAsyncJob(input);
     }
+
+    assertDirectProviderEgressAllowed(ProviderKey.VEO, 'async_job');
 
     if (input.kind !== GenerationJobKind.VIDEO) {
       throw new AppError(
@@ -321,7 +341,9 @@ export class VeoProviderAdapter implements AiProviderAdapter {
         new AppError(
           operation.error.message,
           502,
-          operation.error.code === 429 ? 'PROVIDER_RATE_LIMITED' : 'PROVIDER_REQUEST_FAILED',
+          operation.error.code === 429
+            ? 'PROVIDER_RATE_LIMITED'
+            : 'PROVIDER_REQUEST_FAILED',
           {
             upstreamStatus: operation.error.status ?? null,
             upstreamCode: operation.error.code ?? null,
@@ -384,7 +406,11 @@ export class VeoProviderAdapter implements AiProviderAdapter {
       );
     }
 
-    const mimeType = (downloadResponse.headers.get('content-type') ?? generatedVideo.mimeType ?? 'video/mp4')
+    const mimeType = (
+      downloadResponse.headers.get('content-type') ??
+      generatedVideo.mimeType ??
+      'video/mp4'
+    )
       .split(';')[0]
       .trim();
     const filename = `veo-${input.jobId}-0.${extensionFromMimeType(mimeType)}`;

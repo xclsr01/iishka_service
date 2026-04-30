@@ -9,12 +9,14 @@ const originalFetch = globalThis.fetch;
 const originalAiGatewayUrl = env.AI_GATEWAY_URL;
 const originalAiGatewayToken = env.AI_GATEWAY_INTERNAL_TOKEN;
 const originalGoogleAiModel = env.GOOGLE_AI_MODEL;
+const originalAllowDirectProviderEgress = env.ALLOW_DIRECT_PROVIDER_EGRESS;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   env.AI_GATEWAY_URL = originalAiGatewayUrl;
   env.AI_GATEWAY_INTERNAL_TOKEN = originalAiGatewayToken;
   env.GOOGLE_AI_MODEL = originalGoogleAiModel;
+  env.ALLOW_DIRECT_PROVIDER_EGRESS = originalAllowDirectProviderEgress;
 });
 
 test('GeminiProviderAdapter calls Google AI Studio generateContent with header auth', async () => {
@@ -33,6 +35,7 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
 
   env.AI_GATEWAY_URL = undefined;
   env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+  env.ALLOW_DIRECT_PROVIDER_EGRESS = true;
 
   globalThis.fetch = async (input, init) => {
     calledUrl = String(input);
@@ -44,7 +47,9 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
         candidates: [
           {
             content: {
-              parts: [{ text: 'AI finds patterns and predicts useful outputs.' }],
+              parts: [
+                { text: 'AI finds patterns and predicts useful outputs.' },
+              ],
             },
           },
         ],
@@ -82,8 +87,14 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
   assert.equal(calledHeaders['x-goog-api-key'], process.env.GOOGLE_AI_API_KEY);
   assert.ok(calledPayload);
   assert.equal(calledPayload.contents[0]?.role, 'user');
-  assert.match(calledPayload.contents[0]?.parts[0]?.text ?? '', /Google Search grounding is enabled/);
-  assert.match(calledPayload.contents[0]?.parts[0]?.text ?? '', /USER: Explain how AI works in a few words/);
+  assert.match(
+    calledPayload.contents[0]?.parts[0]?.text ?? '',
+    /Google Search grounding is enabled/,
+  );
+  assert.match(
+    calledPayload.contents[0]?.parts[0]?.text ?? '',
+    /USER: Explain how AI works in a few words/,
+  );
   assert.deepEqual(calledPayload.tools, [{ google_search: {} }]);
   assert.equal(result.text, 'AI finds patterns and predicts useful outputs.');
   assert.equal(result.upstreamRequestId, 'req_gemini_test');
@@ -109,6 +120,7 @@ test('GeminiProviderAdapter retries without search grounding when Gemini rejects
 
   env.AI_GATEWAY_URL = undefined;
   env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+  env.ALLOW_DIRECT_PROVIDER_EGRESS = true;
 
   globalThis.fetch = async (_input, init) => {
     calledPayloads.push(JSON.parse(String(init?.body)));
@@ -163,6 +175,7 @@ test('GeminiProviderAdapter normalizes model names and falls back to default on 
 
   env.AI_GATEWAY_URL = undefined;
   env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+  env.ALLOW_DIRECT_PROVIDER_EGRESS = true;
   env.GOOGLE_AI_MODEL = 'gemini-2.5-flash';
 
   globalThis.fetch = async (input) => {
@@ -219,6 +232,7 @@ test('GeminiProviderAdapter falls back to stable chat model when configured mode
 
   env.AI_GATEWAY_URL = undefined;
   env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+  env.ALLOW_DIRECT_PROVIDER_EGRESS = true;
   env.GOOGLE_AI_MODEL = 'gemini-3.0-flash';
 
   globalThis.fetch = async (input) => {
@@ -321,11 +335,19 @@ test('GeminiProviderAdapter calls configured AI gateway when available', async (
     ],
   });
 
-  assert.equal(calledUrl, 'https://ai-gateway.example.run.app/v1/providers/gemini/chat/respond');
-  assert.equal(calledHeaders.authorization, 'Bearer test-ai-gateway-token-000000000000000000');
+  assert.equal(
+    calledUrl,
+    'https://ai-gateway.example.run.app/v1/providers/gemini/chat/respond',
+  );
+  assert.equal(
+    calledHeaders.authorization,
+    'Bearer test-ai-gateway-token-000000000000000000',
+  );
   assert.ok(calledPayload);
   assert.equal(calledPayload.model, 'gemini-2.5-flash');
-  assert.deepEqual(calledPayload.messages, [{ role: 'user', content: 'Hello' }]);
+  assert.deepEqual(calledPayload.messages, [
+    { role: 'user', content: 'Hello' },
+  ]);
   assert.equal(result.text, 'Gateway Gemini response');
   assert.equal(result.upstreamRequestId, 'req_gateway_gemini');
   assert.equal(result.raw.gateway, true);
@@ -337,6 +359,7 @@ test('GeminiProviderAdapter classifies retryable Google AI rate limit errors', a
 
   env.AI_GATEWAY_URL = undefined;
   env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+  env.ALLOW_DIRECT_PROVIDER_EGRESS = true;
 
   globalThis.fetch = async () =>
     new Response(

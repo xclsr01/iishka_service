@@ -47,18 +47,52 @@ test('parseBackendEnv accepts production with required AI gateway config', () =>
   );
 });
 
-test('parseBackendEnv allows explicitly named emergency direct provider egress override', () => {
+test('parseBackendEnv rejects direct provider egress in production', () => {
+  assert.throws(
+    () =>
+      parseBackendEnv({
+        ...validProductionEnv,
+        ALLOW_DIRECT_PROVIDER_EGRESS: 'true',
+      }),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /ALLOW_DIRECT_PROVIDER_EGRESS/);
+      return true;
+    },
+  );
+});
+
+test('parseBackendEnv still requires AI gateway even with legacy emergency env present', () => {
+  assert.throws(
+    () =>
+      parseBackendEnv({
+        ...validProductionEnv,
+        AI_GATEWAY_URL: '',
+        AI_GATEWAY_INTERNAL_TOKEN: '',
+        EMERGENCY_ALLOW_DIRECT_PROVIDER_EGRESS_IN_PRODUCTION: 'true',
+      }),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /AI_GATEWAY_URL/);
+      assert.match(error.message, /AI_GATEWAY_INTERNAL_TOKEN/);
+      return true;
+    },
+  );
+});
+
+test('parseBackendEnv allows direct provider egress flag outside production', () => {
   const env = parseBackendEnv({
     ...validProductionEnv,
+    APP_ENV: 'development',
     AI_GATEWAY_URL: '',
     AI_GATEWAY_INTERNAL_TOKEN: '',
-    EMERGENCY_ALLOW_DIRECT_PROVIDER_EGRESS_IN_PRODUCTION: 'true',
+    ALLOW_DIRECT_PROVIDER_EGRESS: 'true',
   });
 
-  assert.equal(env.APP_ENV, 'production');
+  assert.equal(env.APP_ENV, 'development');
   assert.equal(env.AI_GATEWAY_URL, undefined);
   assert.equal(env.AI_GATEWAY_INTERNAL_TOKEN, undefined);
-  assert.equal(env.EMERGENCY_ALLOW_DIRECT_PROVIDER_EGRESS_IN_PRODUCTION, true);
+  assert.equal(env.ALLOW_DIRECT_PROVIDER_EGRESS, true);
 });
 
 test('parseBackendEnv keeps development defaults permissive', () => {

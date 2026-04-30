@@ -98,7 +98,7 @@ const envSchema = z.object({
     .string()
     .default('false')
     .transform((value) => value === 'true'),
-  EMERGENCY_ALLOW_DIRECT_PROVIDER_EGRESS_IN_PRODUCTION: z
+  ALLOW_DIRECT_PROVIDER_EGRESS: z
     .string()
     .default('false')
     .transform((value) => value === 'true'),
@@ -194,30 +194,16 @@ function validateProductionEnv(env: BackendEnv) {
   );
   requireProductionValue(env, 'DATABASE_URL', [placeholderDatabaseUrl], errors);
 
-  if (!env.EMERGENCY_ALLOW_DIRECT_PROVIDER_EGRESS_IN_PRODUCTION) {
-    requireProductionValue(env, 'AI_GATEWAY_URL', [placeholderUrl], errors);
-    requireProductionValue(
-      env,
-      'AI_GATEWAY_INTERNAL_TOKEN',
-      [placeholderSecret],
-      errors,
-    );
-  } else {
-    if (
-      env.AI_GATEWAY_URL &&
-      isPlaceholderValue(env.AI_GATEWAY_URL, [placeholderUrl])
-    ) {
-      errors.push('AI_GATEWAY_URL must not use a placeholder when configured');
-    }
+  requireProductionValue(env, 'AI_GATEWAY_URL', [placeholderUrl], errors);
+  requireProductionValue(
+    env,
+    'AI_GATEWAY_INTERNAL_TOKEN',
+    [placeholderSecret],
+    errors,
+  );
 
-    if (
-      env.AI_GATEWAY_INTERNAL_TOKEN &&
-      isPlaceholderValue(env.AI_GATEWAY_INTERNAL_TOKEN, [placeholderSecret])
-    ) {
-      errors.push(
-        'AI_GATEWAY_INTERNAL_TOKEN must not use a placeholder when configured',
-      );
-    }
+  if (env.ALLOW_DIRECT_PROVIDER_EGRESS) {
+    errors.push('ALLOW_DIRECT_PROVIDER_EGRESS must be false in production');
   }
 
   if (env.ENABLE_DEV_AUTH) {

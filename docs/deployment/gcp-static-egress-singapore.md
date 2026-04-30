@@ -222,5 +222,5 @@ If static egress causes issues:
 
 If the entire gateway is unhealthy:
 
-1. Temporarily unset `AI_GATEWAY_URL` on the backend to use local/dev direct provider fallback only where configured.
-2. Prefer restoring the previous working gateway revision instead for production.
+1. Restore the previous working gateway revision or deploy a fixed gateway revision.
+2. Do not unset `AI_GATEWAY_URL` on the production backend; production backend startup requires AI Gateway configuration and direct provider egress is rejected.

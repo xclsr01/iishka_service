@@ -1,5 +1,6 @@
 import { ProviderKey, type GenerationJobKind } from '@prisma/client';
 import { env } from '../../env';
+import { logger } from '../../lib/logger';
 import { getLogContext } from '../../lib/request-context';
 import {
   createProviderEmptyResponseError,
@@ -17,7 +18,12 @@ import type {
   ProviderUsage,
 } from './provider-types';
 
-type GatewayProviderSlug = 'openai' | 'anthropic' | 'gemini' | 'nano-banana' | 'veo';
+type GatewayProviderSlug =
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'nano-banana'
+  | 'veo';
 
 type GatewayErrorResponse = {
   error?: {
@@ -81,12 +87,50 @@ type GatewayAsyncJobInput = {
   metadata?: Record<string, unknown>;
 };
 
+type ProviderTransportOperation = 'chat' | 'async_job';
+
 function trimTrailingSlashes(value: string) {
   return value.replace(/\/+$/, '');
 }
 
 export function isAiGatewayConfigured() {
-  return Boolean(env.AI_GATEWAY_URL);
+  return Boolean(env.AI_GATEWAY_URL && env.AI_GATEWAY_INTERNAL_TOKEN);
+}
+
+export function logGatewayProviderTransport(
+  providerKey: ProviderKey,
+  operation: ProviderTransportOperation,
+) {
+  logger.info('provider_transport_selected', {
+    providerKey,
+    operation,
+    transportMode: 'ai_gateway',
+    appEnv: env.APP_ENV,
+  });
+}
+
+export function assertDirectProviderEgressAllowed(
+  providerKey: ProviderKey,
+  operation: ProviderTransportOperation,
+) {
+  if (env.APP_ENV === 'production' || !env.ALLOW_DIRECT_PROVIDER_EGRESS) {
+    throw new ProviderAdapterError({
+      providerKey,
+      message:
+        'Direct provider egress is disabled. Configure AI_GATEWAY_URL and AI_GATEWAY_INTERNAL_TOKEN.',
+      code: 'PROVIDER_DIRECT_EGRESS_DISABLED',
+      category: 'service_unavailable',
+      retryable: false,
+      statusCode: 500,
+    });
+  }
+
+  logger.info('provider_transport_selected', {
+    providerKey,
+    operation,
+    transportMode: 'direct_provider',
+    appEnv: env.APP_ENV,
+  });
 }
 
 function providerSlug(providerKey: ProviderKey): GatewayProviderSlug {
@@ -185,17 +229,25 @@ function mapGatewayError(input: {
 
   return new ProviderAdapterError({
     providerKey: input.providerKey,
-    message: input.message || `${providerLabel(input.providerKey)} request failed`,
-    code: input.code?.startsWith('PROVIDER_') ? input.code : 'PROVIDER_REQUEST_FAILED',
+    message:
+      input.message || `${providerLabel(input.providerKey)} request failed`,
+    code: input.code?.startsWith('PROVIDER_')
+      ? input.code
+      : 'PROVIDER_REQUEST_FAILED',
     category: mapGatewayErrorCategory(input.status, input.code),
-    retryable: input.status === 408 || input.status === 429 || input.status >= 500,
+    retryable:
+      input.status === 408 || input.status === 429 || input.status >= 500,
     statusCode: 502,
     upstreamStatus: input.status,
     upstreamRequestId: input.requestId ?? null,
   });
 }
 
-async function requestGateway<T>(providerKey: ProviderKey, path: string, body: Record<string, unknown>) {
+async function requestGateway<T>(
+  providerKey: ProviderKey,
+  path: string,
+  body: Record<string, unknown>,
+) {
   if (!env.AI_GATEWAY_URL || !env.AI_GATEWAY_INTERNAL_TOKEN) {
     throw new ProviderAdapterError({
       providerKey,
@@ -214,21 +266,27 @@ async function requestGateway<T>(providerKey: ProviderKey, path: string, body: R
     : env.AI_GATEWAY_TIMEOUT_MS;
 
   try {
-    response = await fetch(`${trimTrailingSlashes(env.AI_GATEWAY_URL)}${path}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${env.AI_GATEWAY_INTERNAL_TOKEN}`,
-        ...(requestId ? { 'x-request-id': requestId } : {}),
+    response = await fetch(
+      `${trimTrailingSlashes(env.AI_GATEWAY_URL)}${path}`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${env.AI_GATEWAY_INTERNAL_TOKEN}`,
+          ...(requestId ? { 'x-request-id': requestId } : {}),
+        },
+        body: JSON.stringify({
+          ...body,
+          requestId,
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
       },
-      body: JSON.stringify({
-        ...body,
-        requestId,
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    );
   } catch (error) {
-    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+    if (
+      error instanceof Error &&
+      (error.name === 'TimeoutError' || error.name === 'AbortError')
+    ) {
       throw createProviderTimeoutError({
         key: providerKey,
         label: providerLabel(providerKey),
@@ -247,7 +305,9 @@ async function requestGateway<T>(providerKey: ProviderKey, path: string, body: R
   }
 
   if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as GatewayErrorResponse | null;
+    const payload = (await response
+      .json()
+      .catch(() => null)) as GatewayErrorResponse | null;
     throw mapGatewayError({
       providerKey,
       status: response.status,
@@ -301,7 +361,10 @@ function mapArtifacts(
   }));
 }
 
-export async function generateGatewayChatResponse(input: GatewayChatInput): Promise<ProviderGenerateResult> {
+export async function generateGatewayChatResponse(
+  input: GatewayChatInput,
+): Promise<ProviderGenerateResult> {
+  logGatewayProviderTransport(input.providerKey, 'chat');
   const slug = providerSlug(input.providerKey);
   const data = await requestGateway<GatewayChatResponse>(
     input.providerKey,
@@ -335,7 +398,10 @@ export async function generateGatewayChatResponse(input: GatewayChatInput): Prom
   };
 }
 
-export async function executeGatewayAsyncJob(input: GatewayAsyncJobInput): Promise<ProviderAsyncJobResult> {
+export async function executeGatewayAsyncJob(
+  input: GatewayAsyncJobInput,
+): Promise<ProviderAsyncJobResult> {
+  logGatewayProviderTransport(input.providerKey, 'async_job');
   const slug = providerSlug(input.providerKey);
   const data = await requestGateway<GatewayAsyncJobResponse>(
     input.providerKey,

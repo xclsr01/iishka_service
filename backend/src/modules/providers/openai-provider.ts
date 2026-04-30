@@ -2,7 +2,11 @@ import { ProviderKey } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { env } from '../../env';
 import { getLogContext } from '../../lib/request-context';
-import { generateGatewayChatResponse, isAiGatewayConfigured } from './gateway-client';
+import {
+  assertDirectProviderEgressAllowed,
+  generateGatewayChatResponse,
+  isAiGatewayConfigured,
+} from './gateway-client';
 import type {
   AiProviderAdapter,
   ProviderAsyncJobInput,
@@ -81,7 +85,10 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
       return error;
     }
 
-    if (error instanceof AppError && error.code === 'PROVIDER_REGION_UNAVAILABLE') {
+    if (
+      error instanceof AppError &&
+      error.code === 'PROVIDER_REGION_UNAVAILABLE'
+    ) {
       return createProviderRegionUnavailableError({
         key: ProviderKey.OPENAI,
         label: 'OpenAI',
@@ -133,7 +140,9 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
     });
   }
 
-  async generateResponse(input: ProviderGenerateInput): Promise<ProviderGenerateResult> {
+  async generateResponse(
+    input: ProviderGenerateInput,
+  ): Promise<ProviderGenerateResult> {
     if (!env.OPENAI_ENABLED) {
       throw this.classifyError(
         new AppError(
@@ -147,6 +156,8 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
     if (isAiGatewayConfigured()) {
       return generateGatewayChatResponse(input);
     }
+
+    assertDirectProviderEgressAllowed(ProviderKey.OPENAI, 'chat');
 
     if (env.OPENAI_GATEWAY_URL) {
       return this.generateResponseViaGateway(input);
@@ -208,38 +219,46 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
       message: input.message || 'OpenAI gateway request failed',
       code: code.startsWith('PROVIDER_') ? code : 'PROVIDER_REQUEST_FAILED',
       category: input.status >= 500 ? 'service_unavailable' : 'bad_request',
-      retryable: input.status === 408 || input.status === 429 || input.status >= 500,
+      retryable:
+        input.status === 408 || input.status === 429 || input.status >= 500,
       statusCode: 502,
       upstreamStatus: input.status,
       upstreamRequestId: input.upstreamRequestId ?? null,
     });
   }
 
-  private async generateResponseViaGateway(input: ProviderGenerateInput): Promise<ProviderGenerateResult> {
+  private async generateResponseViaGateway(
+    input: ProviderGenerateInput,
+  ): Promise<ProviderGenerateResult> {
     let response: Response;
     const requestId = getLogContext().requestId;
 
     try {
-      response = await fetch(`${trimTrailingSlashes(env.OPENAI_GATEWAY_URL!)}/v1/chat/respond`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${env.OPENAI_GATEWAY_INTERNAL_TOKEN}`,
-          ...(requestId ? { 'x-request-id': requestId } : {}),
+      response = await fetch(
+        `${trimTrailingSlashes(env.OPENAI_GATEWAY_URL!)}/v1/chat/respond`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${env.OPENAI_GATEWAY_INTERNAL_TOKEN}`,
+            ...(requestId ? { 'x-request-id': requestId } : {}),
+          },
+          body: JSON.stringify({
+            model: input.model || env.OPENAI_MODEL,
+            messages: input.messages,
+            requestId,
+          }),
+          signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
         },
-        body: JSON.stringify({
-          model: input.model || env.OPENAI_MODEL,
-          messages: input.messages,
-          requestId,
-        }),
-        signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
-      });
+      );
     } catch (error) {
       throw this.classifyError(error);
     }
 
     if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as OpenAiGatewayErrorResponse | null;
+      const payload = (await response
+        .json()
+        .catch(() => null)) as OpenAiGatewayErrorResponse | null;
       throw this.classifyError(
         this.createGatewayError({
           status: response.status,
@@ -280,7 +299,9 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
     };
   }
 
-  private async generateResponseDirect(input: ProviderGenerateInput): Promise<ProviderGenerateResult> {
+  private async generateResponseDirect(
+    input: ProviderGenerateInput,
+  ): Promise<ProviderGenerateResult> {
     let response: Response;
     try {
       response = await fetch(`${env.OPENAI_BASE_URL}/chat/completions`, {
@@ -302,7 +323,8 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
     if (!response.ok) {
       const body = await response.text().catch(() => '');
       const upstreamRequestId =
-        response.headers.get('x-request-id') ?? response.headers.get('request-id');
+        response.headers.get('x-request-id') ??
+        response.headers.get('request-id');
 
       if (body.includes('unsupported_country_region_territory')) {
         throw this.classifyError(
@@ -354,13 +376,22 @@ export class OpenAiProviderAdapter implements AiProviderAdapter {
           }
         : null,
       upstreamRequestId:
-        response.headers.get('x-request-id') ?? response.headers.get('request-id') ?? data.id ?? null,
+        response.headers.get('x-request-id') ??
+        response.headers.get('request-id') ??
+        data.id ??
+        null,
     };
   }
 
-  async executeAsyncJob(input: ProviderAsyncJobInput): Promise<ProviderAsyncJobResult> {
+  async executeAsyncJob(
+    input: ProviderAsyncJobInput,
+  ): Promise<ProviderAsyncJobResult> {
     if (input.kind !== 'PROVIDER_ASYNC') {
-      throw new AppError('OpenAI async job kind is not supported', 400, 'PROVIDER_JOB_KIND_UNSUPPORTED');
+      throw new AppError(
+        'OpenAI async job kind is not supported',
+        400,
+        'PROVIDER_JOB_KIND_UNSUPPORTED',
+      );
     }
 
     const result = await this.generateResponse({
