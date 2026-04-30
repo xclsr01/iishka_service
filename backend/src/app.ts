@@ -3,7 +3,6 @@ import { cors } from 'hono/cors';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { env } from './env';
 import { notFoundHandler } from './middleware/error-handler';
-import { rateLimitMiddleware } from './middleware/rate-limit';
 import { requestIdMiddleware } from './middleware/request-id';
 import { toAppError } from './lib/errors';
 import { jsonSafeError } from './lib/http';
@@ -33,7 +32,6 @@ export function createApp() {
     }),
   );
   app.use('*', requestIdMiddleware);
-  app.use('*', rateLimitMiddleware);
 
   app.get('/', (c) => {
     return c.json({

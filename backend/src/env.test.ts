@@ -15,6 +15,9 @@ const validProductionEnv = {
   TELEGRAM_DELIVERY_MODE: 'webhook',
   AI_GATEWAY_URL: 'https://ai-gateway.example.run.app',
   AI_GATEWAY_INTERNAL_TOKEN: 'prod-ai-gateway-token-000000000000000000',
+  RATE_LIMIT_DRIVER: 'upstash',
+  UPSTASH_REDIS_REST_URL: 'https://upstash.example.com',
+  UPSTASH_REDIS_REST_TOKEN: 'prod-upstash-token-000000000000000000',
 };
 
 test('parseBackendEnv rejects production placeholders and missing AI gateway config', () => {
@@ -31,6 +34,7 @@ test('parseBackendEnv rejects production placeholders and missing AI gateway con
       assert.match(error.message, /DATABASE_URL/);
       assert.match(error.message, /AI_GATEWAY_URL/);
       assert.match(error.message, /AI_GATEWAY_INTERNAL_TOKEN/);
+      assert.match(error.message, /RATE_LIMIT_DRIVER/);
       return true;
     },
   );
@@ -57,6 +61,37 @@ test('parseBackendEnv rejects direct provider egress in production', () => {
     (error) => {
       assert.ok(error instanceof Error);
       assert.match(error.message, /ALLOW_DIRECT_PROVIDER_EGRESS/);
+      return true;
+    },
+  );
+});
+
+test('parseBackendEnv rejects memory rate limiter in production', () => {
+  assert.throws(
+    () =>
+      parseBackendEnv({
+        ...validProductionEnv,
+        RATE_LIMIT_DRIVER: 'memory',
+      }),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /RATE_LIMIT_DRIVER=memory/);
+      return true;
+    },
+  );
+});
+
+test('parseBackendEnv requires Upstash config when Upstash limiter is selected', () => {
+  assert.throws(
+    () =>
+      parseBackendEnv({
+        APP_ENV: 'development',
+        RATE_LIMIT_DRIVER: 'upstash',
+      }),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /UPSTASH_REDIS_REST_URL/);
+      assert.match(error.message, /UPSTASH_REDIS_REST_TOKEN/);
       return true;
     },
   );

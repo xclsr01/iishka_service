@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { authMiddleware } from '../../middleware/auth';
+import { createRateLimitMiddleware } from '../../middleware/rate-limit';
 import type { AppVariables } from '../../types';
 import {
   createChat,
@@ -61,29 +62,37 @@ chatRoutes.get('/:chatId/messages', async (c) => {
   return c.json({ chat });
 });
 
-chatRoutes.post('/:chatId/messages', async (c) => {
-  const session = c.get('authSession');
-  const payload = createMessageSchema.parse(await c.req.json());
-  const result = await createMessage({
-    userId: session.userId,
-    chatId: c.req.param('chatId'),
-    content: payload.content,
-    fileIds: payload.fileIds,
-  });
+chatRoutes.post(
+  '/:chatId/messages',
+  createRateLimitMiddleware('message_create'),
+  async (c) => {
+    const session = c.get('authSession');
+    const payload = createMessageSchema.parse(await c.req.json());
+    const result = await createMessage({
+      userId: session.userId,
+      chatId: c.req.param('chatId'),
+      content: payload.content,
+      fileIds: payload.fileIds,
+    });
 
-  return c.json(result, 201);
-});
+    return c.json(result, 201);
+  },
+);
 
-chatRoutes.post('/:chatId/messages/:messageId/retry', async (c) => {
-  const session = c.get('authSession');
-  const result = await retryAsyncMessage({
-    userId: session.userId,
-    chatId: c.req.param('chatId'),
-    messageId: c.req.param('messageId'),
-  });
+chatRoutes.post(
+  '/:chatId/messages/:messageId/retry',
+  createRateLimitMiddleware('message_retry'),
+  async (c) => {
+    const session = c.get('authSession');
+    const result = await retryAsyncMessage({
+      userId: session.userId,
+      chatId: c.req.param('chatId'),
+      messageId: c.req.param('messageId'),
+    });
 
-  return c.json(result, 200);
-});
+    return c.json(result, 200);
+  },
+);
 
 chatRoutes.delete('/:chatId/messages/:messageId', async (c) => {
   const session = c.get('authSession');

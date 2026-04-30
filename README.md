@@ -230,6 +230,11 @@ Important backend variables:
 - `TELEGRAM_MINI_APP_URL`: public Mini App URL
 - `UPLOAD_STORAGE_DRIVER`: `local` or `supabase`
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`: required for Supabase-backed file storage
+- `RATE_LIMIT_DRIVER`: `memory` for local/test, `upstash` for production
+- `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`: required when `RATE_LIMIT_DRIVER=upstash`
+- `TRUST_PLATFORM_CLIENT_IP_HEADERS`: enables trusted platform client-IP headers for anonymous rate limits. The limiter does not use raw `x-forwarded-for`.
+
+Backend rate limiting uses named route policies for auth bootstrap, uploads, job creation, chat message creation, async retry, and download-link creation. Authenticated policies are keyed by `userId`; anonymous policies are keyed by trusted platform client IP. Production rejects `RATE_LIMIT_DRIVER=memory`.
 
 Important gateway variables:
 

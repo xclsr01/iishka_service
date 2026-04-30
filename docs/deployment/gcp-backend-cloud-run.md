@@ -81,6 +81,7 @@ printf "%s" "<TELEGRAM_BOT_TOKEN>" | gcloud secrets create TELEGRAM_BOT_TOKEN --
 printf "%s" "<TELEGRAM_WEBHOOK_SECRET>" | gcloud secrets create TELEGRAM_WEBHOOK_SECRET --data-file=-
 printf "%s" "<AI_GATEWAY_INTERNAL_TOKEN>" | gcloud secrets create AI_GATEWAY_INTERNAL_TOKEN --data-file=-
 printf "%s" "<SUPABASE_SERVICE_ROLE_KEY>" | gcloud secrets create SUPABASE_SERVICE_ROLE_KEY --data-file=-
+printf "%s" "<UPSTASH_REDIS_REST_TOKEN>" | gcloud secrets create UPSTASH_REDIS_REST_TOKEN --data-file=-
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` must be a server-only elevated Supabase API key for the same project as
@@ -117,8 +118,8 @@ gcloud run deploy iishka-service \
   --region asia-southeast1 \
   --port 8080 \
   --allow-unauthenticated \
-  --set-env-vars APP_ENV=production,PORT=8080,FRONTEND_URL=https://<cloudflare-pages-domain>,API_BASE_URL=https://<backend-domain>,TELEGRAM_BOT_USERNAME=<bot-username>,TELEGRAM_MINI_APP_URL=https://<mini-app-url>,TELEGRAM_DELIVERY_MODE=webhook,AI_GATEWAY_URL=https://<ai-gateway-url>,AI_GATEWAY_TIMEOUT_MS=15000,OPENAI_ENABLED=true,OPENAI_MODEL=gpt-5.4-mini,ANTHROPIC_MODEL=claude-3-5-sonnet-latest,GOOGLE_AI_MODEL=gemini-2.5-flash,NANO_BANANA_MODEL=gemini-2.5-flash-image,UPLOAD_STORAGE_DRIVER=supabase,SUPABASE_URL=https://<project-ref>.supabase.co,SUPABASE_STORAGE_BUCKET=chat-uploads,RATE_LIMIT_WINDOW_SECONDS=60,RATE_LIMIT_MAX_REQUESTS=120,ENABLE_DEV_AUTH=false,ENABLE_DEV_SUBSCRIPTION_OVERRIDE=false \
-  --set-secrets DATABASE_URL=DATABASE_URL:latest,DIRECT_URL=DIRECT_URL:latest,JWT_SECRET=JWT_SECRET:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest,TELEGRAM_WEBHOOK_SECRET=TELEGRAM_WEBHOOK_SECRET:latest,AI_GATEWAY_INTERNAL_TOKEN=AI_GATEWAY_INTERNAL_TOKEN:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest
+  --set-env-vars APP_ENV=production,PORT=8080,FRONTEND_URL=https://<cloudflare-pages-domain>,API_BASE_URL=https://<backend-domain>,TELEGRAM_BOT_USERNAME=<bot-username>,TELEGRAM_MINI_APP_URL=https://<mini-app-url>,TELEGRAM_DELIVERY_MODE=webhook,AI_GATEWAY_URL=https://<ai-gateway-url>,AI_GATEWAY_TIMEOUT_MS=15000,OPENAI_ENABLED=true,OPENAI_MODEL=gpt-5.4-mini,ANTHROPIC_MODEL=claude-3-5-sonnet-latest,GOOGLE_AI_MODEL=gemini-2.5-flash,NANO_BANANA_MODEL=gemini-2.5-flash-image,UPLOAD_STORAGE_DRIVER=supabase,SUPABASE_URL=https://<project-ref>.supabase.co,SUPABASE_STORAGE_BUCKET=chat-uploads,RATE_LIMIT_DRIVER=upstash,UPSTASH_REDIS_REST_URL=https://<upstash-rest-url>,TRUST_PLATFORM_CLIENT_IP_HEADERS=true,RATE_LIMIT_WINDOW_SECONDS=60,RATE_LIMIT_MAX_REQUESTS=120,ENABLE_DEV_AUTH=false,ENABLE_DEV_SUBSCRIPTION_OVERRIDE=false \
+  --set-secrets DATABASE_URL=DATABASE_URL:latest,DIRECT_URL=DIRECT_URL:latest,JWT_SECRET=JWT_SECRET:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest,TELEGRAM_WEBHOOK_SECRET=TELEGRAM_WEBHOOK_SECRET:latest,AI_GATEWAY_INTERNAL_TOKEN=AI_GATEWAY_INTERNAL_TOKEN:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest
 ```
 
 `--allow-unauthenticated` is required for the frontend and Telegram webhook to reach the backend. Application auth still protects user APIs, and the Telegram webhook route validates the configured webhook secret.
