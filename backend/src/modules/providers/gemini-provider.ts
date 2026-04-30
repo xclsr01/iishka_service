@@ -1,7 +1,11 @@
 import { ProviderKey } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { env } from '../../env';
-import { generateGatewayChatResponse, isAiGatewayConfigured } from './gateway-client';
+import {
+  assertDirectProviderEgressAllowed,
+  generateGatewayChatResponse,
+  isAiGatewayConfigured,
+} from './gateway-client';
 import type {
   AiProviderAdapter,
   ProviderAsyncJobInput,
@@ -33,11 +37,17 @@ const GEMINI_CHAT_MODEL_FALLBACK = 'gemini-2.5-flash';
 function buildGeminiPrompt(input: ProviderGenerateInput) {
   return [
     GOOGLE_SEARCH_GROUNDING_INSTRUCTION,
-    ...input.messages.map((message) => `${message.role.toUpperCase()}: ${message.content}`),
+    ...input.messages.map(
+      (message) => `${message.role.toUpperCase()}: ${message.content}`,
+    ),
   ].join('\n\n');
 }
 
-function buildGeminiRequestBody(input: ProviderGenerateInput, prompt: string, includeSearchGrounding: boolean) {
+function buildGeminiRequestBody(
+  input: ProviderGenerateInput,
+  prompt: string,
+  includeSearchGrounding: boolean,
+) {
   return {
     contents: [
       {
@@ -62,21 +72,22 @@ function buildGeminiRequestBody(input: ProviderGenerateInput, prompt: string, in
 }
 
 function normalizeGoogleModelName(model: string) {
-  return model.trim().replace(/^\/+/, '').replace(/^models\//, '');
+  return model
+    .trim()
+    .replace(/^\/+/, '')
+    .replace(/^models\//, '');
 }
 
 function uniqueGoogleModelNames(models: string[]) {
   const seen = new Set<string>();
-  return models
-    .map(normalizeGoogleModelName)
-    .filter((model) => {
-      if (!model || seen.has(model)) {
-        return false;
-      }
+  return models.map(normalizeGoogleModelName).filter((model) => {
+    if (!model || seen.has(model)) {
+      return false;
+    }
 
-      seen.add(model);
-      return true;
-    });
+    seen.add(model);
+    return true;
+  });
 }
 
 function googleGenerateContentUrl(model: string) {
@@ -145,13 +156,19 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
     });
   }
 
-  async generateResponse(input: ProviderGenerateInput): Promise<ProviderGenerateResult> {
+  async generateResponse(
+    input: ProviderGenerateInput,
+  ): Promise<ProviderGenerateResult> {
     if (isAiGatewayConfigured()) {
       return generateGatewayChatResponse(input);
     }
 
+    assertDirectProviderEgressAllowed(ProviderKey.GEMINI, 'chat');
+
     const prompt = buildGeminiPrompt(input);
-    const requestedModel = normalizeGoogleModelName(input.model || env.GOOGLE_AI_MODEL);
+    const requestedModel = normalizeGoogleModelName(
+      input.model || env.GOOGLE_AI_MODEL,
+    );
     const modelCandidates = uniqueGoogleModelNames([
       requestedModel,
       env.GOOGLE_AI_MODEL,
@@ -165,7 +182,9 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
           'content-type': 'application/json',
           'x-goog-api-key': env.GOOGLE_AI_API_KEY,
         },
-        body: JSON.stringify(buildGeminiRequestBody(input, prompt, includeSearchGrounding)),
+        body: JSON.stringify(
+          buildGeminiRequestBody(input, prompt, includeSearchGrounding),
+        ),
         signal: AbortSignal.timeout(DEFAULT_PROVIDER_TIMEOUT_MS),
       });
 
@@ -255,9 +274,15 @@ export class GeminiProviderAdapter implements AiProviderAdapter {
     };
   }
 
-  async executeAsyncJob(input: ProviderAsyncJobInput): Promise<ProviderAsyncJobResult> {
+  async executeAsyncJob(
+    input: ProviderAsyncJobInput,
+  ): Promise<ProviderAsyncJobResult> {
     if (input.kind !== 'PROVIDER_ASYNC') {
-      throw new AppError('Gemini async job kind is not supported', 400, 'PROVIDER_JOB_KIND_UNSUPPORTED');
+      throw new AppError(
+        'Gemini async job kind is not supported',
+        400,
+        'PROVIDER_JOB_KIND_UNSUPPORTED',
+      );
     }
 
     const result = await this.generateResponse({

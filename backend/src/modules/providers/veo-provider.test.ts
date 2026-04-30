@@ -8,11 +8,13 @@ import { ProviderAdapterError } from './provider-types';
 const originalFetch = globalThis.fetch;
 const originalAiGatewayUrl = env.AI_GATEWAY_URL;
 const originalAiGatewayToken = env.AI_GATEWAY_INTERNAL_TOKEN;
+const originalAllowDirectProviderEgress = env.ALLOW_DIRECT_PROVIDER_EGRESS;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
   env.AI_GATEWAY_URL = originalAiGatewayUrl;
   env.AI_GATEWAY_INTERNAL_TOKEN = originalAiGatewayToken;
+  env.ALLOW_DIRECT_PROVIDER_EGRESS = originalAllowDirectProviderEgress;
 });
 
 test('VeoProviderAdapter starts polls and downloads videos through the Gemini API', async () => {
@@ -23,12 +25,17 @@ test('VeoProviderAdapter starts polls and downloads videos through the Gemini AP
 
   env.AI_GATEWAY_URL = undefined;
   env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+  env.ALLOW_DIRECT_PROVIDER_EGRESS = true;
 
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     calledUrls.push(url);
     calledMethods.push(init?.method ?? 'GET');
-    calledBodies.push(init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : null);
+    calledBodies.push(
+      init?.body
+        ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+        : null,
+    );
 
     if (url.endsWith(':predictLongRunning')) {
       return new Response(
@@ -208,8 +215,14 @@ test('VeoProviderAdapter executes video jobs through configured AI gateway', asy
     prompt: 'Generate a short noir tracking shot.',
   });
 
-  assert.equal(calledUrl, 'https://ai-gateway.example.run.app/v1/providers/veo/jobs/execute');
-  assert.equal(calledHeaders.authorization, 'Bearer test-ai-gateway-token-000000000000000000');
+  assert.equal(
+    calledUrl,
+    'https://ai-gateway.example.run.app/v1/providers/veo/jobs/execute',
+  );
+  assert.equal(
+    calledHeaders.authorization,
+    'Bearer test-ai-gateway-token-000000000000000000',
+  );
   assert.ok(calledPayload);
   assert.equal(calledPayload.kind, GenerationJobKind.VIDEO);
   assert.equal(calledPayload.model, 'veo-3.1-fast-generate-preview');
@@ -225,6 +238,7 @@ test('VeoProviderAdapter accepts generatedVideos response shape from Gemini API'
 
   env.AI_GATEWAY_URL = undefined;
   env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+  env.ALLOW_DIRECT_PROVIDER_EGRESS = true;
 
   globalThis.fetch = async (input) => {
     const url = String(input);
@@ -289,6 +303,7 @@ test('VeoProviderAdapter rejects non-video job kinds', async () => {
 
   env.AI_GATEWAY_URL = undefined;
   env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+  env.ALLOW_DIRECT_PROVIDER_EGRESS = true;
 
   await assert.rejects(
     () =>
@@ -308,6 +323,7 @@ test('VeoProviderAdapter classifies retryable rate limit errors', async () => {
 
   env.AI_GATEWAY_URL = undefined;
   env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
+  env.ALLOW_DIRECT_PROVIDER_EGRESS = true;
 
   globalThis.fetch = async () =>
     new Response(

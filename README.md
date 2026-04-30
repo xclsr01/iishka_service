@@ -1,6 +1,7 @@
 # Iishka AI Hub
 
 ## Overview
+
 Iishka AI Hub is a Telegram AI aggregation product with two user surfaces:
 
 - a Telegram bot that handles discovery and opens the Mini App
@@ -166,7 +167,7 @@ Not fully implemented yet:
 - `usage`: normalized provider usage persistence
 - `users`: authenticated current-user read API
 
-Provider APIs are never called directly from routes. In production, backend provider adapters call the AI Gateway through `AI_GATEWAY_URL`; direct upstream calls remain only as local/development fallback where supported.
+Provider APIs are never called directly from routes. In production, backend provider adapters must call the AI Gateway through `AI_GATEWAY_URL` and `AI_GATEWAY_INTERNAL_TOKEN`; startup fails without both values. Direct upstream calls are disabled by default and are available only outside production when `ALLOW_DIRECT_PROVIDER_EGRESS=true`.
 
 ## AI Gateway Responsibilities
 
@@ -221,8 +222,9 @@ Important backend variables:
 - `DIRECT_URL`: direct PostgreSQL connection string for Prisma CLI commands
 - `FRONTEND_URL`: frontend origin allowed by backend CORS
 - `API_BASE_URL`: public backend URL
-- `AI_GATEWAY_URL`: internal/public Cloud Run URL of the AI Gateway
-- `AI_GATEWAY_INTERNAL_TOKEN`: shared backend-to-gateway bearer token
+- `AI_GATEWAY_URL`: internal/public Cloud Run URL of the AI Gateway; required in production
+- `AI_GATEWAY_INTERNAL_TOKEN`: shared backend-to-gateway bearer token; required in production
+- `ALLOW_DIRECT_PROVIDER_EGRESS`: local-development escape hatch for direct backend-to-provider calls. Keep unset/`false` by default. It is rejected in production.
 - `TELEGRAM_BOT_TOKEN`: BotFather token
 - `TELEGRAM_WEBHOOK_SECRET`: secret token used for Telegram webhook validation
 - `TELEGRAM_MINI_APP_URL`: public Mini App URL

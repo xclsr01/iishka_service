@@ -1,7 +1,11 @@
 import { ProviderKey } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { env } from '../../env';
-import { generateGatewayChatResponse, isAiGatewayConfigured } from './gateway-client';
+import {
+  assertDirectProviderEgressAllowed,
+  generateGatewayChatResponse,
+  isAiGatewayConfigured,
+} from './gateway-client';
 import type {
   AiProviderAdapter,
   ProviderAsyncJobInput,
@@ -75,7 +79,8 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
 
     return new NormalizedProviderError({
       providerKey: ProviderKey.ANTHROPIC,
-      message: error instanceof Error ? error.message : 'Anthropic request failed',
+      message:
+        error instanceof Error ? error.message : 'Anthropic request failed',
       code: 'PROVIDER_REQUEST_FAILED',
       category: 'unknown',
       retryable: false,
@@ -83,12 +88,18 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
     });
   }
 
-  async generateResponse(input: ProviderGenerateInput): Promise<ProviderGenerateResult> {
+  async generateResponse(
+    input: ProviderGenerateInput,
+  ): Promise<ProviderGenerateResult> {
     if (isAiGatewayConfigured()) {
       return generateGatewayChatResponse(input);
     }
 
-    const system = input.messages.find((message) => message.role === 'system')?.content;
+    assertDirectProviderEgressAllowed(ProviderKey.ANTHROPIC, 'chat');
+
+    const system = input.messages.find(
+      (message) => message.role === 'system',
+    )?.content;
     const messages = input.messages
       .filter((message) => message.role !== 'system')
       .map((message) => ({
@@ -125,7 +136,8 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
           label: 'Anthropic',
           status: response.status,
           upstreamRequestId:
-            response.headers.get('request-id') ?? response.headers.get('x-request-id'),
+            response.headers.get('request-id') ??
+            response.headers.get('x-request-id'),
           rawBody: body,
         }),
       );
@@ -140,7 +152,9 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
       usage?: Record<string, unknown>;
     };
 
-    const text = data.content?.find((item) => item.type === 'text')?.text?.trim();
+    const text = data.content
+      ?.find((item) => item.type === 'text')
+      ?.text?.trim();
     if (!text) {
       throw this.classifyError(
         createProviderEmptyResponseError({
@@ -159,24 +173,37 @@ export class AnthropicProviderAdapter implements AiProviderAdapter {
       usage: data.usage
         ? {
             inputTokens:
-              typeof data.usage.input_tokens === 'number' ? data.usage.input_tokens : null,
+              typeof data.usage.input_tokens === 'number'
+                ? data.usage.input_tokens
+                : null,
             outputTokens:
-              typeof data.usage.output_tokens === 'number' ? data.usage.output_tokens : null,
+              typeof data.usage.output_tokens === 'number'
+                ? data.usage.output_tokens
+                : null,
             totalTokens:
               typeof data.usage.input_tokens === 'number' ||
               typeof data.usage.output_tokens === 'number'
-                ? (typeof data.usage.input_tokens === 'number' ? data.usage.input_tokens : 0) +
-                  (typeof data.usage.output_tokens === 'number' ? data.usage.output_tokens : 0)
+                ? (typeof data.usage.input_tokens === 'number'
+                    ? data.usage.input_tokens
+                    : 0) +
+                  (typeof data.usage.output_tokens === 'number'
+                    ? data.usage.output_tokens
+                    : 0)
                 : null,
             raw: data.usage,
           }
         : null,
       upstreamRequestId:
-        response.headers.get('request-id') ?? response.headers.get('x-request-id') ?? data.id ?? null,
+        response.headers.get('request-id') ??
+        response.headers.get('x-request-id') ??
+        data.id ??
+        null,
     };
   }
 
-  async executeAsyncJob(input: ProviderAsyncJobInput): Promise<ProviderAsyncJobResult> {
+  async executeAsyncJob(
+    input: ProviderAsyncJobInput,
+  ): Promise<ProviderAsyncJobResult> {
     if (input.kind !== 'PROVIDER_ASYNC') {
       throw new AppError(
         'Anthropic async job kind is not supported',
