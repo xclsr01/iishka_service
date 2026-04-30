@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:jobs": "tsx watch src/jobs-worker.ts",
     "dev:worker": "wrangler dev",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
+    "start:jobs": "node dist/jobs-worker.js",
     "deploy": "wrangler deploy --keep-vars",
     "test": "npm run db:generate && tsx --import ./src/test/setup-env.ts ./src/test/prepare-db.ts && tsx --import ./src/test/setup-env.ts --test \"src/**/*.test.ts\"",
     "lint": "tsc -p tsconfig.json --noEmit",

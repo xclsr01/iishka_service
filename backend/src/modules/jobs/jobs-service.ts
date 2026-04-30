@@ -2,10 +2,10 @@ import {
   GenerationJobKind,
   GenerationJobStatus,
   MessageStatus,
+  Prisma,
   ProviderStatus,
   type GenerationJob,
   type FileAsset,
-  type Prisma,
   type Provider,
 } from '@prisma/client';
 import { createHmac, timingSafeEqual } from 'node:crypto';
@@ -109,6 +109,13 @@ function toMetadataObject(value: Prisma.JsonValue | null): Record<string, unknow
 function getLinkedMessageId(value: Prisma.JsonValue | null) {
   const metadata = toMetadataObject(value);
   return typeof metadata?.linkedMessageId === 'string' ? metadata.linkedMessageId : null;
+}
+
+function getSourceUserMessageId(value: Prisma.JsonValue | null) {
+  const metadata = toMetadataObject(value);
+  return typeof metadata?.sourceUserMessageId === 'string'
+    ? metadata.sourceUserMessageId
+    : null;
 }
 
 function presentGenerationJob(job: PresentableGenerationJob): PresentedGenerationJob {
@@ -375,6 +382,8 @@ export async function createGenerationJob(
           ...(input.metadata ?? {}),
           ...(input.messageId ? { linkedMessageId: input.messageId } : {}),
         } as Prisma.InputJsonValue,
+        nextAttemptAt: new Date(),
+        maxAttempts: env.JOB_MAX_ATTEMPTS,
       },
       include: {
         provider: true,
@@ -593,44 +602,95 @@ export async function getGenerationJobImageByToken(
   return getImageFromJob(assertPresent(job, 'Generation job not found'), imageIndex);
 }
 
-export async function markGenerationJobRunning(jobId: string) {
-  const result = await withOperationTimeout(
-    'jobs.markRunning',
-    prisma.generationJob.updateMany({
-      where: {
-        id: jobId,
-        status: GenerationJobStatus.QUEUED,
-      },
-      data: {
-        status: GenerationJobStatus.RUNNING,
-        startedAt: new Date(),
-        completedAt: null,
-        failureCode: null,
-        failureMessage: null,
-        attemptCount: {
-          increment: 1,
-        },
-      },
-    }),
-  );
+type ClaimedGenerationJob = GenerationJob & {
+  provider: Provider;
+};
 
-  if (result.count === 0) {
-    return null;
-  }
+async function claimGenerationJob(input: {
+  jobId?: string;
+  claimOwner: string;
+  now?: Date;
+}): Promise<ClaimedGenerationJob | null> {
+  const now = input.now ?? new Date();
 
   return withOperationTimeout(
-    'jobs.findRunning',
-    prisma.generationJob.findUnique({
-      where: { id: jobId },
-      include: {
-        provider: true,
-      },
+    input.jobId ? 'jobs.claimById' : 'jobs.claimNext',
+    prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT "id"
+        FROM "GenerationJob"
+        WHERE "status" = 'QUEUED'::"GenerationJobStatus"
+          ${input.jobId ? Prisma.sql`AND "id" = ${input.jobId}` : Prisma.empty}
+          AND ("nextAttemptAt" IS NULL OR "nextAttemptAt" <= ${now})
+          AND "attemptCount" < "maxAttempts"
+        ORDER BY "queuedAt" ASC, "id" ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      `);
+
+      const id = rows[0]?.id;
+      if (!id) {
+        return null;
+      }
+
+      return tx.generationJob.update({
+        where: { id },
+        data: {
+          status: GenerationJobStatus.RUNNING,
+          claimOwner: input.claimOwner,
+          heartbeatAt: now,
+          startedAt: now,
+          completedAt: null,
+          failureCode: null,
+          failureMessage: null,
+          nextAttemptAt: null,
+          attemptCount: {
+            increment: 1,
+          },
+        },
+        include: {
+          provider: true,
+        },
+      });
     }),
   );
 }
 
+export async function claimGenerationJobById(
+  jobId: string,
+  claimOwner: string,
+) {
+  return claimGenerationJob({ jobId, claimOwner });
+}
+
+export async function claimNextGenerationJob(claimOwner: string) {
+  return claimGenerationJob({ claimOwner });
+}
+
+export async function heartbeatGenerationJob(
+  jobId: string,
+  claimOwner: string,
+) {
+  const result = await withOperationTimeout(
+    'jobs.heartbeat',
+    prisma.generationJob.updateMany({
+      where: {
+        id: jobId,
+        status: GenerationJobStatus.RUNNING,
+        claimOwner,
+      },
+      data: {
+        heartbeatAt: new Date(),
+      },
+    }),
+  );
+
+  return result.count === 1;
+}
+
 export async function completeGenerationJob(input: {
   jobId: string;
+  claimOwner?: string | null;
   resultPayload: Prisma.InputJsonValue;
   providerRequestId?: string | null;
   externalJobId?: string | null;
@@ -641,18 +701,43 @@ export async function completeGenerationJob(input: {
   return withOperationTimeout(
     'jobs.complete',
     (async () => {
-      const completedJob = await prisma.generationJob.update({
-        where: { id: input.jobId },
-        data: {
-          status: GenerationJobStatus.COMPLETED,
-          resultPayload: input.resultPayload,
-          providerRequestId: input.providerRequestId ?? null,
-          externalJobId: input.externalJobId ?? null,
-          completedAt: new Date(),
-          failureCode: null,
-          failureMessage: null,
-        },
-      });
+      const terminalData = {
+        status: GenerationJobStatus.COMPLETED,
+        resultPayload: input.resultPayload,
+        providerRequestId: input.providerRequestId ?? null,
+        externalJobId: input.externalJobId ?? null,
+        completedAt: new Date(),
+        failureCode: null,
+        failureMessage: null,
+        claimOwner: null,
+        heartbeatAt: null,
+        nextAttemptAt: null,
+      } satisfies Prisma.GenerationJobUpdateManyMutationInput;
+
+      let completedJob: GenerationJob | null;
+      if (input.claimOwner !== undefined && input.claimOwner !== null) {
+        const result = await prisma.generationJob.updateMany({
+          where: {
+            id: input.jobId,
+            status: GenerationJobStatus.RUNNING,
+            claimOwner: input.claimOwner,
+          },
+          data: terminalData,
+        });
+        completedJob =
+          result.count === 1
+            ? await prisma.generationJob.findUnique({ where: { id: input.jobId } })
+            : null;
+      } else {
+        completedJob = await prisma.generationJob.update({
+          where: { id: input.jobId },
+          data: terminalData,
+        });
+      }
+
+      if (!completedJob) {
+        return null;
+      }
 
       const followUpWrites: Prisma.PrismaPromise<unknown>[] = [];
 
@@ -706,6 +791,8 @@ export async function completeGenerationJob(input: {
 
 export async function failGenerationJob(input: {
   jobId: string;
+  claimOwner?: string | null;
+  requireRunningStaleBefore?: Date;
   failureCode: string;
   failureMessage: string;
   providerRequestId?: string | null;
@@ -716,17 +803,65 @@ export async function failGenerationJob(input: {
   return withOperationTimeout(
     'jobs.fail',
     (async () => {
-      const failedJob = await prisma.generationJob.update({
-        where: { id: input.jobId },
-        data: {
-          status: GenerationJobStatus.FAILED,
-          failureCode: input.failureCode,
-          failureMessage: input.failureMessage,
-          providerRequestId: input.providerRequestId ?? null,
-          externalJobId: input.externalJobId ?? null,
-          completedAt: new Date(),
-        },
-      });
+      const terminalData = {
+        status: GenerationJobStatus.FAILED,
+        failureCode: input.failureCode,
+        failureMessage: input.failureMessage,
+        providerRequestId: input.providerRequestId ?? null,
+        externalJobId: input.externalJobId ?? null,
+        completedAt: new Date(),
+        claimOwner: null,
+        heartbeatAt: null,
+        nextAttemptAt: null,
+      } satisfies Prisma.GenerationJobUpdateManyMutationInput;
+
+      let failedJob: GenerationJob | null;
+      if (
+        input.claimOwner !== undefined ||
+        input.requireRunningStaleBefore !== undefined
+      ) {
+        const where: Prisma.GenerationJobWhereInput = {
+          id: input.jobId,
+          ...(input.claimOwner !== undefined
+            ? { claimOwner: input.claimOwner }
+            : {}),
+          ...(input.requireRunningStaleBefore
+            ? {
+                status: GenerationJobStatus.RUNNING,
+                OR: [
+                  {
+                    heartbeatAt: {
+                      lt: input.requireRunningStaleBefore,
+                    },
+                  },
+                  {
+                    heartbeatAt: null,
+                    startedAt: {
+                      lt: input.requireRunningStaleBefore,
+                    },
+                  },
+                ],
+              }
+            : { status: GenerationJobStatus.RUNNING }),
+        };
+        const result = await prisma.generationJob.updateMany({
+          where,
+          data: terminalData,
+        });
+        failedJob =
+          result.count === 1
+            ? await prisma.generationJob.findUnique({ where: { id: input.jobId } })
+            : null;
+      } else {
+        failedJob = await prisma.generationJob.update({
+          where: { id: input.jobId },
+          data: terminalData,
+        });
+      }
+
+      if (!failedJob) {
+        return null;
+      }
 
       const followUpWrites: Prisma.PrismaPromise<unknown>[] = [];
 
@@ -764,6 +899,133 @@ export async function failGenerationJob(input: {
       return failedJob;
     })(),
   );
+}
+
+function getRetryDelayMs(attemptCount: number) {
+  return Math.min(30_000 * Math.max(attemptCount, 1), 5 * 60_000);
+}
+
+export async function repairStaleGenerationJobs(input?: {
+  staleBefore?: Date;
+  now?: Date;
+  batchSize?: number;
+}) {
+  const now = input?.now ?? new Date();
+  const staleBefore =
+    input?.staleBefore ??
+    new Date(now.getTime() - env.JOB_RUNNING_STALE_AFTER_SECONDS * 1000);
+  const batchSize = input?.batchSize ?? env.JOB_WORKER_BATCH_SIZE;
+
+  const staleJobs = await withOperationTimeout(
+    'jobs.findStaleRunning',
+    prisma.generationJob.findMany({
+      where: {
+        status: GenerationJobStatus.RUNNING,
+        OR: [
+          {
+            heartbeatAt: {
+              lt: staleBefore,
+            },
+          },
+          {
+            heartbeatAt: null,
+            startedAt: {
+              lt: staleBefore,
+            },
+          },
+        ],
+      },
+      include: {
+        provider: true,
+      },
+      orderBy: [{ startedAt: 'asc' }, { id: 'asc' }],
+      take: batchSize,
+    }),
+  );
+
+  let requeued = 0;
+  let failed = 0;
+
+  for (const job of staleJobs) {
+    if (job.attemptCount >= job.maxAttempts) {
+      const failureCode = 'JOB_STALE_MAX_ATTEMPTS';
+      const failureMessage = 'Generation job timed out. Please retry.';
+      const linkedMessageId = getLinkedMessageId(job.metadata);
+      const sourceUserMessageId = getSourceUserMessageId(job.metadata);
+      const failedJob = await failGenerationJob({
+        jobId: job.id,
+        claimOwner: job.claimOwner,
+        requireRunningStaleBefore: staleBefore,
+        failureCode,
+        failureMessage,
+        providerRequestId: job.providerRequestId,
+        externalJobId: job.externalJobId,
+        messageId: linkedMessageId,
+        messageProviderMeta: linkedMessageId
+          ? buildAsyncMessageProviderMeta({
+              requestedProviderKey: job.provider.key,
+              requestedModel: job.provider.defaultModel,
+              jobId: job.id,
+              jobKind: job.kind,
+              prompt: job.prompt,
+              status: GenerationJobStatus.FAILED,
+              sourceUserMessageId,
+              upstreamRequestId: job.providerRequestId,
+              externalJobId: job.externalJobId,
+              failureCode,
+              failureMessage,
+            })
+          : undefined,
+      });
+
+      if (failedJob) {
+        failed += 1;
+      }
+      continue;
+    }
+
+    const result = await withOperationTimeout(
+      'jobs.requeueStale',
+      prisma.generationJob.updateMany({
+        where: {
+          id: job.id,
+          status: GenerationJobStatus.RUNNING,
+          claimOwner: job.claimOwner,
+          OR: [
+            {
+              heartbeatAt: {
+                lt: staleBefore,
+              },
+            },
+            {
+              heartbeatAt: null,
+              startedAt: {
+                lt: staleBefore,
+              },
+            },
+          ],
+        },
+        data: {
+          status: GenerationJobStatus.QUEUED,
+          claimOwner: null,
+          heartbeatAt: null,
+          startedAt: null,
+          completedAt: null,
+          failureCode: null,
+          failureMessage: null,
+          nextAttemptAt: new Date(now.getTime() + getRetryDelayMs(job.attemptCount)),
+        },
+      }),
+    );
+
+    requeued += result.count;
+  }
+
+  return {
+    scanned: staleJobs.length,
+    requeued,
+    failed,
+  };
 }
 
 export async function getGenerationJobForExecution(jobId: string) {

@@ -380,12 +380,24 @@ Raw upstream errors are not exposed to clients. Client-facing provider failures 
 2. Add orchestration policy for `async_job`.
 3. Persist the job through the jobs module.
 4. Implement gateway job execution or callback support.
-5. Connect real queue infrastructure behind `GenerationJobQueue`.
+5. Run async work through the DB-backed job worker or replace its seam with Cloud Tasks/Pub/Sub.
 6. Write completion/failure back into `GenerationJob` and `ProviderUsage`.
+
+### Async Job Worker
+
+Local development defaults to `JOB_QUEUE_DRIVER=inline`, which keeps the previous fast feedback loop and starts work from the API process. Production must use `JOB_QUEUE_DRIVER=db`; the API only persists `QUEUED` jobs and returns immediately.
+
+Run the durable worker with the same backend image:
+
+```bash
+npm run dev:jobs --workspace backend
+```
+
+For Cloud Run, deploy a separate worker service or worker container using `npm run start:jobs --workspace backend`. Configure `JOB_QUEUE_DRIVER=db`, a stable `JOB_WORKER_CLAIM_OWNER` such as the Cloud Run service name plus instance id, and tune `JOB_WORKER_POLL_INTERVAL_MS`, `JOB_WORKER_BATCH_SIZE`, `JOB_RUNNING_STALE_AFTER_SECONDS`, and `JOB_MAX_ATTEMPTS`. The worker claims due `QUEUED` jobs in Postgres, heartbeats `RUNNING` jobs, and repairs stale leases by requeueing or failing them after attempts are exhausted.
 
 ## Future Improvements
 
-- implement real queue workers for async providers
+- replace the DB-backed job worker with Cloud Tasks or Pub/Sub when throughput requires it
 - add streaming execution mode end to end
 - replace the in-memory rate limiter
 - add production malware scanning / content inspection
