@@ -1,6 +1,10 @@
 import { AppError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
-import { getProviderRuntimeModel, getRegisteredProvider } from '../providers/provider-registry';
+import { providerErrorLogMeta } from '../providers/provider-error-mapping';
+import {
+  getProviderRuntimeModel,
+  getRegisteredProvider,
+} from '../providers/provider-registry';
 import { ProviderAdapterError } from '../providers/provider-types';
 import type { ProviderCapabilitySet } from '../providers/provider-types';
 import {
@@ -26,7 +30,11 @@ function resolveRequestedMode(
 ) {
   if (preferredMode === 'async_job') {
     if (!capabilities.supportsAsyncJobs) {
-      throw new AppError('Provider does not support async jobs', 400, 'PROVIDER_MODE_UNSUPPORTED');
+      throw new AppError(
+        'Provider does not support async jobs',
+        400,
+        'PROVIDER_MODE_UNSUPPORTED',
+      );
     }
 
     return 'async_job';
@@ -83,23 +91,32 @@ export async function executeInteractiveGeneration(
 
   const startedAt = Date.now();
   const attempts: ProviderExecutionAttempt[] = [];
-  const candidateKeys = buildFallbackCandidateOrder(request.providerKey).filter((providerKey, index, all) => {
-    if (all.indexOf(providerKey) !== index) {
-      return false;
-    }
+  const candidateKeys = buildFallbackCandidateOrder(request.providerKey).filter(
+    (providerKey, index, all) => {
+      if (all.indexOf(providerKey) !== index) {
+        return false;
+      }
 
-    const candidate = getRegisteredProvider(providerKey);
-    return providerSupportsRequest(candidate.metadata.capabilities, {
-      requiresFileContext: request.requiresFileContext,
-    });
-  });
+      const candidate = getRegisteredProvider(providerKey);
+      return providerSupportsRequest(candidate.metadata.capabilities, {
+        requiresFileContext: request.requiresFileContext,
+      });
+    },
+  );
 
   let lastError: ProviderAdapterError | null = null;
 
-  for (let providerIndex = 0; providerIndex < candidateKeys.length; providerIndex += 1) {
+  for (
+    let providerIndex = 0;
+    providerIndex < candidateKeys.length;
+    providerIndex += 1
+  ) {
     const candidateKey = candidateKeys[providerIndex];
     const provider = getRegisteredProvider(candidateKey);
-    const model = candidateKey === request.providerKey ? request.model : getProviderRuntimeModel(candidateKey);
+    const model =
+      candidateKey === request.providerKey
+        ? request.model
+        : getProviderRuntimeModel(candidateKey);
     const isFallback = providerIndex > 0;
 
     for (let retryCount = 0; retryCount <= 1; retryCount += 1) {
@@ -144,7 +161,9 @@ export async function executeInteractiveGeneration(
           userId: request.userId ?? null,
           isFallback,
           retryCount,
-          fallbackUsed: attempts.some((attempt) => attempt.isFallback && attempt.status === 'succeeded'),
+          fallbackUsed: attempts.some(
+            (attempt) => attempt.isFallback && attempt.status === 'succeeded',
+          ),
         });
 
         return {
@@ -159,6 +178,7 @@ export async function executeInteractiveGeneration(
         };
       } catch (error) {
         const classified = provider.adapter.classifyError(error);
+        const providerMeta = providerErrorLogMeta(classified);
         lastError = classified;
         attempts.push({
           providerKey: candidateKey,
@@ -180,10 +200,10 @@ export async function executeInteractiveGeneration(
           latencyMs: Date.now() - startedAt,
           errorCode: classified.code,
           errorCategory: classified.category,
+          providerErrorCode: providerMeta.providerErrorCode,
           retryable: classified.retryable,
           upstreamStatus: classified.upstreamStatus ?? null,
           upstreamRequestId: classified.upstreamRequestId ?? null,
-          details: classified.details ?? null,
           chatId: request.chatId ?? null,
           userId: request.userId ?? null,
           isFallback,
@@ -204,7 +224,10 @@ export async function executeInteractiveGeneration(
           continue;
         }
 
-        if (providerIndex < candidateKeys.length - 1 && shouldFallbackProviderError(classified)) {
+        if (
+          providerIndex < candidateKeys.length - 1 &&
+          shouldFallbackProviderError(classified)
+        ) {
           logger.info('provider_execution_fallback_selected', {
             fromProviderKey: candidateKey,
             toProviderKey: candidateKeys[providerIndex + 1],
@@ -221,7 +244,10 @@ export async function executeInteractiveGeneration(
     }
   }
 
-  throw lastError ?? new AppError('Provider execution failed', 502, 'PROVIDER_REQUEST_FAILED');
+  throw (
+    lastError ??
+    new AppError('Provider execution failed', 502, 'PROVIDER_REQUEST_FAILED')
+  );
 }
 
 export async function executeAsyncGenerationJob(
@@ -246,26 +272,35 @@ export async function executeAsyncGenerationJob(
 
   const startedAt = Date.now();
   const attempts: ProviderExecutionAttempt[] = [];
-  const candidateKeys = buildFallbackCandidateOrder(request.providerKey).filter((providerKey, index, all) => {
-    if (all.indexOf(providerKey) !== index) {
-      return false;
-    }
+  const candidateKeys = buildFallbackCandidateOrder(request.providerKey).filter(
+    (providerKey, index, all) => {
+      if (all.indexOf(providerKey) !== index) {
+        return false;
+      }
 
-    const candidate = getRegisteredProvider(providerKey);
-    return (
-      !!candidate.adapter.executeAsyncJob &&
-      providerSupportsRequest(candidate.metadata.capabilities, {
-        requiresAsyncJobs: true,
-      })
-    );
-  });
+      const candidate = getRegisteredProvider(providerKey);
+      return (
+        !!candidate.adapter.executeAsyncJob &&
+        providerSupportsRequest(candidate.metadata.capabilities, {
+          requiresAsyncJobs: true,
+        })
+      );
+    },
+  );
 
   let lastError: ProviderAdapterError | null = null;
 
-  for (let providerIndex = 0; providerIndex < candidateKeys.length; providerIndex += 1) {
+  for (
+    let providerIndex = 0;
+    providerIndex < candidateKeys.length;
+    providerIndex += 1
+  ) {
     const candidateKey = candidateKeys[providerIndex];
     const provider = getRegisteredProvider(candidateKey);
-    const model = candidateKey === request.providerKey ? request.model : getProviderRuntimeModel(candidateKey);
+    const model =
+      candidateKey === request.providerKey
+        ? request.model
+        : getProviderRuntimeModel(candidateKey);
     const isFallback = providerIndex > 0;
 
     if (!provider.adapter.executeAsyncJob) {
@@ -318,7 +353,9 @@ export async function executeAsyncGenerationJob(
           userId: request.userId ?? null,
           isFallback,
           retryCount,
-          fallbackUsed: attempts.some((attempt) => attempt.isFallback && attempt.status === 'succeeded'),
+          fallbackUsed: attempts.some(
+            (attempt) => attempt.isFallback && attempt.status === 'succeeded',
+          ),
         });
 
         return {
@@ -333,6 +370,7 @@ export async function executeAsyncGenerationJob(
         };
       } catch (error) {
         const classified = provider.adapter.classifyError(error);
+        const providerMeta = providerErrorLogMeta(classified);
         lastError = classified;
         attempts.push({
           providerKey: candidateKey,
@@ -355,10 +393,10 @@ export async function executeAsyncGenerationJob(
           latencyMs: Date.now() - startedAt,
           errorCode: classified.code,
           errorCategory: classified.category,
+          providerErrorCode: providerMeta.providerErrorCode,
           retryable: classified.retryable,
           upstreamStatus: classified.upstreamStatus ?? null,
           upstreamRequestId: classified.upstreamRequestId ?? null,
-          details: classified.details ?? null,
           chatId: request.chatId ?? null,
           userId: request.userId ?? null,
           isFallback,
@@ -380,7 +418,10 @@ export async function executeAsyncGenerationJob(
           continue;
         }
 
-        if (providerIndex < candidateKeys.length - 1 && shouldFallbackProviderError(classified)) {
+        if (
+          providerIndex < candidateKeys.length - 1 &&
+          shouldFallbackProviderError(classified)
+        ) {
           logger.info('provider_async_job_fallback_selected', {
             fromProviderKey: candidateKey,
             toProviderKey: candidateKeys[providerIndex + 1],
@@ -398,5 +439,8 @@ export async function executeAsyncGenerationJob(
     }
   }
 
-  throw lastError ?? new AppError('Provider async job failed', 502, 'PROVIDER_REQUEST_FAILED');
+  throw (
+    lastError ??
+    new AppError('Provider async job failed', 502, 'PROVIDER_REQUEST_FAILED')
+  );
 }

@@ -6,6 +6,7 @@ import {
   createNetworkError,
   createTimeoutError,
   createUpstreamHttpError,
+  gatewayProviderErrorLogMeta,
   isRetryableGatewayError,
 } from './provider-errors';
 import type { GatewayProviderKey } from './gateway-types';
@@ -24,7 +25,10 @@ type ProviderFetchInput = {
 };
 
 function isTimeoutError(error: unknown) {
-  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+  return (
+    error instanceof Error &&
+    (error.name === 'TimeoutError' || error.name === 'AbortError')
+  );
 }
 
 export async function fetchProviderResponse(input: ProviderFetchInput) {
@@ -51,7 +55,9 @@ export async function fetchProviderResponse(input: ProviderFetchInput) {
           throw error;
         }
 
-        const upstreamRequestId = response.headers.get('x-request-id') ?? response.headers.get('request-id');
+        const upstreamRequestId =
+          response.headers.get('x-request-id') ??
+          response.headers.get('request-id');
         const latencyMs = Date.now() - startedAt;
 
         if (!response.ok) {
@@ -91,7 +97,10 @@ export async function fetchProviderResponse(input: ProviderFetchInput) {
             error instanceof AppError
               ? error
               : new AppError({
-                  message: error instanceof Error ? error.message : 'Provider request failed',
+                  message:
+                    error instanceof Error
+                      ? error.message
+                      : 'Provider request failed',
                 });
           logger.info('provider_retry_scheduled', {
             route: input.route,
@@ -118,12 +127,16 @@ export async function fetchProviderResponse(input: ProviderFetchInput) {
       error instanceof AppError
         ? error
         : new AppError({
-            message: error instanceof Error ? error.message : 'Provider request failed',
+            message:
+              error instanceof Error
+                ? error.message
+                : 'Provider request failed',
             statusCode: 500,
             code: 'INTERNAL_ERROR',
           });
 
     if (!input.suppressFailureLog) {
+      const providerMeta = gatewayProviderErrorLogMeta(appError);
       logger.error('provider_upstream_failed', {
         route: input.route,
         requestId: input.requestId,
@@ -134,12 +147,14 @@ export async function fetchProviderResponse(input: ProviderFetchInput) {
         userId: input.userId ?? null,
         chatId: input.chatId ?? null,
         jobId: input.jobId ?? null,
-        errorCode: appError.code,
-        retryable: appError.retryable ?? null,
-        upstreamStatus: appError.upstreamStatus ?? null,
-        upstreamRequestId: appError.upstreamRequestId ?? null,
-        details: appError.details ?? null,
-        message: appError.message,
+        errorCode: providerMeta.errorCode,
+        providerErrorCode: providerMeta.providerErrorCode,
+        retryable: providerMeta.retryable,
+        upstreamStatus: providerMeta.upstreamStatus,
+        upstreamRequestId: providerMeta.upstreamRequestId,
+        errorMessage: appError.code.startsWith('PROVIDER_')
+          ? 'Provider request failed'
+          : appError.message,
       });
     }
 

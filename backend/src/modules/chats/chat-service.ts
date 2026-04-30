@@ -24,6 +24,10 @@ import { deleteStoredFiles } from '../files/file-service';
 import { getRegisteredProvider } from '../providers/provider-registry';
 import { ProviderAdapterError } from '../providers/provider-types';
 import {
+  providerErrorLogMeta,
+  toClientSafeProviderMessage,
+} from '../providers/provider-error-mapping';
+import {
   TOKEN_COSTS,
   consumeSubscriptionTokens,
   presentSubscription,
@@ -831,7 +835,9 @@ export async function createMessage(input: {
             status: MessageStatus.FAILED,
             content: ASYNC_VIDEO_FAILED_CONTENT,
             failureReason:
-              error instanceof Error ? error.message : 'provider-error',
+              error instanceof ProviderAdapterError
+                ? toClientSafeProviderMessage(error)
+                : 'Video generation failed',
             providerMeta: buildAsyncMessageProviderMeta({
               requestedProviderKey: chat.provider.key,
               requestedModel: chat.provider.defaultModel,
@@ -845,7 +851,9 @@ export async function createMessage(input: {
                   ? String(error.code)
                   : 'JOB_CREATE_FAILED',
               failureMessage:
-                error instanceof Error ? error.message : 'provider-error',
+                error instanceof ProviderAdapterError
+                  ? toClientSafeProviderMessage(error)
+                  : 'Video generation failed',
             }),
           },
         }),
@@ -962,25 +970,30 @@ export async function createMessage(input: {
       fallbackUsed: result.fallbackUsed,
     });
   } catch (error) {
+    const providerMeta =
+      error instanceof ProviderAdapterError
+        ? providerErrorLogMeta(error)
+        : null;
     logger.error('create_message_provider_request_failed', {
       chatId: chat.id,
       providerKey: chat.provider.key,
-      code: error instanceof ProviderAdapterError ? error.code : null,
-      category: error instanceof ProviderAdapterError ? error.category : null,
-      retryable: error instanceof ProviderAdapterError ? error.retryable : null,
-      upstreamStatus:
+      code: providerMeta?.errorCode ?? null,
+      category: providerMeta?.errorCategory ?? null,
+      providerErrorCode: providerMeta?.providerErrorCode ?? null,
+      retryable: providerMeta?.retryable ?? null,
+      upstreamStatus: providerMeta?.upstreamStatus ?? null,
+      upstreamRequestId: providerMeta?.upstreamRequestId ?? null,
+      errorMessage:
         error instanceof ProviderAdapterError
-          ? (error.upstreamStatus ?? null)
-          : null,
-      upstreamRequestId:
-        error instanceof ProviderAdapterError
-          ? (error.upstreamRequestId ?? null)
-          : null,
-      details:
-        error instanceof ProviderAdapterError ? (error.details ?? null) : null,
-      message: error instanceof Error ? error.message : 'unknown',
-      stack: error instanceof Error ? (error.stack ?? null) : null,
+          ? 'Provider request failed'
+          : error instanceof Error
+            ? error.message
+            : 'unknown',
     });
+    const failureReason =
+      error instanceof ProviderAdapterError
+        ? toClientSafeProviderMessage(error)
+        : 'The provider request failed. Please retry.';
     await withTimeout(
       'createMessage.createFailureMessage',
       prisma.message.create({
@@ -990,8 +1003,7 @@ export async function createMessage(input: {
           role: 'ASSISTANT',
           content: 'The provider request failed. Please retry.',
           status: MessageStatus.FAILED,
-          failureReason:
-            error instanceof Error ? error.message : 'provider-error',
+          failureReason,
         },
       }),
     );
@@ -1180,7 +1192,9 @@ export async function retryAsyncMessage(input: {
         ? String(error.code)
         : 'JOB_EXECUTION_FAILED';
     const failureMessage =
-      error instanceof Error ? error.message : 'Video generation failed';
+      error instanceof ProviderAdapterError
+        ? toClientSafeProviderMessage(error)
+        : 'Video generation failed';
 
     await withTimeout(
       'retryAsyncMessage.failMessage',

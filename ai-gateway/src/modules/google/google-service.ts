@@ -78,21 +78,22 @@ function trimTrailingSlashes(value: string) {
 }
 
 function normalizeGoogleModelName(model: string) {
-  return model.trim().replace(/^\/+/, '').replace(/^models\//, '');
+  return model
+    .trim()
+    .replace(/^\/+/, '')
+    .replace(/^models\//, '');
 }
 
 function uniqueGoogleModelNames(models: string[]) {
   const seen = new Set<string>();
-  return models
-    .map(normalizeGoogleModelName)
-    .filter((model) => {
-      if (!model || seen.has(model)) {
-        return false;
-      }
+  return models.map(normalizeGoogleModelName).filter((model) => {
+    if (!model || seen.has(model)) {
+      return false;
+    }
 
-      seen.add(model);
-      return true;
-    });
+    seen.add(model);
+    return true;
+  });
 }
 
 function googleUrl(model: string) {
@@ -152,12 +153,19 @@ function normalizeDurationSeconds(value: unknown) {
 
 function normalizeVeoParameters(metadata?: Record<string, unknown>) {
   return {
-    aspectRatio: typeof metadata?.aspectRatio === 'string' ? metadata.aspectRatio : '9:16',
+    aspectRatio:
+      typeof metadata?.aspectRatio === 'string' ? metadata.aspectRatio : '9:16',
     durationSeconds: normalizeDurationSeconds(metadata?.durationSeconds),
-    resolution: typeof metadata?.resolution === 'string' ? metadata.resolution : '720p',
-    negativePrompt: typeof metadata?.negativePrompt === 'string' ? metadata.negativePrompt : undefined,
+    resolution:
+      typeof metadata?.resolution === 'string' ? metadata.resolution : '720p',
+    negativePrompt:
+      typeof metadata?.negativePrompt === 'string'
+        ? metadata.negativePrompt
+        : undefined,
     personGeneration:
-      typeof metadata?.personGeneration === 'string' ? metadata.personGeneration : 'allow_all',
+      typeof metadata?.personGeneration === 'string'
+        ? metadata.personGeneration
+        : 'allow_all',
     seed: typeof metadata?.seed === 'number' ? metadata.seed : undefined,
   };
 }
@@ -168,7 +176,8 @@ function extractGeneratedVideo(operation: GoogleLongRunningOperationResponse) {
     return modernVideo;
   }
 
-  const legacyVideo = operation.response?.generateVideoResponse?.generatedSamples?.[0]?.video;
+  const legacyVideo =
+    operation.response?.generateVideoResponse?.generatedSamples?.[0]?.video;
   if (legacyVideo?.uri) {
     return legacyVideo;
   }
@@ -179,11 +188,17 @@ function extractGeneratedVideo(operation: GoogleLongRunningOperationResponse) {
 function buildGeminiChatPrompt(input: GatewayChatRespondRequest) {
   return [
     GOOGLE_SEARCH_GROUNDING_INSTRUCTION,
-    ...input.messages.map((message) => `${message.role.toUpperCase()}: ${message.content}`),
+    ...input.messages.map(
+      (message) => `${message.role.toUpperCase()}: ${message.content}`,
+    ),
   ].join('\n\n');
 }
 
-function buildGeminiChatBody(input: GatewayChatRespondRequest, prompt: string, includeSearchGrounding: boolean) {
+function buildGeminiChatBody(
+  input: GatewayChatRespondRequest,
+  prompt: string,
+  includeSearchGrounding: boolean,
+) {
   const generationConfig: Record<string, number> = {};
   if (typeof input.temperature === 'number') {
     generationConfig.temperature = input.temperature;
@@ -239,7 +254,9 @@ export async function respondWithGemini(
   routeRequestId: string,
 ): Promise<GatewayChatRespondResponse> {
   const provider = 'gemini';
-  const requestedModel = normalizeGoogleModelName(input.model || env.GOOGLE_AI_DEFAULT_MODEL);
+  const requestedModel = normalizeGoogleModelName(
+    input.model || env.GOOGLE_AI_DEFAULT_MODEL,
+  );
   const modelCandidates = uniqueGoogleModelNames([
     requestedModel,
     env.GOOGLE_AI_DEFAULT_MODEL,
@@ -280,14 +297,23 @@ export async function respondWithGemini(
           'content-type': 'application/json',
           'x-goog-api-key': env.GOOGLE_AI_API_KEY,
         },
-        body: JSON.stringify(buildGeminiChatBody(input, prompt, includeSearchGrounding)),
+        body: JSON.stringify(
+          buildGeminiChatBody(input, prompt, includeSearchGrounding),
+        ),
       },
       suppressFailureLog,
     });
 
-  const runGeminiChatRequest = async (targetModel: string, suppressInitialFailureLog: boolean) => {
+  const runGeminiChatRequest = async (
+    targetModel: string,
+    suppressInitialFailureLog: boolean,
+  ) => {
     try {
-      return await fetchGeminiChatResponse(targetModel, true, suppressInitialFailureLog);
+      return await fetchGeminiChatResponse(
+        targetModel,
+        true,
+        suppressInitialFailureLog,
+      );
     } catch (error) {
       if (!shouldRetryGeminiWithoutGrounding(error)) {
         throw error;
@@ -304,7 +330,6 @@ export async function respondWithGemini(
         chatId: input.chatId ?? null,
         upstreamStatus: appError.upstreamStatus ?? null,
         upstreamRequestId: appError.upstreamRequestId ?? null,
-        details: appError.details ?? null,
       });
 
       return fetchGeminiChatResponse(targetModel, false);
@@ -315,12 +340,18 @@ export async function respondWithGemini(
   let lastModelError: unknown = null;
   for (const [index, candidateModel] of modelCandidates.entries()) {
     try {
-      response = await runGeminiChatRequest(candidateModel, index < modelCandidates.length - 1);
+      response = await runGeminiChatRequest(
+        candidateModel,
+        index < modelCandidates.length - 1,
+      );
       model = candidateModel;
       lastModelError = null;
       break;
     } catch (error) {
-      if (!shouldRetryGeminiWithDefaultModel(error) || index === modelCandidates.length - 1) {
+      if (
+        !shouldRetryGeminiWithDefaultModel(error) ||
+        index === modelCandidates.length - 1
+      ) {
         throw error;
       }
 
@@ -338,7 +369,6 @@ export async function respondWithGemini(
         chatId: input.chatId ?? null,
         upstreamStatus: appError.upstreamStatus ?? null,
         upstreamRequestId: appError.upstreamRequestId ?? null,
-        details: appError.details ?? null,
       });
     }
   }
@@ -351,7 +381,8 @@ export async function respondWithGemini(
     throw createEmptyResponseError(provider);
   }
 
-  const upstreamRequestId = response.headers.get('x-request-id') ?? response.headers.get('request-id');
+  const upstreamRequestId =
+    response.headers.get('x-request-id') ?? response.headers.get('request-id');
   const data = (await response.json()) as GoogleGenerateContentResponse;
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
   const groundingMetadata = data.candidates?.[0]?.groundingMetadata ?? null;
@@ -450,7 +481,8 @@ export async function executeNanoBananaJob(
     jobId: input.jobId,
   });
 
-  const upstreamRequestId = response.headers.get('x-request-id') ?? response.headers.get('request-id');
+  const upstreamRequestId =
+    response.headers.get('x-request-id') ?? response.headers.get('request-id');
   const data = (await response.json()) as GoogleGenerateContentResponse;
   const parts = data.candidates?.[0]?.content?.parts ?? [];
   const text = parts
@@ -544,8 +576,10 @@ export async function executeVeoJob(
   });
 
   let upstreamRequestId =
-    startResponse.headers.get('x-request-id') ?? startResponse.headers.get('request-id');
-  let operation = (await startResponse.json()) as GoogleLongRunningOperationResponse;
+    startResponse.headers.get('x-request-id') ??
+    startResponse.headers.get('request-id');
+  let operation =
+    (await startResponse.json()) as GoogleLongRunningOperationResponse;
   const operationName = operation.name;
 
   if (!operationName && !operation.done) {
@@ -581,7 +615,8 @@ export async function executeVeoJob(
       upstreamRequestId ??
       statusResponse.headers.get('x-request-id') ??
       statusResponse.headers.get('request-id');
-    operation = (await statusResponse.json()) as GoogleLongRunningOperationResponse;
+    operation =
+      (await statusResponse.json()) as GoogleLongRunningOperationResponse;
   }
 
   if (operation.error?.message) {
@@ -621,7 +656,11 @@ export async function executeVeoJob(
     throw createEmptyResponseError(provider);
   }
 
-  const mimeType = (downloadResponse.headers.get('content-type') ?? generatedVideo.mimeType ?? 'video/mp4')
+  const mimeType = (
+    downloadResponse.headers.get('content-type') ??
+    generatedVideo.mimeType ??
+    'video/mp4'
+  )
     .split(';')[0]
     .trim();
   const filename = `veo-${input.jobId ?? routeRequestId}-0.${extensionFromMimeType(mimeType)}`;
