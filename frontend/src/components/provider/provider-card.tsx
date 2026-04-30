@@ -25,23 +25,21 @@ export function ProviderCard({ provider }: { provider: Provider }) {
     !provider.capabilities?.supportsImage;
 
   return (
-    <Card className="h-full min-w-[82vw] max-w-[82vw] snap-start overflow-hidden border-border/70 bg-[linear-gradient(180deg,rgba(15,20,38,0.92),rgba(9,13,27,0.86))] p-0 sm:min-w-[280px] sm:max-w-[280px] lg:min-w-0 lg:max-w-none">
+    <Card className="h-full min-w-full max-w-full snap-start overflow-hidden border-border/70 bg-[linear-gradient(180deg,rgba(15,20,38,0.92),rgba(9,13,27,0.86))] p-0 sm:min-w-[280px] sm:max-w-[320px] lg:min-w-0 lg:max-w-none">
       <div className={`h-1.5 bg-gradient-to-r ${toneByKey[provider.key]}`} />
-      <div className="flex h-[calc(100%-0.375rem)] min-h-0 flex-col gap-2 p-3 sm:p-4">
-        <div className="flex min-h-0 items-start justify-between gap-3">
-          <div className="min-w-0">
+      <div className="flex h-[calc(100%-0.375rem)] min-h-0 flex-col gap-3 p-4">
+        <div className="flex min-h-0 flex-wrap items-start justify-between gap-2">
+          <div className="min-w-[12rem] flex-1">
             <h3 className="font-display text-lg font-bold leading-tight sm:text-xl">
               {provider.name}
             </h3>
-            <p className="mt-1 line-clamp-2 text-sm leading-5 text-muted-foreground">
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">
               {provider.summary}
             </p>
           </div>
-          <div className="min-w-0 space-y-2 text-right">
-            <Badge className="max-w-28 rounded-[14px] border-primary/30 bg-primary/10 px-2 py-1.5 text-primary sm:max-w-36">
-              <span className="block overflow-hidden text-ellipsis whitespace-nowrap">
-                {provider.defaultModel}
-              </span>
+          <div className="min-w-0 text-right">
+            <Badge className="max-w-full rounded-[14px] border-primary/30 bg-primary/10 px-2 py-1.5 text-[11px] leading-4 text-primary">
+              <span className="block break-all">{provider.defaultModel}</span>
             </Badge>
             {!provider.isAvailable && (
               <Badge className="border-destructive/30 bg-destructive/10 text-destructive">
@@ -52,20 +50,18 @@ export function ProviderCard({ provider }: { provider: Provider }) {
         </div>
 
         <div className="min-h-0 rounded-[18px] border border-border/60 bg-muted/55 p-3 text-sm leading-5 text-muted-foreground">
-          <p className="line-clamp-3 lg:line-clamp-2 xl:line-clamp-3">
-            {provider.description}
-          </p>
+          <p>{provider.description}</p>
           {!provider.isAvailable && provider.availabilityMessage && (
-            <p className="mt-2 line-clamp-2 text-destructive">
+            <p className="mt-2 text-destructive">
               {provider.availabilityMessage}
             </p>
           )}
         </div>
 
-        <div className="mt-auto flex shrink-0 items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-            <Sparkles className="h-4 w-4" />
-            <span className="truncate">
+        <div className="mt-auto grid shrink-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <div className="flex min-w-0 items-start gap-2 text-[11px] uppercase leading-5 tracking-[0.12em] text-muted-foreground">
+            <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+            <span className="min-w-0 break-words">
               {isAsyncImageProvider
                 ? t('imageJobsEnabled')
                 : isAsyncVideoProvider
@@ -74,15 +70,15 @@ export function ProviderCard({ provider }: { provider: Provider }) {
             </span>
           </div>
           {provider.isAvailable && !isAsyncImageProvider ? (
-            <Button asChild>
+            <Button asChild className="min-h-11 px-6">
               <Link to={`/providers/${provider.id}`}>{t('enterChat')}</Link>
             </Button>
           ) : provider.isAvailable ? (
-            <Button asChild>
+            <Button asChild className="min-h-11 px-6">
               <Link to={`/providers/${provider.id}`}>{t('openStudio')}</Link>
             </Button>
           ) : (
-            <Button type="button" disabled>
+            <Button type="button" className="min-h-11 px-6" disabled>
               {t('unavailable')}
             </Button>
           )}
