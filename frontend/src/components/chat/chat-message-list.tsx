@@ -50,6 +50,28 @@ export function ChatMessageList({
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const lastInitialScrollChatIdRef = useRef<string | undefined>(undefined);
   const previousScrollHeightRef = useRef<number | null>(null);
+  const shouldPinToBottomRef = useRef(true);
+
+  function scrollToBottom(behavior: ScrollBehavior = 'auto') {
+    const list = listRef.current;
+    if (!list) {
+      return;
+    }
+
+    list.scrollTop = list.scrollHeight;
+    window.requestAnimationFrame(() => {
+      list.scrollTop = list.scrollHeight;
+      bottomRef.current?.scrollIntoView({ behavior, block: 'end' });
+    });
+    window.setTimeout(() => {
+      if (
+        shouldPinToBottomRef.current &&
+        previousScrollHeightRef.current === null
+      ) {
+        list.scrollTop = list.scrollHeight;
+      }
+    }, 250);
+  }
 
   useLayoutEffect(() => {
     if (
@@ -60,7 +82,8 @@ export function ChatMessageList({
     }
 
     lastInitialScrollChatIdRef.current = chatId;
-    bottomRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
+    shouldPinToBottomRef.current = true;
+    scrollToBottom('auto');
   }, [chatId, messages.length]);
 
   useEffect(() => {
@@ -68,7 +91,8 @@ export function ChatMessageList({
       return;
     }
 
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    shouldPinToBottomRef.current = true;
+    scrollToBottom('smooth');
   }, [scrollToBottomSignal]);
 
   useLayoutEffect(() => {
@@ -83,8 +107,46 @@ export function ChatMessageList({
     previousScrollHeightRef.current = null;
   }, [messages.length]);
 
+  useLayoutEffect(() => {
+    const newestMessageId = messages.at(-1)?.id ?? null;
+    if (!newestMessageId) {
+      return;
+    }
+
+    if (
+      shouldPinToBottomRef.current &&
+      previousScrollHeightRef.current === null
+    ) {
+      scrollToBottom('auto');
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || !('ResizeObserver' in window)) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (
+        shouldPinToBottomRef.current &&
+        previousScrollHeightRef.current === null
+      ) {
+        scrollToBottom('auto');
+      }
+    });
+
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
+
   async function handleScroll() {
     const list = listRef.current;
+    if (list) {
+      shouldPinToBottomRef.current =
+        list.scrollHeight - list.scrollTop - list.clientHeight < 120;
+    }
+
     if (
       !list ||
       !hasMoreMessages ||

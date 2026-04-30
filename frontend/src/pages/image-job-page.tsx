@@ -184,7 +184,7 @@ export function ImageJobPage({
     createImageJob,
     loadMoreHistory,
     removeImageJob,
-  } = useImageJob(provider.id);
+  } = useImageJob(provider);
   const syncedJobIdRef = useRef<string | null>(null);
   const actionResetTimerRef = useRef<number | null>(null);
   const imageScrollRef = useRef<HTMLDivElement | null>(null);
