@@ -9,6 +9,7 @@ import {
   getOwnedFileContent,
   persistUploadedFile,
 } from './file-service';
+import { createRateLimitMiddleware } from '../../middleware/rate-limit';
 
 export const fileRoutes = new Hono<{ Variables: AppVariables }>();
 
@@ -23,7 +24,11 @@ function fileContentResponse(input: {
     headers: {
       'content-type': input.mimeType,
       'content-length': String(input.content.byteLength),
-      'content-disposition': contentDisposition(input.disposition, input.filename, 'iishka-file'),
+      'content-disposition': contentDisposition(
+        input.disposition,
+        input.filename,
+        'iishka-file',
+      ),
       'cache-control': 'private, max-age=300',
       'x-content-type-options': 'nosniff',
       'access-control-allow-origin': 'https://web.telegram.org',
@@ -37,7 +42,8 @@ fileRoutes.get('/:fileId/public-content', async (c) => {
     throw new AppError('Missing file link token', 401, 'UNAUTHORIZED');
   }
 
-  const disposition = c.req.query('disposition') === 'attachment' ? 'attachment' : 'inline';
+  const disposition =
+    c.req.query('disposition') === 'attachment' ? 'attachment' : 'inline';
   const resolved = await getFileContentByToken(token, c.req.param('fileId'));
 
   return fileContentResponse({
@@ -50,7 +56,7 @@ fileRoutes.get('/:fileId/public-content', async (c) => {
 
 fileRoutes.use('*', authMiddleware);
 
-fileRoutes.post('/', async (c) => {
+fileRoutes.post('/', createRateLimitMiddleware('file_upload'), async (c) => {
   const session = c.get('authSession');
   const body = await c.req.parseBody();
   const candidate = body.file;
@@ -65,8 +71,12 @@ fileRoutes.post('/', async (c) => {
 
 fileRoutes.get('/:fileId/content', async (c) => {
   const session = c.get('authSession');
-  const resolved = await getOwnedFileContent(session.userId, c.req.param('fileId'));
-  const disposition = c.req.query('disposition') === 'attachment' ? 'attachment' : 'inline';
+  const resolved = await getOwnedFileContent(
+    session.userId,
+    c.req.param('fileId'),
+  );
+  const disposition =
+    c.req.query('disposition') === 'attachment' ? 'attachment' : 'inline';
 
   return fileContentResponse({
     content: resolved.content,
@@ -76,8 +86,15 @@ fileRoutes.get('/:fileId/content', async (c) => {
   });
 });
 
-fileRoutes.get('/:fileId/links', async (c) => {
-  const session = c.get('authSession');
-  const links = await createOwnedFileLinks(session.userId, c.req.param('fileId'));
-  return c.json(links);
-});
+fileRoutes.get(
+  '/:fileId/links',
+  createRateLimitMiddleware('download_link'),
+  async (c) => {
+    const session = c.get('authSession');
+    const links = await createOwnedFileLinks(
+      session.userId,
+      c.req.param('fileId'),
+    );
+    return c.json(links);
+  },
+);

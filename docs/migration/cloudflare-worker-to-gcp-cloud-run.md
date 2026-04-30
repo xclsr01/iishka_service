@@ -117,6 +117,10 @@ UPLOAD_STORAGE_DRIVER=supabase
 SUPABASE_URL=https://<project-ref>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<Supabase sb_secret_... key or legacy service_role JWT for the same project>
 SUPABASE_STORAGE_BUCKET=chat-uploads
+RATE_LIMIT_DRIVER=upstash
+UPSTASH_REDIS_REST_URL=https://<upstash-rest-url>
+UPSTASH_REDIS_REST_TOKEN=<secret>
+TRUST_PLATFORM_CLIENT_IP_HEADERS=true
 ENABLE_DEV_AUTH=false
 ENABLE_DEV_SUBSCRIPTION_OVERRIDE=false
 ```

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { AppError } from '../../lib/errors';
+import { createRateLimitMiddleware } from '../../middleware/rate-limit';
 import { bootstrapDevUser, bootstrapTelegramUser } from './auth-service';
 
 const telegramBootstrapSchema = z.object({
@@ -12,6 +13,11 @@ const devBootstrapSchema = z.object({
 });
 
 export const authRoutes = new Hono();
+
+const authBootstrapRateLimit = createRateLimitMiddleware('auth_bootstrap');
+
+authRoutes.use('/telegram/bootstrap', authBootstrapRateLimit);
+authRoutes.use('/dev/bootstrap', authBootstrapRateLimit);
 
 authRoutes.post('/telegram/bootstrap', async (c) => {
   const payload = telegramBootstrapSchema.parse(await c.req.json());
@@ -30,6 +36,10 @@ authRoutes.post('/dev/bootstrap', async (c) => {
       throw error;
     }
 
-    throw new AppError('Invalid dev bootstrap credentials', 401, 'UNAUTHORIZED');
+    throw new AppError(
+      'Invalid dev bootstrap credentials',
+      401,
+      'UNAUTHORIZED',
+    );
   }
 });

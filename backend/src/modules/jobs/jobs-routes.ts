@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { contentDisposition } from '../../lib/content-disposition';
 import { AppError } from '../../lib/errors';
 import { authMiddleware } from '../../middleware/auth';
+import { createRateLimitMiddleware } from '../../middleware/rate-limit';
 import type { AppVariables } from '../../types';
 import {
   createGenerationJob,
@@ -31,7 +32,9 @@ const listGenerationJobsSchema = z.object({
 });
 
 const imageIndexSchema = z.coerce.number().int().min(0);
-const imageDispositionSchema = z.enum(['inline', 'attachment']).default('inline');
+const imageDispositionSchema = z
+  .enum(['inline', 'attachment'])
+  .default('inline');
 
 export const jobsRoutes = new Hono<{ Variables: AppVariables }>();
 
@@ -42,8 +45,14 @@ jobsRoutes.get('/:jobId/images/:imageIndex', async (c) => {
   }
 
   const imageIndex = imageIndexSchema.parse(c.req.param('imageIndex'));
-  const disposition = imageDispositionSchema.parse(c.req.query('disposition') ?? 'inline');
-  const image = await getGenerationJobImageByToken(token, c.req.param('jobId'), imageIndex);
+  const disposition = imageDispositionSchema.parse(
+    c.req.query('disposition') ?? 'inline',
+  );
+  const image = await getGenerationJobImageByToken(
+    token,
+    c.req.param('jobId'),
+    imageIndex,
+  );
   const body = Buffer.from(image.dataBase64, 'base64');
 
   return new Response(body, {
@@ -51,7 +60,11 @@ jobsRoutes.get('/:jobId/images/:imageIndex', async (c) => {
     headers: {
       'content-type': image.mimeType,
       'content-length': String(body.byteLength),
-      'content-disposition': contentDisposition(disposition, image.filename, 'iishka-image.png'),
+      'content-disposition': contentDisposition(
+        disposition,
+        image.filename,
+        'iishka-image.png',
+      ),
       'cache-control': 'private, max-age=300',
       'x-content-type-options': 'nosniff',
     },
@@ -80,7 +93,7 @@ jobsRoutes.get('/', async (c) => {
   return c.json(jobs);
 });
 
-jobsRoutes.post('/', async (c) => {
+jobsRoutes.post('/', createRateLimitMiddleware('job_create'), async (c) => {
   const session = c.get('authSession');
   const payload = createGenerationJobSchema.parse(await c.req.json());
 
@@ -108,9 +121,17 @@ jobsRoutes.delete('/:jobId', async (c) => {
   return c.json({ deleted: true });
 });
 
-jobsRoutes.get('/:jobId/images/:imageIndex/links', async (c) => {
-  const session = c.get('authSession');
-  const imageIndex = imageIndexSchema.parse(c.req.param('imageIndex'));
-  const links = await createGenerationJobImageLinks(session.userId, c.req.param('jobId'), imageIndex);
-  return c.json(links);
-});
+jobsRoutes.get(
+  '/:jobId/images/:imageIndex/links',
+  createRateLimitMiddleware('download_link'),
+  async (c) => {
+    const session = c.get('authSession');
+    const imageIndex = imageIndexSchema.parse(c.req.param('imageIndex'));
+    const links = await createGenerationJobImageLinks(
+      session.userId,
+      c.req.param('jobId'),
+      imageIndex,
+    );
+    return c.json(links);
+  },
+);

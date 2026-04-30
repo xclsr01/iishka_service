@@ -87,8 +87,15 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   SUPABASE_STORAGE_BUCKET: z.string().optional(),
+  RATE_LIMIT_DRIVER: z.enum(['memory', 'upstash']).default('memory'),
   RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(120),
+  UPSTASH_REDIS_REST_URL: optionalUrl,
+  UPSTASH_REDIS_REST_TOKEN: optionalSecret,
+  TRUST_PLATFORM_CLIENT_IP_HEADERS: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
   ENABLE_DEV_AUTH: z
     .string()
     .default('false')
@@ -178,6 +185,21 @@ function validateGatewayEnv(env: BackendEnv) {
   }
 }
 
+function validateRateLimitEnv(env: BackendEnv) {
+  if (env.RATE_LIMIT_DRIVER === 'upstash') {
+    const missing = [
+      ['UPSTASH_REDIS_REST_URL', env.UPSTASH_REDIS_REST_URL],
+      ['UPSTASH_REDIS_REST_TOKEN', env.UPSTASH_REDIS_REST_TOKEN],
+    ].filter(([, value]) => !value);
+
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing Upstash rate limiter configuration: ${missing.map(([key]) => key).join(', ')}`,
+      );
+    }
+  }
+}
+
 function validateProductionEnv(env: BackendEnv) {
   if (env.APP_ENV !== 'production') {
     return;
@@ -214,6 +236,10 @@ function validateProductionEnv(env: BackendEnv) {
     errors.push('ENABLE_DEV_SUBSCRIPTION_OVERRIDE must be false in production');
   }
 
+  if (env.RATE_LIMIT_DRIVER === 'memory') {
+    errors.push('RATE_LIMIT_DRIVER=memory is not allowed in production');
+  }
+
   if (errors.length > 0) {
     throw new Error(
       `Invalid production environment:\n- ${errors.join('\n- ')}`,
@@ -230,6 +256,7 @@ export function parseBackendEnv(source: NodeJS.ProcessEnv = process.env) {
 
   validateSupabaseStorageEnv(parsed);
   validateGatewayEnv(parsed);
+  validateRateLimitEnv(parsed);
   validateProductionEnv(parsed);
 
   return parsed;
