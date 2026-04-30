@@ -1,0 +1,75 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { parseBackendEnv } from './env';
+
+const validProductionEnv = {
+  APP_ENV: 'production',
+  FRONTEND_URL: 'https://iishka-service.pages.dev',
+  API_BASE_URL: 'https://api.example.com',
+  DATABASE_URL:
+    'postgresql://prod-user:prod-password@db.example.com:5432/iishka',
+  JWT_SECRET: 'prod-jwt-secret-prod-jwt-secret-000000000000',
+  TELEGRAM_BOT_TOKEN: '123456789:prod-telegram-bot-token',
+  TELEGRAM_WEBHOOK_SECRET: 'prod-telegram-webhook-secret',
+  TELEGRAM_MINI_APP_URL: 'https://iishka-service.pages.dev',
+  TELEGRAM_DELIVERY_MODE: 'webhook',
+  AI_GATEWAY_URL: 'https://ai-gateway.example.run.app',
+  AI_GATEWAY_INTERNAL_TOKEN: 'prod-ai-gateway-token-000000000000000000',
+};
+
+test('parseBackendEnv rejects production placeholders and missing AI gateway config', () => {
+  assert.throws(
+    () =>
+      parseBackendEnv({
+        APP_ENV: 'production',
+      }),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /JWT_SECRET/);
+      assert.match(error.message, /TELEGRAM_BOT_TOKEN/);
+      assert.match(error.message, /TELEGRAM_WEBHOOK_SECRET/);
+      assert.match(error.message, /DATABASE_URL/);
+      assert.match(error.message, /AI_GATEWAY_URL/);
+      assert.match(error.message, /AI_GATEWAY_INTERNAL_TOKEN/);
+      return true;
+    },
+  );
+});
+
+test('parseBackendEnv accepts production with required AI gateway config', () => {
+  const env = parseBackendEnv(validProductionEnv);
+
+  assert.equal(env.APP_ENV, 'production');
+  assert.equal(env.AI_GATEWAY_URL, validProductionEnv.AI_GATEWAY_URL);
+  assert.equal(
+    env.AI_GATEWAY_INTERNAL_TOKEN,
+    validProductionEnv.AI_GATEWAY_INTERNAL_TOKEN,
+  );
+});
+
+test('parseBackendEnv allows explicitly named emergency direct provider egress override', () => {
+  const env = parseBackendEnv({
+    ...validProductionEnv,
+    AI_GATEWAY_URL: '',
+    AI_GATEWAY_INTERNAL_TOKEN: '',
+    EMERGENCY_ALLOW_DIRECT_PROVIDER_EGRESS_IN_PRODUCTION: 'true',
+  });
+
+  assert.equal(env.APP_ENV, 'production');
+  assert.equal(env.AI_GATEWAY_URL, undefined);
+  assert.equal(env.AI_GATEWAY_INTERNAL_TOKEN, undefined);
+  assert.equal(env.EMERGENCY_ALLOW_DIRECT_PROVIDER_EGRESS_IN_PRODUCTION, true);
+});
+
+test('parseBackendEnv keeps development defaults permissive', () => {
+  const env = parseBackendEnv({
+    APP_ENV: 'development',
+  });
+
+  assert.equal(env.APP_ENV, 'development');
+  assert.equal(
+    env.DATABASE_URL,
+    'postgresql://user:password@localhost:5432/iishka_service',
+  );
+  assert.equal(env.AI_GATEWAY_URL, undefined);
+});

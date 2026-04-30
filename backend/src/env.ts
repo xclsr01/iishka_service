@@ -1,7 +1,10 @@
 import { z } from 'zod';
 import { validateSupabaseServiceRoleKey } from './lib/supabase-key';
 
-if (!process.env.DEV_AUTH_SHARED_SECRET && process.env.VITE_DEV_AUTH_SHARED_SECRET) {
+if (
+  !process.env.DEV_AUTH_SHARED_SECRET &&
+  process.env.VITE_DEV_AUTH_SHARED_SECRET
+) {
   process.env.DEV_AUTH_SHARED_SECRET = process.env.VITE_DEV_AUTH_SHARED_SECRET;
 }
 
@@ -9,8 +12,12 @@ const placeholderUrl = 'https://example.invalid';
 const placeholderSecret =
   'replace-this-placeholder-secret-before-production-use-0000000000000000';
 const placeholderToken = 'replace-me';
-const placeholderDatabaseUrl = 'postgresql://user:password@localhost:5432/iishka_service';
-const optionalUrl = z.preprocess((value) => (value === '' ? undefined : value), z.string().url().optional());
+const placeholderDatabaseUrl =
+  'postgresql://user:password@localhost:5432/iishka_service';
+const optionalUrl = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().url().optional(),
+);
 const optionalSecret = z.preprocess(
   (value) => (value === '' ? undefined : value),
   z.string().min(32).optional(),
@@ -21,15 +28,28 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().url().default(placeholderUrl),
   API_BASE_URL: z.string().url().default(placeholderUrl),
   DATABASE_URL: z.string().min(1).default(placeholderDatabaseUrl),
-  DIRECT_URL: z.string().min(1).default(process.env.DATABASE_URL ?? placeholderDatabaseUrl),
+  DIRECT_URL: z
+    .string()
+    .min(1)
+    .default(process.env.DATABASE_URL ?? placeholderDatabaseUrl),
   JWT_SECRET: z.string().min(32).default(placeholderSecret),
-  SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(60 * 24 * 7),
-  TELEGRAM_INIT_DATA_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+  SESSION_TTL_MINUTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60 * 24 * 7),
+  TELEGRAM_INIT_DATA_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(3600),
   TELEGRAM_BOT_TOKEN: z.string().min(1).default(placeholderToken),
   TELEGRAM_BOT_USERNAME: z.string().min(1).default('placeholder_bot'),
   TELEGRAM_WEBHOOK_SECRET: z.string().min(1).default(placeholderSecret),
   TELEGRAM_MINI_APP_URL: z.string().url().default(placeholderUrl),
-  TELEGRAM_DELIVERY_MODE: z.enum(['webhook', 'polling', 'disabled']).default('polling'),
+  TELEGRAM_DELIVERY_MODE: z
+    .enum(['webhook', 'polling', 'disabled'])
+    .default('polling'),
   OPENAI_ENABLED: z
     .string()
     .default('true')
@@ -37,7 +57,11 @@ const envSchema = z.object({
   AI_GATEWAY_URL: optionalUrl,
   AI_GATEWAY_INTERNAL_TOKEN: optionalSecret,
   AI_GATEWAY_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
-  AI_GATEWAY_ASYNC_JOB_TIMEOUT_MS: z.coerce.number().int().positive().default(11 * 60 * 1000),
+  AI_GATEWAY_ASYNC_JOB_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(11 * 60 * 1000),
   OPENAI_API_KEY: z.string().min(1).default(placeholderToken),
   OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
   OPENAI_GATEWAY_URL: optionalUrl,
@@ -49,7 +73,11 @@ const envSchema = z.object({
   GOOGLE_AI_MODEL: z.string().min(1).default('gemini-2.5-flash'),
   NANO_BANANA_MODEL: z.string().min(1).default('gemini-2.5-flash-image'),
   VEO_MODEL: z.string().min(1).default('veo-3.1-fast-generate-preview'),
-  MAX_UPLOAD_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+  MAX_UPLOAD_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10 * 1024 * 1024),
   ALLOWED_UPLOAD_MIME_TYPES: z
     .string()
     .min(1)
@@ -70,15 +98,50 @@ const envSchema = z.object({
     .string()
     .default('false')
     .transform((value) => value === 'true'),
+  EMERGENCY_ALLOW_DIRECT_PROVIDER_EGRESS_IN_PRODUCTION: z
+    .string()
+    .default('false')
+    .transform((value) => value === 'true'),
   PORT: z.coerce.number().int().positive().default(8787),
 });
 
-export const env = envSchema.parse(process.env);
-export const allowedUploadMimeTypes = env.ALLOWED_UPLOAD_MIME_TYPES.split(',')
-  .map((value) => value.trim())
-  .filter(Boolean);
+type BackendEnv = z.infer<typeof envSchema>;
 
-if (env.UPLOAD_STORAGE_DRIVER === 'supabase') {
+function isPlaceholderValue(value: string | undefined, placeholders: string[]) {
+  if (!value) {
+    return true;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return (
+    placeholders.some(
+      (placeholder) => normalized === placeholder.toLowerCase(),
+    ) ||
+    normalized.includes('replace-this-placeholder') ||
+    normalized === placeholderToken ||
+    normalized.includes('example.invalid')
+  );
+}
+
+function requireProductionValue(
+  env: BackendEnv,
+  key: keyof BackendEnv,
+  placeholders: string[],
+  errors: string[],
+) {
+  const value = env[key];
+  if (typeof value !== 'string' || isPlaceholderValue(value, placeholders)) {
+    errors.push(
+      `${String(key)} must be configured with a non-placeholder production value`,
+    );
+  }
+}
+
+function validateSupabaseStorageEnv(env: BackendEnv) {
+  if (env.UPLOAD_STORAGE_DRIVER !== 'supabase') {
+    return;
+  }
+
   const missing = [
     ['SUPABASE_URL', env.SUPABASE_URL],
     ['SUPABASE_SERVICE_ROLE_KEY', env.SUPABASE_SERVICE_ROLE_KEY],
@@ -101,10 +164,92 @@ if (env.UPLOAD_STORAGE_DRIVER === 'supabase') {
   }
 }
 
-if (env.AI_GATEWAY_URL && !env.AI_GATEWAY_INTERNAL_TOKEN) {
-  throw new Error('AI_GATEWAY_INTERNAL_TOKEN is required when AI_GATEWAY_URL is set');
+function validateGatewayEnv(env: BackendEnv) {
+  if (env.AI_GATEWAY_URL && !env.AI_GATEWAY_INTERNAL_TOKEN) {
+    throw new Error(
+      'AI_GATEWAY_INTERNAL_TOKEN is required when AI_GATEWAY_URL is set',
+    );
+  }
+
+  if (env.OPENAI_GATEWAY_URL && !env.OPENAI_GATEWAY_INTERNAL_TOKEN) {
+    throw new Error(
+      'OPENAI_GATEWAY_INTERNAL_TOKEN is required when OPENAI_GATEWAY_URL is set',
+    );
+  }
 }
 
-if (env.OPENAI_GATEWAY_URL && !env.OPENAI_GATEWAY_INTERNAL_TOKEN) {
-  throw new Error('OPENAI_GATEWAY_INTERNAL_TOKEN is required when OPENAI_GATEWAY_URL is set');
+function validateProductionEnv(env: BackendEnv) {
+  if (env.APP_ENV !== 'production') {
+    return;
+  }
+
+  const errors: string[] = [];
+  requireProductionValue(env, 'JWT_SECRET', [placeholderSecret], errors);
+  requireProductionValue(env, 'TELEGRAM_BOT_TOKEN', [placeholderToken], errors);
+  requireProductionValue(
+    env,
+    'TELEGRAM_WEBHOOK_SECRET',
+    [placeholderSecret],
+    errors,
+  );
+  requireProductionValue(env, 'DATABASE_URL', [placeholderDatabaseUrl], errors);
+
+  if (!env.EMERGENCY_ALLOW_DIRECT_PROVIDER_EGRESS_IN_PRODUCTION) {
+    requireProductionValue(env, 'AI_GATEWAY_URL', [placeholderUrl], errors);
+    requireProductionValue(
+      env,
+      'AI_GATEWAY_INTERNAL_TOKEN',
+      [placeholderSecret],
+      errors,
+    );
+  } else {
+    if (
+      env.AI_GATEWAY_URL &&
+      isPlaceholderValue(env.AI_GATEWAY_URL, [placeholderUrl])
+    ) {
+      errors.push('AI_GATEWAY_URL must not use a placeholder when configured');
+    }
+
+    if (
+      env.AI_GATEWAY_INTERNAL_TOKEN &&
+      isPlaceholderValue(env.AI_GATEWAY_INTERNAL_TOKEN, [placeholderSecret])
+    ) {
+      errors.push(
+        'AI_GATEWAY_INTERNAL_TOKEN must not use a placeholder when configured',
+      );
+    }
+  }
+
+  if (env.ENABLE_DEV_AUTH) {
+    errors.push('ENABLE_DEV_AUTH must be false in production');
+  }
+
+  if (env.ENABLE_DEV_SUBSCRIPTION_OVERRIDE) {
+    errors.push('ENABLE_DEV_SUBSCRIPTION_OVERRIDE must be false in production');
+  }
+
+  if (errors.length > 0) {
+    throw new Error(
+      `Invalid production environment:\n- ${errors.join('\n- ')}`,
+    );
+  }
 }
+
+export function parseBackendEnv(source: NodeJS.ProcessEnv = process.env) {
+  const parsed = envSchema.parse({
+    ...source,
+    DIRECT_URL:
+      source.DIRECT_URL ?? source.DATABASE_URL ?? placeholderDatabaseUrl,
+  });
+
+  validateSupabaseStorageEnv(parsed);
+  validateGatewayEnv(parsed);
+  validateProductionEnv(parsed);
+
+  return parsed;
+}
+
+export const env = parseBackendEnv(process.env);
+export const allowedUploadMimeTypes = env.ALLOWED_UPLOAD_MIME_TYPES.split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
