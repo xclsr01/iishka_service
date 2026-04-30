@@ -118,7 +118,7 @@ gcloud run deploy iishka-service \
   --region asia-southeast1 \
   --port 8080 \
   --allow-unauthenticated \
-  --set-env-vars APP_ENV=production,PORT=8080,FRONTEND_URL=https://<cloudflare-pages-domain>,API_BASE_URL=https://<backend-domain>,TELEGRAM_BOT_USERNAME=<bot-username>,TELEGRAM_MINI_APP_URL=https://<mini-app-url>,TELEGRAM_DELIVERY_MODE=webhook,AI_GATEWAY_URL=https://<ai-gateway-url>,AI_GATEWAY_TIMEOUT_MS=15000,OPENAI_ENABLED=true,OPENAI_MODEL=gpt-5.4-mini,ANTHROPIC_MODEL=claude-3-5-sonnet-latest,GOOGLE_AI_MODEL=gemini-2.5-flash,NANO_BANANA_MODEL=gemini-2.5-flash-image,UPLOAD_STORAGE_DRIVER=supabase,SUPABASE_URL=https://<project-ref>.supabase.co,SUPABASE_STORAGE_BUCKET=chat-uploads,RATE_LIMIT_DRIVER=upstash,UPSTASH_REDIS_REST_URL=https://<upstash-rest-url>,TRUST_PLATFORM_CLIENT_IP_HEADERS=true,RATE_LIMIT_WINDOW_SECONDS=60,RATE_LIMIT_MAX_REQUESTS=120,ENABLE_DEV_AUTH=false,ENABLE_DEV_SUBSCRIPTION_OVERRIDE=false \
+  --set-env-vars APP_ENV=production,PORT=8080,FRONTEND_URL=https://<cloudflare-pages-domain>,API_BASE_URL=https://<backend-domain>,TELEGRAM_BOT_USERNAME=<bot-username>,TELEGRAM_MINI_APP_URL=https://<mini-app-url>,TELEGRAM_DELIVERY_MODE=webhook,AI_GATEWAY_URL=https://<ai-gateway-url>,AI_GATEWAY_TIMEOUT_MS=15000,OPENAI_ENABLED=true,OPENAI_MODEL=gpt-5.4-mini,ANTHROPIC_MODEL=claude-3-5-sonnet-latest,GOOGLE_AI_MODEL=gemini-2.5-flash,NANO_BANANA_MODEL=gemini-2.5-flash-image,UPLOAD_STORAGE_DRIVER=supabase,SUPABASE_URL=https://<project-ref>.supabase.co,SUPABASE_STORAGE_BUCKET=chat-uploads,RATE_LIMIT_DRIVER=upstash,UPSTASH_REDIS_REST_URL=https://<upstash-rest-url>,TRUST_PLATFORM_CLIENT_IP_HEADERS=true,RATE_LIMIT_WINDOW_SECONDS=60,RATE_LIMIT_MAX_REQUESTS=120,JOB_QUEUE_DRIVER=db,JOB_WORKER_POLL_INTERVAL_MS=5000,JOB_WORKER_BATCH_SIZE=1,JOB_RUNNING_STALE_AFTER_SECONDS=900,JOB_MAX_ATTEMPTS=3,ENABLE_DEV_AUTH=false,ENABLE_DEV_SUBSCRIPTION_OVERRIDE=false \
   --set-secrets DATABASE_URL=DATABASE_URL:latest,DIRECT_URL=DIRECT_URL:latest,JWT_SECRET=JWT_SECRET:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest,TELEGRAM_WEBHOOK_SECRET=TELEGRAM_WEBHOOK_SECRET:latest,AI_GATEWAY_INTERNAL_TOKEN=AI_GATEWAY_INTERNAL_TOKEN:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest
 ```
 
@@ -126,6 +126,16 @@ gcloud run deploy iishka-service \
 
 The repo Cloud Build file, `cloudbuild.iishka-service.yaml`, deploys the same Cloud Run service name:
 `iishka-service`.
+
+## Generation Job Worker
+
+Production API instances use `JOB_QUEUE_DRIVER=db`, so routes only persist jobs and return. Deploy a separate Cloud Run worker from the same image with the command equivalent to:
+
+```bash
+npm run start:jobs --workspace backend
+```
+
+Use the same production secrets and env vars as the API service, but keep `--no-allow-unauthenticated` because the worker has no public HTTP surface. Set `JOB_WORKER_CLAIM_OWNER` to a stable service prefix plus instance identity when available. The worker claims due `QUEUED` jobs with Postgres row locks, heartbeats active work, and requeues stale `RUNNING` rows until `JOB_MAX_ATTEMPTS` is reached.
 
 ## Database Migrations
 

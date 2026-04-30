@@ -96,6 +96,16 @@ const envSchema = z.object({
     .string()
     .default('false')
     .transform((value) => value === 'true'),
+  JOB_QUEUE_DRIVER: z.enum(['inline', 'db']).default('inline'),
+  JOB_WORKER_CLAIM_OWNER: z.string().min(1).optional(),
+  JOB_WORKER_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
+  JOB_WORKER_BATCH_SIZE: z.coerce.number().int().positive().max(10).default(1),
+  JOB_RUNNING_STALE_AFTER_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15 * 60),
+  JOB_MAX_ATTEMPTS: z.coerce.number().int().positive().max(10).default(3),
   ENABLE_DEV_AUTH: z
     .string()
     .default('false')
@@ -238,6 +248,10 @@ function validateProductionEnv(env: BackendEnv) {
 
   if (env.RATE_LIMIT_DRIVER === 'memory') {
     errors.push('RATE_LIMIT_DRIVER=memory is not allowed in production');
+  }
+
+  if (env.JOB_QUEUE_DRIVER === 'inline') {
+    errors.push('JOB_QUEUE_DRIVER=inline is not allowed in production');
   }
 
   if (errors.length > 0) {

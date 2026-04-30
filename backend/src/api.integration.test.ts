@@ -11,6 +11,11 @@ import type {
   ProviderGenerateResult,
 } from './modules/providers/provider-types';
 import { ProviderAdapterError } from './modules/providers/provider-types';
+import {
+  claimGenerationJobById,
+  claimNextGenerationJob,
+  repairStaleGenerationJobs,
+} from './modules/jobs/jobs-service';
 
 type BootstrapResponse = {
   token: string;
@@ -504,6 +509,105 @@ test('jobs API creates runs and reports async provider jobs', async () => {
 
   assert.equal(jobsResponse.status, 200);
   assert.ok(jobsBody.jobs.some((job) => job.id === createJobBody.job.id));
+});
+
+test('jobs claim only allows one worker to acquire a queued job', async () => {
+  const provider = await prisma.provider.findUnique({
+    where: { key: ProviderKey.OPENAI },
+  });
+  assert.ok(provider);
+  const user = await prisma.user.create({
+    data: {
+      telegramUserId: 'claim-test-user',
+    },
+  });
+  const job = await prisma.generationJob.create({
+    data: {
+      userId: user.id,
+      providerId: provider.id,
+      kind: GenerationJobKind.PROVIDER_ASYNC,
+      prompt: 'claim test',
+      nextAttemptAt: new Date(Date.now() - 1000),
+      maxAttempts: 3,
+    },
+  });
+
+  const firstClaim = await claimGenerationJobById(job.id, 'worker-a');
+  const secondClaim = await claimGenerationJobById(job.id, 'worker-b');
+  const nextClaim = await claimNextGenerationJob('worker-c');
+
+  assert.equal(firstClaim?.id, job.id);
+  assert.equal(firstClaim?.claimOwner, 'worker-a');
+  assert.equal(firstClaim?.status, GenerationJobStatus.RUNNING);
+  assert.equal(firstClaim?.attemptCount, 1);
+  assert.equal(secondClaim, null);
+  assert.equal(nextClaim, null);
+});
+
+test('jobs stale repair requeues retryable stale jobs and fails exhausted jobs', async () => {
+  const provider = await prisma.provider.findUnique({
+    where: { key: ProviderKey.OPENAI },
+  });
+  assert.ok(provider);
+  const user = await prisma.user.create({
+    data: {
+      telegramUserId: 'stale-repair-user',
+    },
+  });
+  const staleTimestamp = new Date(Date.now() - 60 * 60 * 1000);
+  const retryableJob = await prisma.generationJob.create({
+    data: {
+      userId: user.id,
+      providerId: provider.id,
+      kind: GenerationJobKind.PROVIDER_ASYNC,
+      status: GenerationJobStatus.RUNNING,
+      prompt: 'retry stale',
+      attemptCount: 1,
+      maxAttempts: 3,
+      claimOwner: 'stale-worker',
+      startedAt: staleTimestamp,
+      heartbeatAt: staleTimestamp,
+    },
+  });
+  const exhaustedJob = await prisma.generationJob.create({
+    data: {
+      userId: user.id,
+      providerId: provider.id,
+      kind: GenerationJobKind.PROVIDER_ASYNC,
+      status: GenerationJobStatus.RUNNING,
+      prompt: 'exhausted stale',
+      attemptCount: 3,
+      maxAttempts: 3,
+      claimOwner: 'stale-worker',
+      startedAt: staleTimestamp,
+      heartbeatAt: staleTimestamp,
+    },
+  });
+
+  const repaired = await repairStaleGenerationJobs({
+    staleBefore: new Date(Date.now() - 5 * 60 * 1000),
+    batchSize: 10,
+  });
+
+  const retryableState = await prisma.generationJob.findUnique({
+    where: { id: retryableJob.id },
+  });
+  const exhaustedState = await prisma.generationJob.findUnique({
+    where: { id: exhaustedJob.id },
+  });
+
+  assert.deepEqual(repaired, {
+    scanned: 2,
+    requeued: 1,
+    failed: 1,
+  });
+  assert.equal(retryableState?.status, GenerationJobStatus.QUEUED);
+  assert.equal(retryableState?.claimOwner, null);
+  assert.equal(retryableState?.heartbeatAt, null);
+  assert.ok(retryableState?.nextAttemptAt);
+  assert.equal(exhaustedState?.status, GenerationJobStatus.FAILED);
+  assert.equal(exhaustedState?.failureCode, 'JOB_STALE_MAX_ATTEMPTS');
+  assert.equal(exhaustedState?.claimOwner, null);
 });
 
 test('jobs API creates and completes Nano Banana image jobs', async () => {

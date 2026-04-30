@@ -18,6 +18,7 @@ const validProductionEnv = {
   RATE_LIMIT_DRIVER: 'upstash',
   UPSTASH_REDIS_REST_URL: 'https://upstash.example.com',
   UPSTASH_REDIS_REST_TOKEN: 'prod-upstash-token-000000000000000000',
+  JOB_QUEUE_DRIVER: 'db',
 };
 
 test('parseBackendEnv rejects production placeholders and missing AI gateway config', () => {
@@ -35,6 +36,7 @@ test('parseBackendEnv rejects production placeholders and missing AI gateway con
       assert.match(error.message, /AI_GATEWAY_URL/);
       assert.match(error.message, /AI_GATEWAY_INTERNAL_TOKEN/);
       assert.match(error.message, /RATE_LIMIT_DRIVER/);
+      assert.match(error.message, /JOB_QUEUE_DRIVER/);
       return true;
     },
   );
@@ -76,6 +78,21 @@ test('parseBackendEnv rejects memory rate limiter in production', () => {
     (error) => {
       assert.ok(error instanceof Error);
       assert.match(error.message, /RATE_LIMIT_DRIVER=memory/);
+      return true;
+    },
+  );
+});
+
+test('parseBackendEnv rejects inline job queue in production', () => {
+  assert.throws(
+    () =>
+      parseBackendEnv({
+        ...validProductionEnv,
+        JOB_QUEUE_DRIVER: 'inline',
+      }),
+    (error) => {
+      assert.ok(error instanceof Error);
+      assert.match(error.message, /JOB_QUEUE_DRIVER=inline/);
       return true;
     },
   );
