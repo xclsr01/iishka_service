@@ -39,7 +39,7 @@ export function HomePage({
               <h1 className="font-display text-2xl font-bold leading-tight text-white sm:text-[1.7rem]">
                 {t('heroTitle')}
               </h1>
-              <p className="line-clamp-2 max-w-[32rem] text-sm leading-5 text-muted-foreground">
+              <p className="max-w-[32rem] text-sm leading-5 text-muted-foreground">
                 {t('heroWelcome', { firstName: user.firstName })}
               </p>
             </div>
@@ -79,7 +79,7 @@ export function HomePage({
                   <LockKeyhole className="h-4 w-4 text-primary" />
                   {t('subscriptionStatus')}
                 </div>
-                <p className="line-clamp-2 text-sm leading-5 text-muted-foreground">
+                <p className="text-sm leading-5 text-muted-foreground">
                   {subscription.hasAccess
                     ? t('subscriptionActive', {
                         planCode: subscription.planCode,

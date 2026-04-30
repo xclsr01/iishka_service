@@ -1,4 +1,10 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { Provider } from '@/lib/api';
 
 export type Locale = 'ru' | 'en';
@@ -17,7 +23,7 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     retryInTelegram: 'Повторить в Telegram',
     standaloneBrowserHint:
       'Открывать прямой `pages.dev` URL в обычном браузере можно для быстрой проверки, но для входа в приложение нужна подписанная Telegram-сессия.',
-    neuralAccess: 'Нейро Доступ',
+    neuralAccess: 'ИИ Хаб',
     heroTitle: 'Одна подписка, много ИИ!',
     heroWelcome: (params) =>
       `Добро пожаловать${params?.firstName ? `, ${params.firstName}` : ''}. Выбирайте модель, сохраняйте историю и переключайтесь между ассистентами без потери контекста.`,
@@ -25,7 +31,8 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     subscriptionActive: (params) => `Подписка активна: ${params?.planCode}.`,
     subscriptionOutOfTokens:
       'Токены закончились. Обновите подписку, чтобы продолжить переписку.',
-    subscriptionInactive: 'Подписка неактивна. Отправка сообщений откроется после активации тарифа.',
+    subscriptionInactive:
+      'Подписка неактивна. Отправка сообщений откроется после активации тарифа.',
     tokensLeft: 'Токенов',
     activating: 'Активация...',
     getSubscription: 'Оформить подписку',
@@ -37,12 +44,14 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     fileUploadsEnabled: 'Загрузка файлов включена',
     imageJobsEnabled: 'Генерация изображений',
     videoJobsEnabled: 'Генерация видео',
-    openStudio: 'Открыть студию',
+    openStudio: 'Открыть',
     imageStudio: 'Image Studio',
     createImage: 'Создать изображение',
-    imageStudioHint: 'Опишите картинку, стиль, настроение и детали. Nano Banana запустит генерацию как фоновую задачу.',
+    imageStudioHint:
+      'Опишите картинку, стиль, настроение и детали. Nano Banana запустит генерацию как фоновую задачу.',
     imageCost: '10 токенов',
-    imagePromptPlaceholder: 'Например: киберпанк-банан маскот, неоновый свет, премиальный UI-стиль...',
+    imagePromptPlaceholder:
+      'Например: киберпанк-банан маскот, неоновый свет, премиальный UI-стиль...',
     generateImage: 'Сгенерировать',
     generatingImage: 'Генерация...',
     newImage: 'Новая картинка',
@@ -64,24 +73,28 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     deletingImage: 'Удаляем...',
     deleteImageFailed: 'Не удалось удалить карточку',
     confirmDeleteImageTitle: 'Удалить карточку?',
-    confirmDeleteImageBody: 'Карточка, промпт и результат будут удалены из истории без возможности восстановления.',
+    confirmDeleteImageBody:
+      'Карточка, промпт и результат будут удалены из истории без возможности восстановления.',
     cancel: 'Нет',
     confirm: 'Да',
     preparingDownload: 'Готовим файл...',
     openingImage: 'Открываем...',
     imageDownloadStarted: 'Загрузка началась.',
-    imageOpenedForSaving: 'Изображение открыто. Сохраните его через меню устройства.',
+    imageOpenedForSaving:
+      'Изображение открыто. Сохраните его через меню устройства.',
     imageOpened: 'Изображение открыто.',
     imageDownloadFailed: 'Не удалось подготовить загрузку',
     imageOpenFailed: 'Не удалось открыть изображение',
     videoGeneration: 'Видео',
-    videoGenerationInProgress: 'Видео генерируется. Карточка обновится автоматически.',
+    videoGenerationInProgress:
+      'Видео генерируется. Карточка обновится автоматически.',
     videoGenerationFailed: 'Не удалось сгенерировать видео',
     videoLoadFailed: 'Не удалось загрузить видео',
     openVideo: 'Открыть видео',
     downloadVideo: 'Скачать видео',
     downloadVideoTitle: 'Куда сохранить?',
-    downloadVideoHint: 'Для галереи откройте видео и сохраните через меню телефона. Для файлов используйте системную загрузку.',
+    downloadVideoHint:
+      'Для галереи откройте видео и сохраните через меню телефона. Для файлов используйте системную загрузку.',
     saveVideoToGallery: 'В галерею',
     saveVideoToFiles: 'В файлы',
     retryVideo: 'Повторить',
@@ -90,15 +103,17 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     deleteVideo: 'Удалить',
     deletingVideo: 'Удаляем...',
     deleteVideoFailed: 'Не удалось удалить видео',
-    confirmDeleteVideoBody: 'Видео и связанный промпт будут удалены из истории без возможности восстановления.',
-    enterChat: 'Открыть чат',
+    confirmDeleteVideoBody:
+      'Видео и связанный промпт будут удалены из истории без возможности восстановления.',
+    enterChat: 'Открыть',
     back: 'Назад',
     subscriptionRequired: 'Нужна подписка',
     subscriptionRequiredOutOfTokens:
       'У вас закончились токены. Обновите подписку, чтобы продолжить чат.',
     subscriptionRequiredInactive:
       'Файлы можно подготовить заранее, но отправка сообщений заблокирована, пока тариф не активирован.',
-    startFirstConversation: (params) => `Начните первый диалог с ${params?.providerName}.`,
+    startFirstConversation: (params) =>
+      `Начните первый диалог с ${params?.providerName}.`,
     uploadFile: 'Загрузить файл',
     askAnythingAcrossProvider: 'Спросите что угодно у выбранного провайдера...',
     thinking: 'Думаю...',
@@ -118,14 +133,16 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     retryInTelegram: 'Retry In Telegram',
     standaloneBrowserHint:
       'Opening the raw `pages.dev` URL in a normal browser is fine for a smoke check, but a signed Telegram session is required to enter the app.',
-    neuralAccess: 'Neural Access',
+    neuralAccess: 'AI Hub',
     heroTitle: 'One subscription, many AI!',
     heroWelcome: (params) =>
       `Welcome${params?.firstName ? `, ${params.firstName}` : ''}. Pick your model, keep sessions synced, and move between assistants without losing context.`,
     subscriptionStatus: 'Subscription status',
     subscriptionActive: (params) => `Active on ${params?.planCode}.`,
-    subscriptionOutOfTokens: 'Out of tokens. Update your subscription to continue messaging.',
-    subscriptionInactive: 'Inactive. Messaging is gated until the monthly plan is active.',
+    subscriptionOutOfTokens:
+      'Out of tokens. Update your subscription to continue messaging.',
+    subscriptionInactive:
+      'Inactive. Messaging is gated until the monthly plan is active.',
     tokensLeft: 'Tokens left',
     activating: 'Activating...',
     getSubscription: 'Get subscription',
@@ -140,9 +157,11 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     openStudio: 'Open studio',
     imageStudio: 'Image Studio',
     createImage: 'Create image',
-    imageStudioHint: 'Describe the image, style, mood, and details. Nano Banana will run it as a background job.',
+    imageStudioHint:
+      'Describe the image, style, mood, and details. Nano Banana will run it as a background job.',
     imageCost: '10 tokens',
-    imagePromptPlaceholder: 'Example: cyberpunk banana mascot, neon light, premium UI style...',
+    imagePromptPlaceholder:
+      'Example: cyberpunk banana mascot, neon light, premium UI style...',
     generateImage: 'Generate',
     generatingImage: 'Generating...',
     newImage: 'New image',
@@ -164,7 +183,8 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     deletingImage: 'Deleting...',
     deleteImageFailed: 'Failed to delete the card',
     confirmDeleteImageTitle: 'Delete this card?',
-    confirmDeleteImageBody: 'The card, prompt, and result will be removed from history and cannot be restored.',
+    confirmDeleteImageBody:
+      'The card, prompt, and result will be removed from history and cannot be restored.',
     cancel: 'No',
     confirm: 'Yes',
     preparingDownload: 'Preparing...',
@@ -175,13 +195,15 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     imageDownloadFailed: 'Download failed',
     imageOpenFailed: 'Open failed',
     videoGeneration: 'Video',
-    videoGenerationInProgress: 'Video is generating. This card will update automatically.',
+    videoGenerationInProgress:
+      'Video is generating. This card will update automatically.',
     videoGenerationFailed: 'Video generation failed',
     videoLoadFailed: 'Video failed to load',
     openVideo: 'Open video',
     downloadVideo: 'Download video',
     downloadVideoTitle: 'Save video',
-    downloadVideoHint: 'For Photos/Gallery, open the video and save from the phone menu. For Files, use the system download.',
+    downloadVideoHint:
+      'For Photos/Gallery, open the video and save from the phone menu. For Files, use the system download.',
     saveVideoToGallery: 'To Photos',
     saveVideoToFiles: 'To Files',
     retryVideo: 'Retry',
@@ -190,7 +212,8 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
     deleteVideo: 'Delete',
     deletingVideo: 'Deleting...',
     deleteVideoFailed: 'Failed to delete the video',
-    confirmDeleteVideoBody: 'The video and its linked prompt will be removed from history and cannot be restored.',
+    confirmDeleteVideoBody:
+      'The video and its linked prompt will be removed from history and cannot be restored.',
     enterChat: 'Enter chat',
     back: 'Back',
     subscriptionRequired: 'Subscription required',
@@ -198,7 +221,8 @@ const translations: Record<Locale, Record<string, TranslationValue>> = {
       'You are out of tokens. Update your subscription to continue chatting.',
     subscriptionRequiredInactive:
       'Uploads can still be prepared, but message sending is blocked until the plan is active.',
-    startFirstConversation: (params) => `Start the first conversation with ${params?.providerName}.`,
+    startFirstConversation: (params) =>
+      `Start the first conversation with ${params?.providerName}.`,
     uploadFile: 'Upload a file',
     askAnythingAcrossProvider: 'Ask anything across your selected provider...',
     thinking: 'Thinking...',
