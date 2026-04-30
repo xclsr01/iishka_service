@@ -27,17 +27,19 @@ export function HomePage({
   const tokenDisplay = subscription.tokensRemaining;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto pr-1">
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.95fr)] xl:items-start">
-        <Card className="overflow-hidden border-primary/20 bg-[linear-gradient(135deg,rgba(12,18,35,0.96),rgba(15,25,48,0.88))] px-4 py-4 sm:px-5 sm:py-4">
-          <div className="absolute inset-x-0 top-0 h-24 bg-[linear-gradient(90deg,rgba(87,225,255,0.18),transparent,rgba(255,191,71,0.14))]" />
+    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+      <div className="grid shrink-0 gap-2 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.95fr)] xl:items-stretch">
+        <Card className="overflow-hidden border-primary/20 bg-[linear-gradient(135deg,rgba(12,18,35,0.96),rgba(15,25,48,0.88))] px-3 py-3 sm:px-4 sm:py-3">
+          <div className="absolute inset-x-0 top-0 h-16 bg-[linear-gradient(90deg,rgba(87,225,255,0.18),transparent,rgba(255,191,71,0.14))]" />
           <div className="relative flex items-start justify-between gap-3">
             <div className="min-w-0 space-y-2">
-              <Badge className="border-primary/30 bg-primary/10 text-primary">{t('neuralAccess')}</Badge>
-              <h1 className="font-display text-[1.85rem] font-bold leading-tight text-white sm:text-3xl">
+              <Badge className="border-primary/30 bg-primary/10 text-primary">
+                {t('neuralAccess')}
+              </Badge>
+              <h1 className="font-display text-2xl font-bold leading-tight text-white sm:text-[1.7rem]">
                 {t('heroTitle')}
               </h1>
-              <p className="max-w-[32rem] text-sm leading-5 text-muted-foreground">
+              <p className="line-clamp-2 max-w-[32rem] text-sm leading-5 text-muted-foreground">
                 {t('heroWelcome', { firstName: user.firstName })}
               </p>
             </div>
@@ -48,14 +50,16 @@ export function HomePage({
               <select
                 id="locale-select"
                 value={locale}
-                onChange={(event) => setLocale(event.target.value as 'ru' | 'en')}
-                className="h-10 rounded-[14px] border border-primary/30 bg-[rgba(8,17,33,0.9)] px-3 text-sm font-semibold uppercase tracking-[0.12em] text-primary outline-none transition hover:border-primary/50"
+                onChange={(event) =>
+                  setLocale(event.target.value as 'ru' | 'en')
+                }
+                className="h-9 rounded-[14px] border border-primary/30 bg-[rgba(8,17,33,0.9)] px-3 text-xs font-semibold uppercase tracking-[0.12em] text-primary outline-none transition hover:border-primary/50"
               >
                 <option value="ru">{t('languageRu')}</option>
                 <option value="en">{t('languageEn')}</option>
               </select>
-              <div className="rounded-[18px] border border-primary/25 bg-primary/10 p-3 shadow-soft">
-                <MessageSquareText className="h-5 w-5 text-primary sm:h-6 sm:w-6" />
+              <div className="hidden rounded-[18px] border border-primary/25 bg-primary/10 p-3 shadow-soft sm:block">
+                <MessageSquareText className="h-5 w-5 text-primary" />
               </div>
             </div>
           </div>
@@ -72,12 +76,14 @@ export function HomePage({
             <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2">
               <div className="min-w-0 space-y-1">
                 <div className="flex items-center gap-2 font-semibold text-white">
-                <LockKeyhole className="h-4 w-4 text-primary" />
-                {t('subscriptionStatus')}
+                  <LockKeyhole className="h-4 w-4 text-primary" />
+                  {t('subscriptionStatus')}
                 </div>
-                <p className="text-sm leading-5 text-muted-foreground">
+                <p className="line-clamp-2 text-sm leading-5 text-muted-foreground">
                   {subscription.hasAccess
-                    ? t('subscriptionActive', { planCode: subscription.planCode })
+                    ? t('subscriptionActive', {
+                        planCode: subscription.planCode,
+                      })
                     : subscription.tokensRemaining === 0
                       ? t('subscriptionOutOfTokens')
                       : t('subscriptionInactive')}
@@ -100,33 +106,45 @@ export function HomePage({
                   type="button"
                   variant="secondary"
                   className="h-10 min-w-0 flex-1 px-4"
-                  disabled={isActivatingSubscription || isUnsubscribingSubscription}
+                  disabled={
+                    isActivatingSubscription || isUnsubscribingSubscription
+                  }
                   onClick={onActivateDevSubscription}
                 >
-                  {isActivatingSubscription ? t('activating') : t('getSubscription')}
+                  {isActivatingSubscription
+                    ? t('activating')
+                    : t('getSubscription')}
                 </Button>
               )}
               <Button
                 type="button"
                 variant="ghost"
                 className="h-10 min-w-0 flex-1 border-destructive/25 bg-destructive/10 px-4 text-destructive hover:bg-destructive/15"
-                disabled={isActivatingSubscription || isUnsubscribingSubscription}
+                disabled={
+                  isActivatingSubscription || isUnsubscribingSubscription
+                }
                 onClick={onUnsubscribeDevSubscription}
               >
-                {isUnsubscribingSubscription ? t('unsubscribing') : t('unsubscribe')}
+                {isUnsubscribingSubscription
+                  ? t('unsubscribing')
+                  : t('unsubscribe')}
               </Button>
             </div>
           </div>
         </Card>
       </div>
 
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-xl font-bold text-white">{t('aiCatalog')}</h2>
-          <Badge className="hidden border-border/60 bg-muted/70 sm:inline-flex lg:hidden">{t('scroll')}</Badge>
+      <section className="flex min-h-0 flex-1 flex-col gap-2">
+        <div className="flex shrink-0 items-center justify-between">
+          <h2 className="font-display text-xl font-bold text-white">
+            {t('aiCatalog')}
+          </h2>
+          <Badge className="hidden border-border/60 bg-muted/70 sm:inline-flex lg:hidden">
+            {t('scroll')}
+          </Badge>
         </div>
-        <div className="-mx-4 overflow-x-auto px-4 pb-4 lg:mx-0 lg:overflow-visible lg:px-0">
-          <div className="flex snap-x gap-4 lg:grid lg:grid-cols-2 lg:gap-4 xl:grid-cols-3">
+        <div className="-mx-4 min-h-0 flex-1 overflow-x-auto overflow-y-hidden px-4 lg:mx-0 lg:overflow-visible lg:px-0">
+          <div className="flex h-full snap-x gap-3 lg:grid lg:grid-cols-2 lg:grid-rows-2 lg:gap-3 xl:grid-cols-3">
             {providers.map((provider) => (
               <ProviderCard key={provider.id} provider={provider} />
             ))}

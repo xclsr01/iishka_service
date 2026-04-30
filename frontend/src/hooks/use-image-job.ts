@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { apiClient, type GenerationJob } from '@/lib/api';
+import { apiClient, type GenerationJob, type Provider } from '@/lib/api';
 import { useLocale } from '@/lib/i18n';
 
 const IMAGE_HISTORY_PAGE_SIZE = 10;
@@ -16,11 +16,19 @@ type ImageJobState = {
 };
 
 function isTerminalStatus(job: GenerationJob | null) {
-  return job?.status === 'COMPLETED' || job?.status === 'FAILED' || job?.status === 'CANCELED';
+  return (
+    job?.status === 'COMPLETED' ||
+    job?.status === 'FAILED' ||
+    job?.status === 'CANCELED'
+  );
 }
 
 function shouldHydrateHistoryJob(job: GenerationJob) {
   return job.status === 'COMPLETED' && !job.resultPayload;
+}
+
+function isOptimisticJob(job: GenerationJob | null) {
+  return Boolean(job?.id.startsWith('optimistic-image-'));
 }
 
 function toUserFacingError(error: unknown, fallback: string) {
@@ -31,8 +39,43 @@ function toUserFacingError(error: unknown, fallback: string) {
   return fallback;
 }
 
-export function useImageJob(providerId: string) {
+function buildOptimisticImageJob(
+  provider: Provider,
+  prompt: string,
+): GenerationJob {
+  const now = new Date().toISOString();
+
+  return {
+    id: `optimistic-image-${crypto.randomUUID()}`,
+    kind: 'IMAGE',
+    status: 'QUEUED',
+    prompt,
+    failureCode: null,
+    failureMessage: null,
+    externalJobId: null,
+    providerRequestId: null,
+    attemptCount: 0,
+    queuedAt: now,
+    startedAt: null,
+    completedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    chatId: null,
+    messageId: null,
+    provider: {
+      id: provider.id,
+      key: provider.key,
+      name: provider.name,
+      slug: provider.slug,
+      defaultModel: provider.defaultModel,
+    },
+    resultPayload: null,
+  };
+}
+
+export function useImageJob(provider: Provider) {
   const { t } = useLocale();
+  const providerId = provider.id;
   const [state, setState] = useState<ImageJobState>({
     job: null,
     jobs: [],
@@ -60,9 +103,13 @@ export function useImageJob(providerId: string) {
         }
       }),
     );
-    const hydratedJobById = new Map(hydratedJobs.map((historyJob) => [historyJob.id, historyJob]));
+    const hydratedJobById = new Map(
+      hydratedJobs.map((historyJob) => [historyJob.id, historyJob]),
+    );
 
-    return jobs.map((historyJob) => hydratedJobById.get(historyJob.id) ?? historyJob);
+    return jobs.map(
+      (historyJob) => hydratedJobById.get(historyJob.id) ?? historyJob,
+    );
   }
 
   useEffect(() => {
@@ -80,13 +127,16 @@ export function useImageJob(providerId: string) {
         }
 
         const imageJobs = await hydrateHistoryJobs(
-          response.jobs.filter((job) => job.kind === 'IMAGE' && job.provider.id === providerId),
+          response.jobs.filter(
+            (job) => job.kind === 'IMAGE' && job.provider.id === providerId,
+          ),
         );
         if (cancelled) {
           return;
         }
 
-        const activeJob = imageJobs.find((historyJob) => !isTerminalStatus(historyJob)) ?? null;
+        const activeJob =
+          imageJobs.find((historyJob) => !isTerminalStatus(historyJob)) ?? null;
         activeJobIdRef.current = activeJob?.id ?? null;
 
         setState((current) => ({
@@ -103,9 +153,10 @@ export function useImageJob(providerId: string) {
           setState((current) => ({
             ...current,
             isLoadingHistory: false,
-            error: current.job || current.jobs.length > 0
-              ? current.error
-              : toUserFacingError(error, t('imageGenerationFailed')),
+            error:
+              current.job || current.jobs.length > 0
+                ? current.error
+                : toUserFacingError(error, t('imageGenerationFailed')),
           }));
         }
       }
@@ -138,16 +189,25 @@ export function useImageJob(providerId: string) {
         cursor,
       });
       const imageJobs = await hydrateHistoryJobs(
-        response.jobs.filter((job) => job.kind === 'IMAGE' && job.provider.id === providerId),
+        response.jobs.filter(
+          (job) => job.kind === 'IMAGE' && job.provider.id === providerId,
+        ),
       );
 
       setState((current) => {
-        const existingJobIds = new Set(current.jobs.map((historyJob) => historyJob.id));
+        const existingJobIds = new Set(
+          current.jobs.map((historyJob) => historyJob.id),
+        );
         const nextJobs = [
           ...current.jobs,
-          ...imageJobs.filter((historyJob) => !existingJobIds.has(historyJob.id)),
+          ...imageJobs.filter(
+            (historyJob) => !existingJobIds.has(historyJob.id),
+          ),
         ];
-        const nextActiveJob = current.job ?? nextJobs.find((historyJob) => !isTerminalStatus(historyJob)) ?? null;
+        const nextActiveJob =
+          current.job ??
+          nextJobs.find((historyJob) => !isTerminalStatus(historyJob)) ??
+          null;
 
         activeJobIdRef.current = nextActiveJob?.id ?? activeJobIdRef.current;
 
@@ -157,7 +217,9 @@ export function useImageJob(providerId: string) {
           jobs: nextJobs,
           nextCursor: response.nextCursor,
           isLoadingMore: false,
-          isPolling: current.isPolling || Boolean(nextActiveJob && !isTerminalStatus(nextActiveJob)),
+          isPolling:
+            current.isPolling ||
+            Boolean(nextActiveJob && !isTerminalStatus(nextActiveJob)),
           error: null,
         };
       });
@@ -171,8 +233,14 @@ export function useImageJob(providerId: string) {
   }
 
   useEffect(() => {
-    if (!state.job || isTerminalStatus(state.job)) {
-      setState((current) => (current.isPolling ? { ...current, isPolling: false } : current));
+    if (
+      !state.job ||
+      isOptimisticJob(state.job) ||
+      isTerminalStatus(state.job)
+    ) {
+      setState((current) =>
+        current.isPolling ? { ...current, isPolling: false } : current,
+      );
       return;
     }
 
@@ -190,11 +258,14 @@ export function useImageJob(providerId: string) {
         setState((current) => ({
           ...current,
           job: response.job,
-          jobs: current.jobs.map((job) => (job.id === response.job.id ? response.job : job)),
+          jobs: current.jobs.map((job) =>
+            job.id === response.job.id ? response.job : job,
+          ),
           isPolling: !isTerminalStatus(response.job),
-          error: response.job.status === 'FAILED'
-            ? response.job.failureMessage || t('imageGenerationFailed')
-            : null,
+          error:
+            response.job.status === 'FAILED'
+              ? response.job.failureMessage || t('imageGenerationFailed')
+              : null,
         }));
       } catch (error) {
         if (!cancelled) {
@@ -219,10 +290,16 @@ export function useImageJob(providerId: string) {
   }, [state.job?.id, state.job?.status, t]);
 
   async function createImageJob(prompt: string) {
+    const optimisticJob = buildOptimisticImageJob(provider, prompt);
+
     try {
       setState((current) => ({
         ...current,
+        job: optimisticJob,
+        jobs: [optimisticJob, ...current.jobs],
         isSubmitting: true,
+        isLoadingHistory: false,
+        isPolling: true,
         error: null,
       }));
 
@@ -236,7 +313,12 @@ export function useImageJob(providerId: string) {
       setState((current) => ({
         ...current,
         job: response.job,
-        jobs: [response.job, ...current.jobs.filter((job) => job.id !== response.job.id)],
+        jobs: [
+          response.job,
+          ...current.jobs.filter(
+            (job) => job.id !== response.job.id && job.id !== optimisticJob.id,
+          ),
+        ],
         isLoadingHistory: false,
         isSubmitting: false,
         isPolling: !isTerminalStatus(response.job),
@@ -245,8 +327,14 @@ export function useImageJob(providerId: string) {
     } catch (error) {
       setState((current) => ({
         ...current,
+        job: current.job?.id === optimisticJob.id ? null : current.job,
+        jobs: current.jobs.filter((job) => job.id !== optimisticJob.id),
         isSubmitting: false,
-        isPolling: false,
+        isPolling: Boolean(
+          current.job &&
+          current.job.id !== optimisticJob.id &&
+          !isTerminalStatus(current.job),
+        ),
         error: toUserFacingError(error, t('imageGenerationFailed')),
       }));
       throw error;
@@ -254,12 +342,14 @@ export function useImageJob(providerId: string) {
   }
 
   function removeImageJob(jobId: string) {
-    activeJobIdRef.current = activeJobIdRef.current === jobId ? null : activeJobIdRef.current;
+    activeJobIdRef.current =
+      activeJobIdRef.current === jobId ? null : activeJobIdRef.current;
     setState((current) => {
       const nextJobs = current.jobs.filter((job) => job.id !== jobId);
-      const nextActiveJob = current.job?.id === jobId
-        ? nextJobs.find((job) => !isTerminalStatus(job)) ?? null
-        : current.job;
+      const nextActiveJob =
+        current.job?.id === jobId
+          ? (nextJobs.find((job) => !isTerminalStatus(job)) ?? null)
+          : current.job;
 
       return {
         ...current,

@@ -1,12 +1,29 @@
 import { logger } from '../../lib/logger';
-import type { EnqueueGenerationJobInput, EnqueueGenerationJobOptions } from './jobs-types';
+import type {
+  EnqueueGenerationJobInput,
+  EnqueueGenerationJobOptions,
+} from './jobs-types';
 
 export interface GenerationJobQueue {
-  enqueue(input: EnqueueGenerationJobInput, options?: EnqueueGenerationJobOptions): Promise<void>;
+  enqueue(
+    input: EnqueueGenerationJobInput,
+    options?: EnqueueGenerationJobOptions,
+  ): Promise<void>;
+}
+
+function scheduleBackgroundTask(task: () => Promise<unknown>) {
+  setImmediate(() => {
+    void task();
+  });
 }
 
 class InlineGenerationJobQueue implements GenerationJobQueue {
-  async enqueue(input: EnqueueGenerationJobInput, options?: EnqueueGenerationJobOptions) {
+  private providerTails = new Map<string, Promise<void>>();
+
+  async enqueue(
+    input: EnqueueGenerationJobInput,
+    options?: EnqueueGenerationJobOptions,
+  ) {
     logger.info('generation_job_enqueue_requested', {
       jobId: input.jobId,
       providerKey: input.providerKey,
@@ -24,7 +41,7 @@ class InlineGenerationJobQueue implements GenerationJobQueue {
           providerKey: input.providerKey,
           kind: input.kind,
           message: error instanceof Error ? error.message : 'unknown',
-          stack: error instanceof Error ? error.stack ?? null : null,
+          stack: error instanceof Error ? (error.stack ?? null) : null,
         });
       } finally {
         await options?.onSettled?.().catch((error) => {
@@ -33,21 +50,37 @@ class InlineGenerationJobQueue implements GenerationJobQueue {
             providerKey: input.providerKey,
             kind: input.kind,
             message: error instanceof Error ? error.message : 'unknown',
-            stack: error instanceof Error ? error.stack ?? null : null,
+            stack: error instanceof Error ? (error.stack ?? null) : null,
           });
         });
       }
     };
 
-    if (options?.schedule) {
-      options.schedule(runTask);
-      return;
-    }
+    const providerQueueKey = input.providerKey;
+    const previousProviderTask =
+      this.providerTails.get(providerQueueKey) ?? Promise.resolve();
+    let startTask!: () => void;
+    const startGate = new Promise<void>((resolve) => {
+      startTask = resolve;
+    });
+    const queuedTask = previousProviderTask
+      .catch(() => undefined)
+      .then(() => startGate)
+      .then(runTask);
 
-    // Cloud Run does not provide Worker-style waitUntil, and request-scoped CPU can be
-    // throttled after the response. Run inline until a real queue worker is introduced.
-    await runTask();
+    this.providerTails.set(providerQueueKey, queuedTask);
+    queuedTask.finally(() => {
+      if (this.providerTails.get(providerQueueKey) === queuedTask) {
+        this.providerTails.delete(providerQueueKey);
+      }
+    });
+
+    (options?.schedule ?? scheduleBackgroundTask)(() => {
+      startTask();
+      return queuedTask;
+    });
   }
 }
 
-export const generationJobQueue: GenerationJobQueue = new InlineGenerationJobQueue();
+export const generationJobQueue: GenerationJobQueue =
+  new InlineGenerationJobQueue();
