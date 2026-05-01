@@ -39,12 +39,24 @@ function imageToDataUrl(image: GeneratedImage) {
   return `data:${image.mimeType};base64,${image.dataBase64}`;
 }
 
-function hasInlineImageData(image: GeneratedImage) {
+type ImageHistoryImage = Partial<GeneratedImage> & {
+  index: number;
+};
+
+function hasInlineImageData(image: ImageHistoryImage) {
   return (
     typeof image.dataBase64 === 'string' &&
     image.dataBase64.length > 0 &&
     typeof image.mimeType === 'string' &&
     image.mimeType.length > 0
+  );
+}
+
+function isHistoryImage(value: unknown): value is ImageHistoryImage {
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    typeof (value as { index?: unknown }).index === 'number'
   );
 }
 
@@ -123,7 +135,7 @@ type AssetActionState = {
 
 type ImageHistoryItem = {
   job: GenerationJob;
-  images: GeneratedImage[];
+  images: ImageHistoryImage[];
   text: string | null;
 };
 
@@ -132,10 +144,79 @@ type DeleteDialogState = {
   prompt: string;
 };
 
-function canRefreshImageJob(job: GenerationJob, images: GeneratedImage[]) {
+function canRefreshImageJob(job: GenerationJob, images: ImageHistoryImage[]) {
   return (
     images.length === 0 &&
-    ['COMPLETED', 'FAILED', 'CANCELED', 'QUEUED'].includes(job.status)
+    ['FAILED', 'CANCELED', 'QUEUED'].includes(job.status)
+  );
+}
+
+function GeneratedImagePreview({
+  jobId,
+  image,
+  alt,
+}: {
+  jobId: string;
+  image: ImageHistoryImage;
+  alt: string;
+}) {
+  const { t } = useLocale();
+  const [src, setSrc] = useState<string | null>(() =>
+    hasInlineImageData(image) ? imageToDataUrl(image as GeneratedImage) : null,
+  );
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (hasInlineImageData(image)) {
+      setSrc(imageToDataUrl(image as GeneratedImage));
+      setFailed(false);
+      return;
+    }
+
+    setSrc(null);
+    setFailed(false);
+    apiClient
+      .getGenerationJobImageLinks(jobId, image.index)
+      .then((links) => {
+        if (!cancelled) {
+          setSrc(links.open?.url || links.openUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFailed(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [image, jobId]);
+
+  return (
+    <div className="aspect-square w-full overflow-hidden rounded-[18px] border border-border/60 bg-background/60">
+      {src ? (
+        <img
+          src={src}
+          alt={alt}
+          className="h-full w-full object-cover"
+          onError={() => {
+            setSrc(null);
+            setFailed(true);
+          }}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-center text-sm text-muted-foreground">
+          {failed ? (
+            t('imageUnavailable')
+          ) : (
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -208,7 +289,7 @@ export function ImageJobPage({
         : null;
       return {
         job: historyJob,
-        images: (payload?.images ?? []).filter(hasInlineImageData),
+        images: (payload?.images ?? []).filter(isHistoryImage),
         text: payload?.text ?? null,
       };
     });
@@ -321,7 +402,7 @@ export function ImageJobPage({
     }
   }
 
-  async function downloadGeneratedImage(jobId: string, image: GeneratedImage) {
+  async function downloadGeneratedImage(jobId: string, image: ImageHistoryImage) {
     const currentActionKey = actionKey(jobId, image.index, 'download');
     if (assetAction?.status === 'loading') {
       return;
@@ -383,7 +464,7 @@ export function ImageJobPage({
     }
   }
 
-  async function openGeneratedImage(jobId: string, image: GeneratedImage) {
+  async function openGeneratedImage(jobId: string, image: ImageHistoryImage) {
     const currentActionKey = actionKey(jobId, image.index, 'open');
     if (assetAction?.status === 'loading') {
       return;
@@ -589,18 +670,13 @@ export function ImageJobPage({
                       {item.images.length > 0 ? (
                         <div className="grid gap-2 p-3">
                           {item.images.map((image) => {
-                            const dataUrl = imageToDataUrl(image);
                             return (
-                              <div
-                                key={`${image.filename}-${image.index}`}
-                                className="aspect-square w-full overflow-hidden rounded-[18px] border border-border/60 bg-background/60"
-                              >
-                                <img
-                                  src={dataUrl}
-                                  alt={item.job.prompt || provider.name}
-                                  className="h-full w-full object-cover"
-                                />
-                              </div>
+                              <GeneratedImagePreview
+                                key={`${image.filename ?? 'image'}-${image.index}`}
+                                jobId={item.job.id}
+                                image={image}
+                                alt={item.job.prompt || provider.name}
+                              />
                             );
                           })}
                         </div>
@@ -610,8 +686,6 @@ export function ImageJobPage({
                             {item.job.status === 'FAILED'
                               ? item.job.failureMessage ||
                                 t('imageGenerationFailed')
-                              : item.job.status === 'COMPLETED'
-                                ? t('imageGenerationFailed')
                               : t(`jobStatus${item.job.status}`)}
                           </div>
                           {canRefreshImageJob(item.job, item.images) && (
