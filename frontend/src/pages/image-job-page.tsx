@@ -39,6 +39,15 @@ function imageToDataUrl(image: GeneratedImage) {
   return `data:${image.mimeType};base64,${image.dataBase64}`;
 }
 
+function hasInlineImageData(image: GeneratedImage) {
+  return (
+    typeof image.dataBase64 === 'string' &&
+    image.dataBase64.length > 0 &&
+    typeof image.mimeType === 'string' &&
+    image.mimeType.length > 0
+  );
+}
+
 function triggerDownload(url: string, filename: string) {
   const anchor = document.createElement('a');
 
@@ -125,7 +134,8 @@ type DeleteDialogState = {
 
 function canRefreshImageJob(job: GenerationJob, images: GeneratedImage[]) {
   return (
-    images.length === 0 && ['FAILED', 'CANCELED', 'QUEUED'].includes(job.status)
+    images.length === 0 &&
+    ['COMPLETED', 'FAILED', 'CANCELED', 'QUEUED'].includes(job.status)
   );
 }
 
@@ -198,7 +208,7 @@ export function ImageJobPage({
         : null;
       return {
         job: historyJob,
-        images: payload?.images ?? [],
+        images: (payload?.images ?? []).filter(hasInlineImageData),
         text: payload?.text ?? null,
       };
     });
@@ -600,6 +610,8 @@ export function ImageJobPage({
                             {item.job.status === 'FAILED'
                               ? item.job.failureMessage ||
                                 t('imageGenerationFailed')
+                              : item.job.status === 'COMPLETED'
+                                ? t('imageGenerationFailed')
                               : t(`jobStatus${item.job.status}`)}
                           </div>
                           {canRefreshImageJob(item.job, item.images) && (
