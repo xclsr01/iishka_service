@@ -27,7 +27,7 @@ export function HomePage({
   const tokenDisplay = subscription.tokensRemaining;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto">
+    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto pb-3">
       <div className="grid shrink-0 gap-2 xl:grid-cols-[minmax(0,1.15fr)_minmax(300px,0.75fr)] xl:items-stretch">
         <Card className="overflow-hidden border-primary/20 bg-[linear-gradient(135deg,rgba(12,18,35,0.96),rgba(15,25,48,0.88))] px-3 py-2.5 sm:px-4 sm:py-2.5">
           <div className="absolute inset-x-0 top-0 h-12 bg-[linear-gradient(90deg,rgba(87,225,255,0.18),transparent,rgba(255,191,71,0.14))]" />
@@ -143,8 +143,8 @@ export function HomePage({
             {t('scroll')}
           </Badge>
         </div>
-        <div className="-mx-4 min-h-0 flex-1 overflow-x-auto overflow-y-auto px-4 lg:mx-0 lg:px-0">
-          <div className="flex h-full snap-x gap-3 lg:grid lg:h-auto lg:min-h-full lg:grid-cols-2 lg:auto-rows-min lg:gap-3 xl:grid-cols-3">
+        <div className="-mx-4 min-h-0 flex-1 overflow-x-auto overflow-y-auto px-4 pb-4 lg:mx-0 lg:px-0">
+          <div className="flex h-full snap-x gap-3 pb-2 lg:grid lg:h-auto lg:min-h-full lg:grid-cols-2 lg:auto-rows-min lg:gap-3 xl:grid-cols-3">
             {providers.map((provider) => (
               <ProviderCard key={provider.id} provider={provider} />
             ))}
