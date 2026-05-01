@@ -23,8 +23,33 @@ function isTerminalStatus(job: GenerationJob | null) {
   );
 }
 
+function hasRenderableImagePayload(job: GenerationJob) {
+  if (!job.resultPayload || typeof job.resultPayload !== 'object') {
+    return false;
+  }
+
+  const payload = job.resultPayload as { kind?: unknown; images?: unknown };
+  if (payload.kind !== 'IMAGE' || !Array.isArray(payload.images)) {
+    return false;
+  }
+
+  return payload.images.some((image) => {
+    if (!image || typeof image !== 'object') {
+      return false;
+    }
+
+    const candidate = image as { dataBase64?: unknown; mimeType?: unknown };
+    return (
+      typeof candidate.dataBase64 === 'string' &&
+      candidate.dataBase64.length > 0 &&
+      typeof candidate.mimeType === 'string' &&
+      candidate.mimeType.length > 0
+    );
+  });
+}
+
 function shouldHydrateHistoryJob(job: GenerationJob) {
-  return job.status === 'COMPLETED' && !job.resultPayload;
+  return job.status === 'COMPLETED' && !hasRenderableImagePayload(job);
 }
 
 function isOptimisticJob(job: GenerationJob | null) {
@@ -88,6 +113,18 @@ export function useImageJob(provider: Provider) {
   });
   const activeJobIdRef = useRef<string | null>(null);
 
+  async function hydrateCompletedImageJob(job: GenerationJob) {
+    if (!shouldHydrateHistoryJob(job)) {
+      return job;
+    }
+
+    try {
+      return (await apiClient.getGenerationJob(job.id)).job;
+    } catch {
+      return job;
+    }
+  }
+
   async function hydrateHistoryJobs(jobs: GenerationJob[]) {
     const jobsToHydrate = jobs.filter(shouldHydrateHistoryJob);
     if (jobsToHydrate.length === 0) {
@@ -95,13 +132,7 @@ export function useImageJob(provider: Provider) {
     }
 
     const hydratedJobs = await Promise.all(
-      jobsToHydrate.map(async (historyJob) => {
-        try {
-          return (await apiClient.getGenerationJob(historyJob.id)).job;
-        } catch {
-          return historyJob;
-        }
-      }),
+      jobsToHydrate.map((historyJob) => hydrateCompletedImageJob(historyJob)),
     );
     const hydratedJobById = new Map(
       hydratedJobs.map((historyJob) => [historyJob.id, historyJob]),
@@ -255,16 +286,21 @@ export function useImageJob(provider: Provider) {
           return;
         }
 
+        const nextJob = await hydrateCompletedImageJob(response.job);
+        if (cancelled || activeJobIdRef.current !== jobId) {
+          return;
+        }
+
         setState((current) => ({
           ...current,
-          job: response.job,
+          job: nextJob,
           jobs: current.jobs.map((job) =>
-            job.id === response.job.id ? response.job : job,
+            job.id === nextJob.id ? nextJob : job,
           ),
-          isPolling: !isTerminalStatus(response.job),
+          isPolling: !isTerminalStatus(nextJob),
           error:
-            response.job.status === 'FAILED'
-              ? response.job.failureMessage || t('imageGenerationFailed')
+            nextJob.status === 'FAILED'
+              ? nextJob.failureMessage || t('imageGenerationFailed')
               : null,
         }));
       } catch (error) {
@@ -309,19 +345,21 @@ export function useImageJob(provider: Provider) {
         prompt,
       });
 
-      activeJobIdRef.current = response.job.id;
+      const createdJob = await hydrateCompletedImageJob(response.job);
+
+      activeJobIdRef.current = createdJob.id;
       setState((current) => ({
         ...current,
-        job: response.job,
+        job: createdJob,
         jobs: [
-          response.job,
+          createdJob,
           ...current.jobs.filter(
-            (job) => job.id !== response.job.id && job.id !== optimisticJob.id,
+            (job) => job.id !== createdJob.id && job.id !== optimisticJob.id,
           ),
         ],
         isLoadingHistory: false,
         isSubmitting: false,
-        isPolling: !isTerminalStatus(response.job),
+        isPolling: !isTerminalStatus(createdJob),
         error: null,
       }));
     } catch (error) {
