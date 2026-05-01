@@ -255,9 +255,10 @@ function getImageFromJob(job: GenerationJob, imageIndex: number) {
     throw new AppError('Image result is unavailable', 404, 'IMAGE_NOT_FOUND');
   }
 
-  const image = job.resultPayload.images.find((candidate) => (
-    isGeneratedImagePayload(candidate) && candidate.index === imageIndex
-  ));
+  const images = job.resultPayload.images.filter(isGeneratedImagePayload);
+  const image =
+    images.find((candidate) => candidate.index === imageIndex) ??
+    (imageIndex === 0 && images.length === 1 ? images[0] : null);
 
   if (!image) {
     throw new AppError('Image not found', 404, 'IMAGE_NOT_FOUND');

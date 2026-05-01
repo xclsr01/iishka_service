@@ -102,9 +102,9 @@ test('NanoBananaProviderAdapter generates image jobs with Google AI Studio heade
     text: 'Here is your generated image.',
     images: [
       {
-        index: 1,
+        index: 0,
         mimeType: 'image/png',
-        filename: 'nano-banana-job_test-1.png',
+        filename: 'nano-banana-job_test-0.png',
         dataBase64: 'aW1hZ2U=',
         sizeBytes: 5,
       },
