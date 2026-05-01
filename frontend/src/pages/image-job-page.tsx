@@ -151,6 +151,22 @@ function canRefreshImageJob(job: GenerationJob, images: ImageHistoryImage[]) {
   );
 }
 
+function getHistoryImages(
+  job: GenerationJob,
+  payload: ImageJobResultPayload | null,
+): ImageHistoryImage[] {
+  const payloadImages = (payload?.images ?? []).filter(isHistoryImage);
+  if (payloadImages.length > 0) {
+    return payloadImages;
+  }
+
+  if (job.kind === 'IMAGE' && job.status === 'COMPLETED') {
+    return [{ index: 0 }];
+  }
+
+  return [];
+}
+
 function GeneratedImagePreview({
   jobId,
   image,
@@ -289,7 +305,7 @@ export function ImageJobPage({
         : null;
       return {
         job: historyJob,
-        images: (payload?.images ?? []).filter(isHistoryImage),
+        images: getHistoryImages(historyJob, payload),
         text: payload?.text ?? null,
       };
     });
