@@ -7,34 +7,6 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 steps:
-  - name: gcr.io/cloud-builders/gcloud
-    entrypoint: bash
-    args:
-      - -ceu
-      - |
-        missing=()
-        required=(
-          "_FRONTEND_URL=${_FRONTEND_URL}"
-          "_API_BASE_URL=${_API_BASE_URL}"
-          "_TELEGRAM_BOT_USERNAME=${_TELEGRAM_BOT_USERNAME}"
-          "_TELEGRAM_MINI_APP_URL=${_TELEGRAM_MINI_APP_URL}"
-          "_AI_GATEWAY_URL=${_AI_GATEWAY_URL}"
-          "_SUPABASE_URL=${_SUPABASE_URL}"
-          "_SUPABASE_STORAGE_BUCKET=${_SUPABASE_STORAGE_BUCKET}"
-          "_UPSTASH_REDIS_REST_URL=${_UPSTASH_REDIS_REST_URL}"
-        )
-        for item in "$${required[@]}"; do
-          name="$${item%%=*}"
-          value="$${item#*=}"
-          if [[ -z "$$value" ]]; then
-            missing+=("$$name")
-          fi
-        done
-        if (( $${#missing[@]} > 0 )); then
-          printf 'Missing required Cloud Build substitutions: %s\n' "$${missing[*]}" >&2
-          exit 1
-        fi
-
   - name: gcr.io/cloud-builders/docker
     args:
       - build
@@ -63,10 +35,10 @@ steps:
       - --allow-unauthenticated
       - --port
       - "8080"
-      - --set-env-vars
-      - APP_ENV=production,FRONTEND_URL=${_FRONTEND_URL},API_BASE_URL=${_API_BASE_URL},TELEGRAM_BOT_USERNAME=${_TELEGRAM_BOT_USERNAME},TELEGRAM_MINI_APP_URL=${_TELEGRAM_MINI_APP_URL},TELEGRAM_DELIVERY_MODE=webhook,AI_GATEWAY_URL=${_AI_GATEWAY_URL},AI_GATEWAY_TIMEOUT_MS=15000,AI_GATEWAY_ASYNC_JOB_TIMEOUT_MS=660000,OPENAI_ENABLED=true,OPENAI_MODEL=gpt-5.4-mini,ANTHROPIC_MODEL=claude-3-5-sonnet-latest,GOOGLE_AI_MODEL=gemini-2.5-flash,NANO_BANANA_MODEL=gemini-2.5-flash-image,VEO_MODEL=veo-3.1-fast-generate-preview,UPLOAD_STORAGE_DRIVER=supabase,SUPABASE_URL=${_SUPABASE_URL},SUPABASE_STORAGE_BUCKET=${_SUPABASE_STORAGE_BUCKET},RATE_LIMIT_DRIVER=upstash,UPSTASH_REDIS_REST_URL=${_UPSTASH_REDIS_REST_URL},TRUST_PLATFORM_CLIENT_IP_HEADERS=true,RATE_LIMIT_WINDOW_SECONDS=60,RATE_LIMIT_MAX_REQUESTS=120,JOB_QUEUE_DRIVER=db,JOB_WORKER_POLL_INTERVAL_MS=5000,JOB_WORKER_BATCH_SIZE=1,JOB_RUNNING_STALE_AFTER_SECONDS=900,JOB_MAX_ATTEMPTS=3,ENABLE_DEV_AUTH=false,ENABLE_DEV_SUBSCRIPTION_OVERRIDE=false,ALLOW_DIRECT_PROVIDER_EGRESS=false
-      - --set-secrets
-      - DATABASE_URL=DATABASE_URL:latest,DIRECT_URL=DIRECT_URL:latest,JWT_SECRET=JWT_SECRET:latest,TELEGRAM_BOT_TOKEN=TELEGRAM_BOT_TOKEN:latest,TELEGRAM_WEBHOOK_SECRET=TELEGRAM_WEBHOOK_SECRET:latest,AI_GATEWAY_INTERNAL_TOKEN=AI_GATEWAY_INTERNAL_TOKEN:latest,SUPABASE_SERVICE_ROLE_KEY=SUPABASE_SERVICE_ROLE_KEY:latest,UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest
+      - --update-env-vars
+      - APP_ENV=production,JOB_QUEUE_DRIVER=db,JOB_WORKER_POLL_INTERVAL_MS=5000,JOB_WORKER_BATCH_SIZE=1,JOB_RUNNING_STALE_AFTER_SECONDS=900,JOB_MAX_ATTEMPTS=3,ENABLE_DEV_AUTH=false,ENABLE_DEV_SUBSCRIPTION_OVERRIDE=false,ALLOW_DIRECT_PROVIDER_EGRESS=false
+      - --update-secrets
+      - UPSTASH_REDIS_REST_TOKEN=UPSTASH_REDIS_REST_TOKEN:latest
 
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${COMMIT_SHA}
