@@ -43,6 +43,10 @@ type ImageJobResultPayload = {
   images: GeneratedImagePayload[];
 };
 
+type ImageGenerationJob = Pick<GenerationJob, 'kind' | 'status'> & {
+  resultPayload: Prisma.JsonValue | null;
+};
+
 type PresentableGenerationJob = Pick<
   GenerationJob,
   | 'id'
@@ -96,6 +100,17 @@ const generationJobListSelect = {
       defaultModel: true,
     },
   },
+} satisfies Prisma.GenerationJobSelect;
+
+const generationJobDetailSelect = {
+  ...generationJobListSelect,
+  resultPayload: true,
+} satisfies Prisma.GenerationJobSelect;
+
+const generationJobImageSelect = {
+  kind: true,
+  status: true,
+  resultPayload: true,
 } satisfies Prisma.GenerationJobSelect;
 
 function toMetadataObject(value: Prisma.JsonValue | null): Record<string, unknown> | null {
@@ -246,7 +261,7 @@ function isImageJobResultPayload(value: unknown): value is ImageJobResultPayload
   return candidate.kind === 'IMAGE' && Array.isArray(candidate.images);
 }
 
-function getImageFromJob(job: GenerationJob, imageIndex: number) {
+function getImageFromJob(job: ImageGenerationJob, imageIndex: number) {
   if (job.kind !== GenerationJobKind.IMAGE || job.status !== GenerationJobStatus.COMPLETED) {
     throw new AppError('Image is not ready', 404, 'IMAGE_NOT_READY');
   }
@@ -463,9 +478,7 @@ export async function getGenerationJob(userId: string, jobId: string) {
         id: jobId,
         userId,
       },
-      include: {
-        provider: true,
-      },
+      select: generationJobDetailSelect,
     }),
   );
 
@@ -479,6 +492,9 @@ export async function deleteGenerationJob(userId: string, jobId: string) {
       where: {
         id: jobId,
         userId,
+      },
+      select: {
+        id: true,
       },
     }),
   );
@@ -505,6 +521,7 @@ export async function createGenerationJobImageLinks(
         id: jobId,
         userId,
       },
+      select: generationJobImageSelect,
     }),
   );
 
@@ -597,6 +614,7 @@ export async function getGenerationJobImageByToken(
         id: jobId,
         userId,
       },
+      select: generationJobImageSelect,
     }),
   );
 
