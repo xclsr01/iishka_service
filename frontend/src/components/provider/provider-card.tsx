@@ -27,8 +27,8 @@ export function ProviderCard({ provider }: { provider: Provider }) {
   return (
     <Card className="h-full min-h-[360px] min-w-full max-w-full snap-start overflow-hidden border-border/70 bg-[linear-gradient(180deg,rgba(15,20,38,0.92),rgba(9,13,27,0.86))] p-0 sm:min-w-[280px] sm:max-w-[320px] lg:min-h-[380px] lg:min-w-0 lg:max-w-none xl:min-h-[400px]">
       <div className={`h-1.5 bg-gradient-to-r ${toneByKey[provider.key]}`} />
-      <div className="flex h-[calc(100%-0.375rem)] min-h-0 flex-col gap-3 p-4">
-        <div className="grid min-h-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+      <div className="flex h-[calc(100%-0.375rem)] min-h-0 flex-col gap-4 p-4">
+        <div className="grid min-h-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
           <div className="min-w-0">
             <h3 className="font-display text-lg font-bold leading-tight sm:text-xl">
               {provider.name}
@@ -37,7 +37,7 @@ export function ProviderCard({ provider }: { provider: Provider }) {
               {provider.summary}
             </p>
           </div>
-          <div className="flex min-w-0 flex-wrap gap-2 sm:justify-end">
+          <div className="flex min-w-0 flex-wrap gap-2 pb-1 sm:justify-end">
             <Badge className="max-w-[12rem] rounded-[14px] border-primary/30 bg-primary/10 px-2 py-1.5 text-[11px] leading-4 text-primary">
               <span className="block truncate">{provider.defaultModel}</span>
             </Badge>
@@ -49,7 +49,7 @@ export function ProviderCard({ provider }: { provider: Provider }) {
           </div>
         </div>
 
-        <div className="min-h-[112px] flex-1 overflow-hidden rounded-[18px] border border-border/60 bg-muted/55 p-3 text-sm leading-5 text-muted-foreground">
+        <div className="min-h-[104px] flex-1 overflow-hidden rounded-[18px] border border-border/60 bg-muted/55 p-3 text-sm leading-5 text-muted-foreground">
           <p className="line-clamp-6">{provider.description}</p>
           {!provider.isAvailable && provider.availabilityMessage && (
             <p className="mt-2 line-clamp-2 text-destructive">
