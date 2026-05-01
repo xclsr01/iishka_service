@@ -7,6 +7,34 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 steps:
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        missing=()
+        required=(
+          "_FRONTEND_URL=${_FRONTEND_URL}"
+          "_API_BASE_URL=${_API_BASE_URL}"
+          "_TELEGRAM_BOT_USERNAME=${_TELEGRAM_BOT_USERNAME}"
+          "_TELEGRAM_MINI_APP_URL=${_TELEGRAM_MINI_APP_URL}"
+          "_AI_GATEWAY_URL=${_AI_GATEWAY_URL}"
+          "_SUPABASE_URL=${_SUPABASE_URL}"
+          "_SUPABASE_STORAGE_BUCKET=${_SUPABASE_STORAGE_BUCKET}"
+          "_UPSTASH_REDIS_REST_URL=${_UPSTASH_REDIS_REST_URL}"
+        )
+        for item in "$${required[@]}"; do
+          name="$${item%%=*}"
+          value="$${item#*=}"
+          if [[ -z "$$value" ]]; then
+            missing+=("$$name")
+          fi
+        done
+        if (( $${#missing[@]} > 0 )); then
+          printf 'Missing required Cloud Build substitutions: %s\n' "$${missing[*]}" >&2
+          exit 1
+        fi
+
   - name: gcr.io/cloud-builders/docker
     args:
       - build
