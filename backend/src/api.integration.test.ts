@@ -755,6 +755,49 @@ test('jobs API paginates image history without returning image payloads in the l
   assert.equal(secondPage.nextCursor, null);
 });
 
+test('jobs API resolves first image link for legacy Nano Banana part indexes', async () => {
+  const app = createApp();
+  const bootstrap = await bootstrapDev(app);
+  const nanoBananaProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.NANO_BANANA);
+  assert.ok(nanoBananaProvider);
+
+  const job = await prisma.generationJob.create({
+    data: {
+      userId: bootstrap.user.id,
+      providerId: nanoBananaProvider.id,
+      kind: GenerationJobKind.IMAGE,
+      status: GenerationJobStatus.COMPLETED,
+      prompt: 'Legacy indexed image',
+      inputPayload: {
+        prompt: 'Legacy indexed image',
+      },
+      resultPayload: {
+        kind: GenerationJobKind.IMAGE,
+        text: 'Here is an image.',
+        images: [
+          {
+            index: 1,
+            mimeType: 'image/png',
+            filename: 'legacy-indexed-image.png',
+            dataBase64: 'aW1hZ2U=',
+            sizeBytes: 5,
+          },
+        ],
+      },
+    },
+  });
+
+  const linksResponse = await requestWithAuth(
+    app,
+    bootstrap.token,
+    `/api/jobs/${job.id}/images/0/links`,
+  );
+  const links = (await linksResponse.json()) as { filename?: string };
+
+  assert.equal(linksResponse.status, 200);
+  assert.equal(links.filename, 'legacy-indexed-image.png');
+});
+
 test('jobs API deletes completed Nano Banana image jobs from history', async () => {
   const app = createApp();
   const bootstrap = await bootstrapDev(app);

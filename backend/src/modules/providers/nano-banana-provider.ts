@@ -206,22 +206,30 @@ export class NanoBananaProviderAdapter implements AiProviderAdapter {
       .filter((value): value is string => Boolean(value))
       .join('\n')
       .trim();
-    const images = parts
-      .map((part, index) => {
-        const inlineData = part.inlineData;
-        if (!inlineData?.data || !inlineData.mimeType) {
-          return null;
-        }
+    const images = parts.reduce<
+      Array<{
+        index: number;
+        mimeType: string;
+        filename: string;
+        dataBase64: string;
+        sizeBytes: number;
+      }>
+    >((collectedImages, part) => {
+      const inlineData = part.inlineData;
+      if (!inlineData?.data || !inlineData.mimeType) {
+        return collectedImages;
+      }
 
-        return {
-          index,
-          mimeType: inlineData.mimeType,
-          filename: `nano-banana-${input.jobId}-${index}.${extensionFromMimeType(inlineData.mimeType)}`,
-          dataBase64: inlineData.data,
-          sizeBytes: Buffer.from(inlineData.data, 'base64').byteLength,
-        };
-      })
-      .filter((value): value is NonNullable<typeof value> => Boolean(value));
+      const imageIndex = collectedImages.length;
+      collectedImages.push({
+        index: imageIndex,
+        mimeType: inlineData.mimeType,
+        filename: `nano-banana-${input.jobId}-${imageIndex}.${extensionFromMimeType(inlineData.mimeType)}`,
+        dataBase64: inlineData.data,
+        sizeBytes: Buffer.from(inlineData.data, 'base64').byteLength,
+      });
+      return collectedImages;
+    }, []);
 
     if (images.length === 0) {
       throw this.classifyError(
