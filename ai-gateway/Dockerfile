@@ -4,6 +4,9 @@ WORKDIR /app
 
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY ai-gateway/package.json ai-gateway/package.json
+COPY model-config/package.json model-config/package.json
+COPY model-config/index.js model-config/index.js
+COPY model-config/index.d.ts model-config/index.d.ts
 RUN npm ci --workspace ai-gateway
 
 COPY ai-gateway/tsconfig.json ai-gateway/tsconfig.json
@@ -25,6 +28,9 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY ai-gateway/package.json ai-gateway/package.json
+COPY model-config/package.json model-config/package.json
+COPY model-config/index.js model-config/index.js
+COPY model-config/index.d.ts model-config/index.d.ts
 RUN npm ci --workspace ai-gateway --omit=dev && npm cache clean --force
 
 COPY --from=build /app/ai-gateway/dist ai-gateway/dist

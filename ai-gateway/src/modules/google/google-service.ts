@@ -1,3 +1,4 @@
+import { MODEL_FALLBACKS } from '@iishka/model-config';
 import { env } from '../../env';
 import { AppError } from '../../lib/errors';
 import { logger } from '../../lib/logger';
@@ -71,7 +72,7 @@ const GOOGLE_SEARCH_GROUNDING_INSTRUCTION = [
   'Never answer time-sensitive questions from model memory alone.',
   'When grounding metadata is available, include concise source names or links in the answer.',
 ].join('\n');
-const GEMINI_CHAT_MODEL_FALLBACK = 'gemini-2.5-flash';
+const GEMINI_CHAT_MODEL_FALLBACK = MODEL_FALLBACKS.GEMINI_CHAT;
 
 function trimTrailingSlashes(value: string) {
   return value.replace(/\/+$/, '');

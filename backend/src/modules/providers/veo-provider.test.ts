@@ -1,5 +1,6 @@
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_MODELS } from '@iishka/model-config';
 import { GenerationJobKind, ProviderKey } from '@prisma/client';
 import { env } from '../../env';
 import { VeoProviderAdapter } from './veo-provider';
@@ -90,13 +91,13 @@ test('VeoProviderAdapter starts polls and downloads videos through the Gemini AP
     providerKey: ProviderKey.VEO,
     jobId: 'job_veo',
     kind: GenerationJobKind.VIDEO,
-    model: 'veo-3.1-fast-generate-preview',
+    model: DEFAULT_MODELS.VEO,
     prompt: 'A cinematic dolly shot of neon rain over a city street.',
   });
 
   assert.equal(
     calledUrls[0],
-    'https://generativelanguage.googleapis.com/v1beta/models/veo-3.1-fast-generate-preview:predictLongRunning',
+    `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_MODELS.VEO}:predictLongRunning`,
   );
   assert.equal(calledMethods[0], 'POST');
   assert.deepEqual(calledBodies[0], {
@@ -166,7 +167,7 @@ test('VeoProviderAdapter executes video jobs through configured AI gateway', asy
     return new Response(
       JSON.stringify({
         provider: 'veo',
-        model: 'veo-3.1-fast-generate-preview',
+        model: DEFAULT_MODELS.VEO,
         resultPayload: {
           kind: GenerationJobKind.VIDEO,
           text: null,
@@ -211,7 +212,7 @@ test('VeoProviderAdapter executes video jobs through configured AI gateway', asy
     providerKey: ProviderKey.VEO,
     jobId: 'job_veo',
     kind: GenerationJobKind.VIDEO,
-    model: 'veo-3.1-fast-generate-preview',
+    model: DEFAULT_MODELS.VEO,
     prompt: 'Generate a short noir tracking shot.',
   });
 
@@ -225,7 +226,7 @@ test('VeoProviderAdapter executes video jobs through configured AI gateway', asy
   );
   assert.ok(calledPayload);
   assert.equal(calledPayload.kind, GenerationJobKind.VIDEO);
-  assert.equal(calledPayload.model, 'veo-3.1-fast-generate-preview');
+  assert.equal(calledPayload.model, DEFAULT_MODELS.VEO);
   assert.equal(calledPayload.prompt, 'Generate a short noir tracking shot.');
   assert.equal(calledPayload.jobId, 'job_veo');
   assert.equal(result.upstreamRequestId, 'req_gateway_veo');
@@ -289,7 +290,7 @@ test('VeoProviderAdapter accepts generatedVideos response shape from Gemini API'
     providerKey: ProviderKey.VEO,
     jobId: 'job_veo_modern',
     kind: GenerationJobKind.VIDEO,
-    model: 'veo-3.1-fast-generate-preview',
+    model: DEFAULT_MODELS.VEO,
     prompt: 'A modern Veo response payload test.',
   });
 
@@ -311,7 +312,7 @@ test('VeoProviderAdapter rejects non-video job kinds', async () => {
         providerKey: ProviderKey.VEO,
         jobId: 'job_veo',
         kind: GenerationJobKind.IMAGE,
-        model: 'veo-3.1-fast-generate-preview',
+        model: DEFAULT_MODELS.VEO,
         prompt: 'Hello',
       }),
     /only supports video generation jobs/,
@@ -343,7 +344,7 @@ test('VeoProviderAdapter classifies retryable rate limit errors', async () => {
         providerKey: ProviderKey.VEO,
         jobId: 'job_veo',
         kind: GenerationJobKind.VIDEO,
-        model: 'veo-3.1-fast-generate-preview',
+        model: DEFAULT_MODELS.VEO,
         prompt: 'Hello',
       }),
     (error) => {

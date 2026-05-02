@@ -5,7 +5,8 @@
   "workspaces": [
     "frontend",
     "backend",
-    "ai-gateway"
+    "ai-gateway",
+    "model-config"
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev --workspace backend\" \"npm run dev --workspace frontend\"",

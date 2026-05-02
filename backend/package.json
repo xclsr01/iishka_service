@@ -20,6 +20,7 @@
     "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@iishka/model-config": "0.1.0",
     "@hono/node-server": "^1.14.0",
     "@prisma/adapter-pg": "^6.19.2",
     "@prisma/client": "^6.19.2",

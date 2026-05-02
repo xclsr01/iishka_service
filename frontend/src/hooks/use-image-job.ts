@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiClient, type GenerationJob, type Provider } from '@/lib/api';
+import { createIdempotencyKey } from '@/lib/idempotency';
 import { useLocale } from '@/lib/i18n';
 
 const IMAGE_HISTORY_PAGE_SIZE = 10;
@@ -343,6 +344,7 @@ export function useImageJob(provider: Provider) {
         providerId,
         kind: 'IMAGE',
         prompt,
+        idempotencyKey: createIdempotencyKey('generation-job-create'),
       });
 
       const createdJob = await hydrateCompletedImageJob(response.job);

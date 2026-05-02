@@ -73,6 +73,16 @@ enum ProviderUsageOperation {
   JOB_GENERATION
 }
 
+enum IdempotencyRequestStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum IdempotencyAction {
+  MESSAGE_CREATE
+  GENERATION_JOB_CREATE
+}
+
 model User {
   id               String         @id @default(cuid())
   telegramUserId   String         @unique
@@ -89,6 +99,7 @@ model User {
   files            FileAsset[]
   generationJobs   GenerationJob[]
   providerUsages   ProviderUsage[]
+  idempotencyKeys   IdempotencyKey[]
 }
 
 model Provider {
@@ -263,4 +274,23 @@ model ProviderUsage {
   @@index([messageId])
   @@index([generationJobId])
   @@index([requestId])
+}
+
+model IdempotencyKey {
+  id           String                   @id @default(cuid())
+  userId       String
+  action       IdempotencyAction
+  key          String
+  requestHash  String
+  status       IdempotencyRequestStatus @default(IN_PROGRESS)
+  resourceType String?
+  resourceId   String?
+  response     Json?
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
+  user         User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, action, key])
+  @@index([userId, createdAt])
+  @@index([status, updatedAt])
 }

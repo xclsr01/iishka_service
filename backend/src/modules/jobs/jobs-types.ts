@@ -14,6 +14,7 @@ export type CreateGenerationJobInput = {
   chatId?: string;
   messageId?: string;
   metadata?: Record<string, unknown>;
+  idempotencyKey?: string;
 };
 
 export type ListGenerationJobsInput = {

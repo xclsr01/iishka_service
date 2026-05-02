@@ -1,5 +1,6 @@
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_MODELS } from '@iishka/model-config';
 import { ProviderKey } from '@prisma/client';
 import { env } from '../../env';
 import { AnthropicProviderAdapter } from './anthropic-provider';
@@ -34,7 +35,7 @@ test('AnthropicProviderAdapter calls configured AI gateway when available', asyn
     return new Response(
       JSON.stringify({
         provider: 'anthropic',
-        model: 'claude-3-5-sonnet-latest',
+        model: DEFAULT_MODELS.ANTHROPIC,
         text: 'Gateway Claude response',
         upstreamRequestId: 'req_gateway_anthropic',
         usage: {
@@ -56,7 +57,7 @@ test('AnthropicProviderAdapter calls configured AI gateway when available', asyn
 
   const result = await adapter.generateResponse({
     providerKey: ProviderKey.ANTHROPIC,
-    model: 'claude-3-5-sonnet-latest',
+    model: DEFAULT_MODELS.ANTHROPIC,
     messages: [
       {
         role: 'user',
@@ -68,7 +69,7 @@ test('AnthropicProviderAdapter calls configured AI gateway when available', asyn
   assert.equal(calledUrl, 'https://ai-gateway.example.run.app/v1/providers/anthropic/chat/respond');
   assert.equal(calledHeaders.authorization, 'Bearer test-ai-gateway-token-000000000000000000');
   assert.ok(calledPayload);
-  assert.equal(calledPayload.model, 'claude-3-5-sonnet-latest');
+  assert.equal(calledPayload.model, DEFAULT_MODELS.ANTHROPIC);
   assert.deepEqual(calledPayload.messages, [{ role: 'user', content: 'Hello' }]);
   assert.equal(result.text, 'Gateway Claude response');
   assert.equal(result.upstreamRequestId, 'req_gateway_anthropic');

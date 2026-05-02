@@ -1,5 +1,6 @@
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_MODELS } from '@iishka/model-config';
 import { GenerationJobKind, ProviderKey } from '@prisma/client';
 import { env } from '../../env';
 import { NanoBananaProviderAdapter } from './nano-banana-provider';
@@ -76,13 +77,13 @@ test('NanoBananaProviderAdapter generates image jobs with Google AI Studio heade
     providerKey: ProviderKey.NANO_BANANA,
     jobId: 'job_test',
     kind: GenerationJobKind.IMAGE,
-    model: 'gemini-2.5-flash-image',
+    model: DEFAULT_MODELS.NANO_BANANA,
     prompt: 'Generate a neon banana mascot',
   });
 
   assert.equal(
     calledUrl,
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
+    `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_MODELS.NANO_BANANA}:generateContent`,
   );
   assert.equal(calledHeaders['content-type'], 'application/json');
   assert.equal(calledHeaders['x-goog-api-key'], process.env.GOOGLE_AI_API_KEY);
@@ -144,7 +145,7 @@ test('NanoBananaProviderAdapter executes image jobs through configured AI gatewa
     return new Response(
       JSON.stringify({
         provider: 'nano-banana',
-        model: 'gemini-2.5-flash-image',
+        model: DEFAULT_MODELS.NANO_BANANA,
         resultPayload: {
           kind: GenerationJobKind.IMAGE,
           text: 'Generated through gateway.',
@@ -177,7 +178,7 @@ test('NanoBananaProviderAdapter executes image jobs through configured AI gatewa
     providerKey: ProviderKey.NANO_BANANA,
     jobId: 'job_test',
     kind: GenerationJobKind.IMAGE,
-    model: 'gemini-2.5-flash-image',
+    model: DEFAULT_MODELS.NANO_BANANA,
     prompt: 'Generate a neon banana mascot',
   });
 
@@ -191,7 +192,7 @@ test('NanoBananaProviderAdapter executes image jobs through configured AI gatewa
   );
   assert.ok(calledPayload);
   assert.equal(calledPayload.kind, GenerationJobKind.IMAGE);
-  assert.equal(calledPayload.model, 'gemini-2.5-flash-image');
+  assert.equal(calledPayload.model, DEFAULT_MODELS.NANO_BANANA);
   assert.equal(calledPayload.prompt, 'Generate a neon banana mascot');
   assert.equal(calledPayload.jobId, 'job_test');
   assert.equal(result.upstreamRequestId, 'req_gateway_nano');
@@ -223,7 +224,7 @@ test('NanoBananaProviderAdapter rejects non-image job kinds', async () => {
         providerKey: ProviderKey.NANO_BANANA,
         jobId: 'job_test',
         kind: GenerationJobKind.PROVIDER_ASYNC,
-        model: 'gemini-2.5-flash-image',
+        model: DEFAULT_MODELS.NANO_BANANA,
         prompt: 'Hello',
       }),
     /only supports image generation jobs/,
@@ -255,7 +256,7 @@ test('NanoBananaProviderAdapter classifies retryable rate limit errors', async (
         providerKey: ProviderKey.NANO_BANANA,
         jobId: 'job_test',
         kind: GenerationJobKind.IMAGE,
-        model: 'gemini-2.5-flash-image',
+        model: DEFAULT_MODELS.NANO_BANANA,
         prompt: 'Hello',
       }),
     (error) => {

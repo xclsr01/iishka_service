@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { DEFAULT_MODELS } from '@iishka/model-config';
 import { z } from 'zod';
 
 if (
@@ -23,25 +24,25 @@ const envSchema = z.object({
   AI_GATEWAY_INTERNAL_TOKEN: z.string().min(32),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
-  OPENAI_DEFAULT_MODEL: z.string().min(1).default('gpt-5.4-mini'),
+  OPENAI_DEFAULT_MODEL: z.string().min(1).default(DEFAULT_MODELS.OPENAI),
   ANTHROPIC_API_KEY: z.string().min(1),
   ANTHROPIC_BASE_URL: z.string().url().default('https://api.anthropic.com'),
   ANTHROPIC_DEFAULT_MODEL: z
     .string()
     .min(1)
-    .default('claude-3-5-sonnet-latest'),
+    .default(DEFAULT_MODELS.ANTHROPIC),
   ANTHROPIC_VERSION: z.string().min(1).default('2023-06-01'),
   GOOGLE_AI_API_KEY: z.string().min(1),
   GOOGLE_AI_BASE_URL: z
     .string()
     .url()
     .default('https://generativelanguage.googleapis.com'),
-  GOOGLE_AI_DEFAULT_MODEL: z.string().min(1).default('gemini-2.5-flash'),
+  GOOGLE_AI_DEFAULT_MODEL: z.string().min(1).default(DEFAULT_MODELS.GEMINI),
   NANO_BANANA_DEFAULT_MODEL: z
     .string()
     .min(1)
-    .default('gemini-2.5-flash-image'),
-  VEO_DEFAULT_MODEL: z.string().min(1).default('veo-3.1-fast-generate-preview'),
+    .default(DEFAULT_MODELS.NANO_BANANA),
+  VEO_DEFAULT_MODEL: z.string().min(1).default(DEFAULT_MODELS.VEO),
   PROVIDER_REQUEST_TIMEOUT_MS: z.coerce
     .number()
     .int()

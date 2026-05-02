@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_MODELS } from '@iishka/model-config';
 import { validateSupabaseServiceRoleKey } from './lib/supabase-key';
 
 if (
@@ -66,13 +67,13 @@ const envSchema = z.object({
   OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
   OPENAI_GATEWAY_URL: optionalUrl,
   OPENAI_GATEWAY_INTERNAL_TOKEN: optionalSecret,
-  OPENAI_MODEL: z.string().min(1).default('gpt-5.4-mini'),
+  OPENAI_MODEL: z.string().min(1).default(DEFAULT_MODELS.OPENAI),
   ANTHROPIC_API_KEY: z.string().min(1).default(placeholderToken),
-  ANTHROPIC_MODEL: z.string().min(1).default('claude-3-5-sonnet-latest'),
+  ANTHROPIC_MODEL: z.string().min(1).default(DEFAULT_MODELS.ANTHROPIC),
   GOOGLE_AI_API_KEY: z.string().min(1).default(placeholderToken),
-  GOOGLE_AI_MODEL: z.string().min(1).default('gemini-2.5-flash'),
-  NANO_BANANA_MODEL: z.string().min(1).default('gemini-2.5-flash-image'),
-  VEO_MODEL: z.string().min(1).default('veo-3.1-fast-generate-preview'),
+  GOOGLE_AI_MODEL: z.string().min(1).default(DEFAULT_MODELS.GEMINI),
+  NANO_BANANA_MODEL: z.string().min(1).default(DEFAULT_MODELS.NANO_BANANA),
+  VEO_MODEL: z.string().min(1).default(DEFAULT_MODELS.VEO),
   MAX_UPLOAD_BYTES: z.coerce
     .number()
     .int()

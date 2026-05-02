@@ -1,3 +1,4 @@
+import { MODEL_FALLBACKS } from '@iishka/model-config';
 import { ProviderKey } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { env } from '../../env';
@@ -32,7 +33,7 @@ const GOOGLE_SEARCH_GROUNDING_INSTRUCTION = [
   'Never answer time-sensitive questions from model memory alone.',
   'When grounding metadata is available, include concise source names or links in the answer.',
 ].join('\n');
-const GEMINI_CHAT_MODEL_FALLBACK = 'gemini-2.5-flash';
+const GEMINI_CHAT_MODEL_FALLBACK = MODEL_FALLBACKS.GEMINI_CHAT;
 
 function buildGeminiPrompt(input: ProviderGenerateInput) {
   return [

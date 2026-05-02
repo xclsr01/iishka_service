@@ -1,5 +1,6 @@
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_MODELS } from '@iishka/model-config';
 import { ProviderKey } from '@prisma/client';
 import { env } from '../../env';
 import { GeminiProviderAdapter } from './gemini-provider';
@@ -70,7 +71,7 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
 
   const result = await adapter.generateResponse({
     providerKey: ProviderKey.GEMINI,
-    model: 'gemini-2.5-flash',
+    model: DEFAULT_MODELS.GEMINI,
     messages: [
       {
         role: 'user',
@@ -81,7 +82,7 @@ test('GeminiProviderAdapter calls Google AI Studio generateContent with header a
 
   assert.equal(
     calledUrl,
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_MODELS.GEMINI}:generateContent`,
   );
   assert.equal(calledHeaders['content-type'], 'application/json');
   assert.equal(calledHeaders['x-goog-api-key'], process.env.GOOGLE_AI_API_KEY);
@@ -154,7 +155,7 @@ test('GeminiProviderAdapter retries without search grounding when Gemini rejects
 
   const result = await adapter.generateResponse({
     providerKey: ProviderKey.GEMINI,
-    model: 'gemini-2.5-flash',
+    model: DEFAULT_MODELS.GEMINI,
     messages: [
       {
         role: 'user',
@@ -176,7 +177,7 @@ test('GeminiProviderAdapter normalizes model names and falls back to default on 
   env.AI_GATEWAY_URL = undefined;
   env.AI_GATEWAY_INTERNAL_TOKEN = undefined;
   env.ALLOW_DIRECT_PROVIDER_EGRESS = true;
-  env.GOOGLE_AI_MODEL = 'gemini-2.5-flash';
+  env.GOOGLE_AI_MODEL = DEFAULT_MODELS.GEMINI;
 
   globalThis.fetch = async (input) => {
     calledUrls.push(String(input));
@@ -221,7 +222,7 @@ test('GeminiProviderAdapter normalizes model names and falls back to default on 
 
   assert.deepEqual(calledUrls, [
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-retired-chat-model:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_MODELS.GEMINI}:generateContent`,
   ]);
   assert.equal(result.text, 'Fallback model response');
 });
@@ -278,7 +279,7 @@ test('GeminiProviderAdapter falls back to stable chat model when configured mode
 
   assert.deepEqual(calledUrls, [
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent',
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_MODELS.GEMINI}:generateContent`,
   ]);
   assert.equal(result.text, 'Stable fallback response');
 });
@@ -303,7 +304,7 @@ test('GeminiProviderAdapter calls configured AI gateway when available', async (
     return new Response(
       JSON.stringify({
         provider: 'gemini',
-        model: 'gemini-2.5-flash',
+        model: DEFAULT_MODELS.GEMINI,
         text: 'Gateway Gemini response',
         upstreamRequestId: 'req_gateway_gemini',
         usage: {
@@ -326,7 +327,7 @@ test('GeminiProviderAdapter calls configured AI gateway when available', async (
 
   const result = await adapter.generateResponse({
     providerKey: ProviderKey.GEMINI,
-    model: 'gemini-2.5-flash',
+    model: DEFAULT_MODELS.GEMINI,
     messages: [
       {
         role: 'user',
@@ -344,7 +345,7 @@ test('GeminiProviderAdapter calls configured AI gateway when available', async (
     'Bearer test-ai-gateway-token-000000000000000000',
   );
   assert.ok(calledPayload);
-  assert.equal(calledPayload.model, 'gemini-2.5-flash');
+  assert.equal(calledPayload.model, DEFAULT_MODELS.GEMINI);
   assert.deepEqual(calledPayload.messages, [
     { role: 'user', content: 'Hello' },
   ]);
@@ -377,7 +378,7 @@ test('GeminiProviderAdapter classifies retryable Google AI rate limit errors', a
     () =>
       adapter.generateResponse({
         providerKey: ProviderKey.GEMINI,
-        model: 'gemini-2.5-flash',
+        model: DEFAULT_MODELS.GEMINI,
         messages: [
           {
             role: 'user',

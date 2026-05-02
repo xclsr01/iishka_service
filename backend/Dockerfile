@@ -9,6 +9,9 @@ COPY package.json package-lock.json tsconfig.base.json ./
 COPY backend/package.json backend/package.json
 COPY frontend/package.json frontend/package.json
 COPY ai-gateway/package.json ai-gateway/package.json
+COPY model-config/package.json model-config/package.json
+COPY model-config/index.js model-config/index.js
+COPY model-config/index.d.ts model-config/index.d.ts
 RUN npm ci --workspace backend
 
 COPY backend/tsconfig.json backend/tsconfig.json
@@ -44,6 +47,9 @@ COPY package.json package-lock.json ./
 COPY backend/package.json backend/package.json
 COPY frontend/package.json frontend/package.json
 COPY ai-gateway/package.json ai-gateway/package.json
+COPY model-config/package.json model-config/package.json
+COPY model-config/index.js model-config/index.js
+COPY model-config/index.d.ts model-config/index.d.ts
 RUN npm ci --workspace backend --omit=dev && npm cache clean --force
 
 COPY --from=build /app/node_modules/.prisma node_modules/.prisma

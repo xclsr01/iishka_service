@@ -1,5 +1,6 @@
 import test, { after, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_MODELS } from '@iishka/model-config';
 import { GenerationJobKind, GenerationJobStatus, ProviderKey, ProviderStatus } from '@prisma/client';
 import { createApp } from './app';
 import { prisma } from './lib/prisma';
@@ -53,6 +54,7 @@ function trackRestore(restore: () => void) {
 }
 
 async function clearDatabase() {
+  await prisma.idempotencyKey.deleteMany();
   await prisma.providerUsage.deleteMany();
   await prisma.messageAttachment.deleteMany();
   await prisma.message.deleteMany();
@@ -74,7 +76,7 @@ async function seedProviders() {
         summary: 'Balanced generalist for drafting, coding, and everyday problem solving.',
         description:
           'OpenAI-backed assistant focused on broad general intelligence, coding support, and multimodal product evolution.',
-        defaultModel: 'gpt-5.4-mini',
+        defaultModel: DEFAULT_MODELS.OPENAI,
         status: ProviderStatus.ACTIVE,
         isFileUploadBeta: true,
       },
@@ -85,7 +87,7 @@ async function seedProviders() {
         summary: 'Strong long-form reasoning and document analysis assistant.',
         description:
           'Anthropic-backed assistant optimized for nuanced reasoning, writing quality, and large-context conversations.',
-        defaultModel: 'claude-3-5-sonnet-latest',
+        defaultModel: DEFAULT_MODELS.ANTHROPIC,
         status: ProviderStatus.ACTIVE,
         isFileUploadBeta: true,
       },
@@ -96,7 +98,7 @@ async function seedProviders() {
         summary: 'Fast multimodal assistant for search-heavy and product-style workflows.',
         description:
           'Google-backed assistant with strong multimodal tooling and practical speed for lightweight chat experiences.',
-        defaultModel: 'gemini-2.5-flash',
+        defaultModel: DEFAULT_MODELS.GEMINI,
         status: ProviderStatus.ACTIVE,
         isFileUploadBeta: true,
       },
@@ -107,7 +109,7 @@ async function seedProviders() {
         summary: 'Google image model for fast generation and visual editing workflows.',
         description:
           'Nano Banana uses Gemini image generation for prompt-based image creation and future image editing flows.',
-        defaultModel: 'gemini-2.5-flash-image',
+        defaultModel: DEFAULT_MODELS.NANO_BANANA,
         status: ProviderStatus.ACTIVE,
         isFileUploadBeta: true,
       },
@@ -118,7 +120,7 @@ async function seedProviders() {
         summary: 'Google video model for short cinematic prompt-based generation.',
         description:
           'Veo uses Gemini video generation for short-form video creation through an async workflow.',
-        defaultModel: 'veo-3.1-fast-generate-preview',
+        defaultModel: DEFAULT_MODELS.VEO,
         status: ProviderStatus.ACTIVE,
         isFileUploadBeta: true,
       },
@@ -437,6 +439,99 @@ test('chat flow creates a chat sends a message and decrements tokens', async () 
   assert.equal(getChatBody.chat.messages.length, 2);
 });
 
+test('chat message creation is idempotent by user action key', async () => {
+  const app = createApp();
+  const bootstrap = await bootstrapDev(app);
+  const openAiProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.OPENAI);
+  assert.ok(openAiProvider);
+  await requestWithAuth(app, bootstrap.token, '/api/subscription/dev/activate', {
+    method: 'POST',
+  });
+
+  let providerCalls = 0;
+  mockGenerateResponse(ProviderKey.OPENAI, async () => {
+    providerCalls += 1;
+    return {
+      text: 'Idempotent response',
+      raw: {
+        id: 'mock-idempotent-response',
+      },
+      model: DEFAULT_MODELS.OPENAI,
+      providerKey: ProviderKey.OPENAI,
+      latencyMs: 5,
+      fallbackUsed: false,
+      attempts: 1,
+      decision: {
+        mode: 'interactive',
+        providerKey: ProviderKey.OPENAI,
+        fallbackProviderKeys: [],
+      },
+      capabilities: {
+        supportsText: true,
+        supportsImage: false,
+        supportsStreaming: true,
+        supportsAsyncJobs: false,
+        supportsFiles: true,
+      },
+      upstreamRequestId: 'req_idempotent_openai',
+    };
+  });
+
+  const createChatResponse = await requestWithAuth(app, bootstrap.token, '/api/chats', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      providerId: openAiProvider.id,
+    }),
+  });
+  const createChatBody = (await createChatResponse.json()) as {
+    chat: {
+      id: string;
+    };
+  };
+  const idempotencyKey = 'message-idempotency-test';
+  const payload = {
+    content: 'Send once',
+    idempotencyKey,
+  };
+
+  const firstResponse = await requestWithAuth(app, bootstrap.token, `/api/chats/${createChatBody.chat.id}/messages`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  const secondResponse = await requestWithAuth(app, bootstrap.token, `/api/chats/${createChatBody.chat.id}/messages`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const firstBody = (await firstResponse.json()) as {
+    userMessage: { id: string };
+    assistantMessage: { id: string; content: string };
+  };
+  const secondBody = (await secondResponse.json()) as typeof firstBody;
+  const messageCount = await prisma.message.count({
+    where: {
+      chatId: createChatBody.chat.id,
+    },
+  });
+
+  assert.equal(firstResponse.status, 201);
+  assert.equal(secondResponse.status, 201);
+  assert.equal(secondBody.userMessage.id, firstBody.userMessage.id);
+  assert.equal(secondBody.assistantMessage.id, firstBody.assistantMessage.id);
+  assert.equal(secondBody.assistantMessage.content, 'Idempotent response');
+  assert.equal(providerCalls, 1);
+  assert.equal(messageCount, 2);
+});
+
 test('jobs API creates runs and reports async provider jobs', async () => {
   const app = createApp();
   const bootstrap = await bootstrapDev(app);
@@ -509,6 +604,77 @@ test('jobs API creates runs and reports async provider jobs', async () => {
 
   assert.equal(jobsResponse.status, 200);
   assert.ok(jobsBody.jobs.some((job) => job.id === createJobBody.job.id));
+});
+
+test('generation job creation is idempotent by user action key', async () => {
+  const app = createApp();
+  const bootstrap = await bootstrapDev(app);
+  await requestWithAuth(app, bootstrap.token, '/api/subscription/dev/activate', {
+    method: 'POST',
+  });
+  const openAiProvider = bootstrap.providers.find((provider) => provider.key === ProviderKey.OPENAI);
+  assert.ok(openAiProvider);
+
+  let providerCalls = 0;
+  mockExecuteAsyncJob(ProviderKey.OPENAI, async () => {
+    providerCalls += 1;
+    return {
+      resultPayload: {
+        kind: GenerationJobKind.PROVIDER_ASYNC,
+        text: 'Idempotent async result',
+      },
+      usage: {
+        inputTokens: 1,
+        outputTokens: 1,
+        totalTokens: 2,
+      },
+      upstreamRequestId: 'req_idempotent_job',
+      externalJobId: 'external-idempotent-job',
+    };
+  });
+
+  const payload = {
+    providerId: openAiProvider.id,
+    kind: GenerationJobKind.PROVIDER_ASYNC,
+    prompt: 'Generate this once',
+    idempotencyKey: 'generation-job-idempotency-test',
+  };
+
+  const firstResponse = await requestWithAuth(app, bootstrap.token, '/api/jobs', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  const secondResponse = await requestWithAuth(app, bootstrap.token, '/api/jobs', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  const firstBody = (await firstResponse.json()) as {
+    job: {
+      id: string;
+    };
+  };
+  const secondBody = (await secondResponse.json()) as typeof firstBody;
+
+  const completedJob = await waitForJobCompletion(app, bootstrap.token, firstBody.job.id);
+  const jobCount = await prisma.generationJob.count({
+    where: {
+      userId: bootstrap.user.id,
+      prompt: payload.prompt,
+    },
+  });
+
+  assert.equal(firstResponse.status, 201);
+  assert.equal(secondResponse.status, 201);
+  assert.equal(secondBody.job.id, firstBody.job.id);
+  assert.equal(completedJob.status, 'COMPLETED');
+  assert.equal(providerCalls, 1);
+  assert.equal(jobCount, 1);
 });
 
 test('jobs claim only allows one worker to acquire a queued job', async () => {
