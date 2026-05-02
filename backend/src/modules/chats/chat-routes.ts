@@ -20,6 +20,7 @@ const createChatSchema = z.object({
 const createMessageSchema = z.object({
   content: z.string().min(1).max(12000),
   fileIds: z.array(z.string().min(1)).max(5).optional(),
+  idempotencyKey: z.string().trim().min(1).max(128).optional(),
 });
 
 const messagesQuerySchema = z.object({
@@ -73,6 +74,7 @@ chatRoutes.post(
       chatId: c.req.param('chatId'),
       content: payload.content,
       fileIds: payload.fileIds,
+      idempotencyKey: payload.idempotencyKey,
     });
 
     return c.json(result, 201);

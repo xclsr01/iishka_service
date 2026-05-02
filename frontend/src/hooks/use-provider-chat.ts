@@ -7,6 +7,7 @@ import {
   type Subscription,
 } from '@/lib/api';
 import { clientEnv } from '@/lib/env';
+import { createIdempotencyKey } from '@/lib/idempotency';
 import { useLocale } from '@/lib/i18n';
 
 type ProviderChatState = {
@@ -476,6 +477,7 @@ export function useProviderChat(
       const createdMessages = await apiClient.createMessage(activeChat.id, {
         content,
         fileIds: state.pendingFiles.map((file) => file.id),
+        idempotencyKey: createIdempotencyKey('message-create'),
       });
 
       const resolvedChat: Chat = {

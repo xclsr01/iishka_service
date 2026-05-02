@@ -338,7 +338,7 @@ class ApiClient {
 
   createMessage(
     chatId: string,
-    payload: { content: string; fileIds?: string[] },
+    payload: { content: string; fileIds?: string[]; idempotencyKey?: string },
   ) {
     return this.request<{
       userMessage: ChatMessage;
@@ -408,6 +408,7 @@ class ApiClient {
     kind: GenerationJobKind;
     prompt: string;
     metadata?: Record<string, unknown>;
+    idempotencyKey?: string;
   }) {
     return this.request<{ job: GenerationJob }>('/api/jobs', {
       method: 'POST',

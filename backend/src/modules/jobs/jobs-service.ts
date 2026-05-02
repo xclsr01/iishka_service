@@ -1,6 +1,7 @@
 import {
   GenerationJobKind,
   GenerationJobStatus,
+  IdempotencyAction,
   MessageStatus,
   Prisma,
   ProviderStatus,
@@ -12,6 +13,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { env } from '../../env';
 import { AppError } from '../../lib/errors';
 import { assertPresent } from '../../lib/http';
+import { runIdempotentOperation } from '../../lib/idempotency';
 import { prisma } from '../../lib/prisma';
 import { withOperationTimeout } from '../../lib/timeout';
 import { getRegisteredProvider } from '../providers/provider-registry';
@@ -362,6 +364,29 @@ function buildQueueInput(job: GenerationJob, provider: Provider): EnqueueGenerat
 }
 
 export async function createGenerationJob(
+  input: CreateGenerationJobInput,
+  enqueueOptions?: EnqueueGenerationJobOptions,
+) {
+  return runIdempotentOperation({
+    userId: input.userId,
+    action: IdempotencyAction.GENERATION_JOB_CREATE,
+    key: input.idempotencyKey,
+    requestPayload: {
+      providerId: input.providerId,
+      kind: input.kind,
+      prompt: input.prompt.trim(),
+      chatId: input.chatId ?? null,
+      metadata: input.metadata ?? null,
+    },
+    operation: () => createGenerationJobOnce(input, enqueueOptions),
+    resource: (job) => ({
+      resourceType: 'generationJob',
+      resourceId: job.id,
+    }),
+  });
+}
+
+async function createGenerationJobOnce(
   input: CreateGenerationJobInput,
   enqueueOptions?: EnqueueGenerationJobOptions,
 ) {

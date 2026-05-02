@@ -1,5 +1,7 @@
 import os from 'node:os';
 
+import { DEFAULT_MODELS } from '@iishka/model-config';
+
 process.env.APP_ENV ??= 'test';
 process.env.FRONTEND_URL ??= 'http://localhost:5173';
 process.env.API_BASE_URL ??= 'http://localhost:8787';
@@ -22,15 +24,15 @@ process.env.TELEGRAM_WEBHOOK_SECRET ??= 'telegram-webhook-secret';
 process.env.TELEGRAM_MINI_APP_URL ??= 'https://mini-app.example.com';
 process.env.TELEGRAM_DELIVERY_MODE ??= 'disabled';
 process.env.OPENAI_API_KEY ??= 'test-openai-key';
-process.env.OPENAI_MODEL ??= 'gpt-5.4-mini';
+process.env.OPENAI_MODEL ??= DEFAULT_MODELS.OPENAI;
 process.env.AI_GATEWAY_TIMEOUT_MS ??= '15000';
 process.env.AI_GATEWAY_ASYNC_JOB_TIMEOUT_MS ??= '660000';
 process.env.ANTHROPIC_API_KEY ??= 'test-anthropic-key';
-process.env.ANTHROPIC_MODEL ??= 'claude-3-5-sonnet-latest';
+process.env.ANTHROPIC_MODEL ??= DEFAULT_MODELS.ANTHROPIC;
 process.env.GOOGLE_AI_API_KEY ??= 'test-google-key';
-process.env.GOOGLE_AI_MODEL ??= 'gemini-2.5-flash';
-process.env.NANO_BANANA_MODEL ??= 'gemini-2.5-flash-image';
-process.env.VEO_MODEL ??= 'veo-3.1-fast-generate-preview';
+process.env.GOOGLE_AI_MODEL ??= DEFAULT_MODELS.GEMINI;
+process.env.NANO_BANANA_MODEL ??= DEFAULT_MODELS.NANO_BANANA;
+process.env.VEO_MODEL ??= DEFAULT_MODELS.VEO;
 process.env.MAX_UPLOAD_BYTES ??= '10485760';
 process.env.ALLOWED_UPLOAD_MIME_TYPES ??= 'application/pdf,image/png,image/jpeg,text/plain';
 process.env.UPLOAD_STORAGE_DRIVER ??= 'local';

@@ -1,5 +1,6 @@
 import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { DEFAULT_MODELS } from '@iishka/model-config';
 import { ProviderKey } from '@prisma/client';
 import { env } from '../../env';
 import { runWithLogContext } from '../../lib/request-context';
@@ -54,10 +55,10 @@ test('OpenAiProviderAdapter calls configured internal gateway instead of direct 
           },
         },
         provider: 'openai',
-        model: 'gpt-5.4-mini',
+        model: DEFAULT_MODELS.OPENAI,
         raw: {
           id: 'resp_gateway',
-          model: 'gpt-5.4-mini',
+          model: DEFAULT_MODELS.OPENAI,
           responseStatus: 'completed',
         },
       }),
@@ -70,7 +71,7 @@ test('OpenAiProviderAdapter calls configured internal gateway instead of direct 
   const result = await runWithLogContext({ requestId: 'req_local_test' }, () =>
     adapter.generateResponse({
       providerKey: ProviderKey.OPENAI,
-      model: 'gpt-5.4-mini',
+      model: DEFAULT_MODELS.OPENAI,
       messages: [
         {
           role: 'user',
@@ -87,7 +88,7 @@ test('OpenAiProviderAdapter calls configured internal gateway instead of direct 
   assert.ok(calledPayload);
   assert.equal(calledPayload.requestId, 'req_local_test');
   assert.deepEqual(calledPayload.messages, [{ role: 'user', content: 'Hello' }]);
-  assert.equal(calledPayload.model, 'gpt-5.4-mini');
+  assert.equal(calledPayload.model, DEFAULT_MODELS.OPENAI);
   assert.equal(result.text, 'Gateway response');
   assert.equal(result.upstreamRequestId, 'req_gateway_openai');
   assert.deepEqual(result.usage, {
@@ -102,6 +103,6 @@ test('OpenAiProviderAdapter calls configured internal gateway instead of direct 
   });
   assert.equal(result.raw.gateway, true);
   assert.equal(result.raw.gatewayProvider, 'openai');
-  assert.equal(result.raw.gatewayModel, 'gpt-5.4-mini');
+  assert.equal(result.raw.gatewayModel, DEFAULT_MODELS.OPENAI);
   assert.equal(result.raw.id, 'resp_gateway');
 });

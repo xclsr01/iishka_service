@@ -8,6 +8,7 @@ import {
   type Message,
   type MessageAttachment,
   MessageStatus,
+  IdempotencyAction,
   type Prisma,
   type Provider,
   ProviderKey,
@@ -15,6 +16,7 @@ import {
 } from '@prisma/client';
 import { AppError } from '../../lib/errors';
 import { assertPresent } from '../../lib/http';
+import { runIdempotentOperation } from '../../lib/idempotency';
 import { logger } from '../../lib/logger';
 import { prisma } from '../../lib/prisma';
 import { executeInteractiveGeneration } from '../orchestration/orchestration-service';
@@ -596,6 +598,30 @@ export async function getChatWithMessages(
 }
 
 export async function createMessage(input: {
+  userId: string;
+  chatId: string;
+  content: string;
+  fileIds?: string[];
+  idempotencyKey?: string;
+}) {
+  return runIdempotentOperation({
+    userId: input.userId,
+    action: IdempotencyAction.MESSAGE_CREATE,
+    key: input.idempotencyKey,
+    requestPayload: {
+      chatId: input.chatId,
+      content: input.content.trim(),
+      fileIds: input.fileIds ?? [],
+    },
+    operation: () => createMessageOnce(input),
+    resource: (result) => ({
+      resourceType: 'message',
+      resourceId: result.userMessage.id,
+    }),
+  });
+}
+
+async function createMessageOnce(input: {
   userId: string;
   chatId: string;
   content: string;

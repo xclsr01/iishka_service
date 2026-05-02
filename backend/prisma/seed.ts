@@ -1,4 +1,5 @@
 import '../src/load-local-env';
+import { DEFAULT_MODELS } from '@iishka/model-config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, ProviderKey } from '@prisma/client';
 
@@ -41,7 +42,7 @@ async function main() {
       summary: 'Balanced generalist for drafting, coding, and everyday problem solving.',
       description:
         'OpenAI-backed assistant focused on broad general intelligence, coding support, and multimodal product evolution.',
-      defaultModel: 'gpt-5.4-mini',
+      defaultModel: DEFAULT_MODELS.OPENAI,
       isFileUploadBeta: true,
     },
     create: {
@@ -51,7 +52,7 @@ async function main() {
       summary: 'Balanced generalist for drafting, coding, and everyday problem solving.',
       description:
         'OpenAI-backed assistant focused on broad general intelligence, coding support, and multimodal product evolution.',
-      defaultModel: 'gpt-5.4-mini',
+      defaultModel: DEFAULT_MODELS.OPENAI,
       isFileUploadBeta: true,
     },
   });
@@ -64,7 +65,7 @@ async function main() {
       summary: 'Strong long-form reasoning and document analysis assistant.',
       description:
         'Anthropic-backed assistant optimized for nuanced reasoning, writing quality, and large-context conversations.',
-      defaultModel: 'claude-3-5-sonnet-latest',
+      defaultModel: DEFAULT_MODELS.ANTHROPIC,
       isFileUploadBeta: true,
     },
     create: {
@@ -74,7 +75,7 @@ async function main() {
       summary: 'Strong long-form reasoning and document analysis assistant.',
       description:
         'Anthropic-backed assistant optimized for nuanced reasoning, writing quality, and large-context conversations.',
-      defaultModel: 'claude-3-5-sonnet-latest',
+      defaultModel: DEFAULT_MODELS.ANTHROPIC,
       isFileUploadBeta: true,
     },
   });
@@ -87,7 +88,7 @@ async function main() {
       summary: 'Fast multimodal assistant for search-heavy and product-style workflows.',
       description:
         'Google-backed assistant with strong multimodal tooling and practical speed for lightweight chat experiences.',
-      defaultModel: 'gemini-2.5-flash',
+      defaultModel: DEFAULT_MODELS.GEMINI,
       isFileUploadBeta: true,
     },
     create: {
@@ -97,7 +98,7 @@ async function main() {
       summary: 'Fast multimodal assistant for search-heavy and product-style workflows.',
       description:
         'Google-backed assistant with strong multimodal tooling and practical speed for lightweight chat experiences.',
-      defaultModel: 'gemini-2.5-flash',
+      defaultModel: DEFAULT_MODELS.GEMINI,
       isFileUploadBeta: true,
     },
   });
@@ -110,7 +111,7 @@ async function main() {
       summary: 'Google image model for fast generation and visual editing workflows.',
       description:
         'Nano Banana uses Gemini image generation for prompt-based image creation and future image editing flows.',
-      defaultModel: 'gemini-2.5-flash-image',
+      defaultModel: DEFAULT_MODELS.NANO_BANANA,
       isFileUploadBeta: true,
     },
     create: {
@@ -120,7 +121,7 @@ async function main() {
       summary: 'Google image model for fast generation and visual editing workflows.',
       description:
         'Nano Banana uses Gemini image generation for prompt-based image creation and future image editing flows.',
-      defaultModel: 'gemini-2.5-flash-image',
+      defaultModel: DEFAULT_MODELS.NANO_BANANA,
       isFileUploadBeta: true,
     },
   });
@@ -133,7 +134,7 @@ async function main() {
       summary: 'Google video model for short cinematic prompt-based generation.',
       description:
         'Veo uses Gemini video generation for short-form video creation through an async workflow.',
-      defaultModel: 'veo-3.1-fast-generate-preview',
+      defaultModel: DEFAULT_MODELS.VEO,
       isFileUploadBeta: true,
     },
     create: {
@@ -143,7 +144,7 @@ async function main() {
       summary: 'Google video model for short cinematic prompt-based generation.',
       description:
         'Veo uses Gemini video generation for short-form video creation through an async workflow.',
-      defaultModel: 'veo-3.1-fast-generate-preview',
+      defaultModel: DEFAULT_MODELS.VEO,
       isFileUploadBeta: true,
     },
   });

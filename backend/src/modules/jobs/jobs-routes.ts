@@ -21,6 +21,7 @@ const createGenerationJobSchema = z.object({
   prompt: z.string().trim().min(1).max(12000),
   chatId: z.string().min(1).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  idempotencyKey: z.string().trim().min(1).max(128).optional(),
 });
 
 const listGenerationJobsSchema = z.object({
@@ -104,6 +105,7 @@ jobsRoutes.post('/', createRateLimitMiddleware('job_create'), async (c) => {
     prompt: payload.prompt,
     chatId: payload.chatId,
     metadata: payload.metadata,
+    idempotencyKey: payload.idempotencyKey,
   });
 
   return c.json({ job }, 201);
